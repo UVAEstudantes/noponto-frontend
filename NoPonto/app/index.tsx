@@ -1,9 +1,12 @@
 import { Text, View } from 'react-native'; 
-import { Bus } from 'lucide-react-native'; 
+import React from 'react';
 
-export default function HomeScreen() { 
+const Home = () => {
     return ( 
         <View className="flex-1 justify-center items-center bg-white"> 
-        <Bus size={48} color="black" /> 
+            <Text>Mapa</Text>
         </View> 
-    ); }
+    )
+}
+
+export default Home; 
