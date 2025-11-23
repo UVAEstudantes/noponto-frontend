@@ -1,4 +1,5 @@
 import CampoBuscarLinha1 from '@/src/components/campoBuscaLinha1';
+import Filtro from '@/src/components/filtro';
 import LocalButton from '@/src/components/localButton';
 import RotaButton from '@/src/components/rotaButton';
 import { getCurrentPositionAsync, LocationAccuracy, LocationObject, requestForegroundPermissionsAsync, watchPositionAsync } from 'expo-location';
@@ -7,6 +8,13 @@ import { View } from 'react-native';
 import MapView from "react-native-maps";
 
     const Home = () => {
+
+        const [transito, setTransito] = React.useState(false);
+
+        function clickTransito(){
+            setTransito(!transito);
+            console.log("transito: ", transito);
+        }
 
         const mapRef = React.useRef<MapView>(null);
         const [location, setLocation] = useState<LocationObject | null>(null);
@@ -49,7 +57,7 @@ import MapView from "react-native-maps";
                         showsUserLocation= {true}
                         followsUserLocation= {true}
                         showsMyLocationButton= {false}
-                        //showsTraffic={true} // mostrar transito
+                        showsTraffic={transito} // mostrar transito se clicar no check transito
 
                         customMapStyle={[ // remover os locais como lojas e coisas do tipo
                             {
@@ -71,6 +79,7 @@ import MapView from "react-native-maps";
                 <CampoBuscarLinha1 />
                 <RotaButton />
                 <LocalButton location={location} mapRef={mapRef}/>
+                <Filtro transito={transito} clickTransito={clickTransito} />
                 
             </View>
         )

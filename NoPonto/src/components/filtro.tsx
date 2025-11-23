@@ -1,9 +1,12 @@
-import { Bus, BusFront, Car, Check, Train, TrainFrontTunnel, TriangleAlert } from "lucide-react-native";
+import { Bus, BusFront, Car, Check, SlidersHorizontal, Train, TrainFrontTunnel, TriangleAlert } from "lucide-react-native";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 
 
 const colors = {
+    customYellow: '#FFC107',
+    customGray: '#F2F4F7',
+
     bus: '#1156EA',
     busBG: '#D7E2EF',
     brt: '#038B0F',
@@ -19,16 +22,20 @@ const colors = {
     riscoBG: '#F1EAD4',
     }
 
-export default function Filtro(){
+export default function Filtro({ transito , clickTransito}: { transito: boolean; clickTransito: () => void}){
 
     const [onibus, setOnibus] = React.useState(false);
     const [brt, setBrt] = React.useState(false);
     const [trem, setTrem] = React.useState(false);
     const [metro, setMetro] = React.useState(false);
-
-    const [transito, setTransito] = React.useState(false);
     const [risco, setRisco] = React.useState(false);
 
+    const [filtroaberto, setFiltroAberto] = React.useState(false);
+
+    function abrirFiltros(){
+        setFiltroAberto(!filtroaberto);
+        console.log("abrir filtros", !filtroaberto);
+    }
 
     function clickOnibus(){
         setOnibus(!onibus);
@@ -47,10 +54,7 @@ export default function Filtro(){
         console.log("metro:", !metro);
     }
     
-    function clickTransito(){
-        setTransito(!transito);
-        console.log("transito:", !transito);
-    }
+
 
     function clickRisco(){
         setRisco(!risco);
@@ -60,145 +64,158 @@ export default function Filtro(){
 
     return(
 
-        //container do filtro
-        <View className="absolute right-5 top-[120px] bg-customGray p-5 h-[410px] w-[250px] rounded-xl shadow-lg">
-            <Text className="ml-4 mt-0 text-lg font-bold" >Transportes</Text>
+        <>
+            {/*btn do filtro*/}
+            <View className=" absolute inset-x-5 top-[85px] m-5 ml-0 mr-[60px]">
+                <Pressable onPress={abrirFiltros} className="bg-customBlack">
+                    <SlidersHorizontal color={filtroaberto ? colors.customYellow : colors.customGray} size={24}
+                    style={{position: 'absolute', right: -50, top: -30 }} />
+                </Pressable>
+            </View>
 
-                {/*opcoes de transporte*/}
-                <View className=" mt-3">
+            {/*container filtro*/}
+            { filtroaberto && (
+                <View className="absolute right-5 top-[120px] bg-customGray p-5 h-[410px] w-[250px] rounded-xl shadow-lg">
+                    <Text className="ml-4 mt-0 text-lg font-bold" >Transportes</Text>
 
-                    {/* ônibus */}
-                    <View className="flex-row items-center mb-3 ml-1">
+                        {/*opcoes de transporte*/}
+                        <View className=" mt-3">
 
-                        <View style={{backgroundColor: colors.busBG, padding: 8, borderRadius: 50}}>
-                            <BusFront color={colors.bus} size={20} />
+                            {/* ônibus */}
+                            <View className="flex-row items-center mb-3 ml-1">
+
+                                <View style={{backgroundColor: colors.busBG, padding: 8, borderRadius: 50}}>
+                                    <BusFront color={colors.bus} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">Ônibus</Text>
+
+                                <Pressable onPress={() => clickOnibus()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${onibus ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${onibus ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {onibus && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
+                            {/* brt */}
+                            <View className="flex-row items-center mb-3 ml-1">
+
+                                <View style={{backgroundColor: colors.brtBG, padding: 8, borderRadius: 50}}>
+                                    <Bus color={colors.brt} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">BRT</Text>
+
+                                <Pressable onPress={() => clickBrt()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${brt ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${brt ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {brt && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
+                            {/* trem */}
+                            <View className="flex-row items-center mb-3 ml-1">
+
+                                <View style={{backgroundColor: colors.tremBG, padding: 8, borderRadius: 50}}>
+                                    <Train color={colors.trem} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">Trem</Text>
+
+                                <Pressable onPress={() => clickTrem()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${trem ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${trem ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {trem && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
+                            {/* metro */}
+                            <View className="flex-row items-center mb-3 ml-1">
+
+                                <View style={{backgroundColor: colors.metroBG, padding: 8, borderRadius: 50}}>
+                                    <TrainFrontTunnel color={colors.metro} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">Metrô</Text>
+
+                                <Pressable onPress={() => clickMetro()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${metro ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${metro ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {metro && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
                         </View>
 
-                        <Text className="ml-4 text-md">Ônibus</Text>
+                    <Text className="text-customDivider font-bold">  ______________________________</Text>
 
-                        <Pressable onPress={() => clickOnibus()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${onibus ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${onibus ? 'bg-customYellow' : 'bg-transparent'}`}>
+                    <Text className="ml-4 mt-3 text-lg font-bold" >Informações no mapa</Text>
 
-                            {onibus && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
+                        {/*opcoes de transporte*/}
+                        <View className=" mt-3">
 
-                    {/* brt */}
-                    <View className="flex-row items-center mb-3 ml-1">
+                            {/* ônibus */}
+                            <View className="flex-row items-center mb-3 ml-1">
 
-                        <View style={{backgroundColor: colors.brtBG, padding: 8, borderRadius: 50}}>
-                            <Bus color={colors.brt} size={20} />
+                                <View style={{backgroundColor: colors.transitoBG, padding: 8, borderRadius: 50}}>
+                                    <Car color={colors.transito} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">Trânsito</Text>
+
+                                <Pressable onPress={() => clickTransito()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${transito ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${transito ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {transito && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
+                            {/* brt */}
+                            <View className="flex-row items-center mb-3 ml-1">
+
+                                <View style={{backgroundColor: colors.riscoBG, padding: 8, borderRadius: 50}}>
+                                    <TriangleAlert color={colors.risco} size={20} />
+                                </View>
+
+                                <Text className="ml-4 text-md">Áreas de Risco</Text>
+
+                                <Pressable onPress={() => clickRisco()} 
+                                className={`ml-auto p-1 h-6 w-6 rounded-md
+                                    ${risco ? 'border border-customYellow' : 'border-2 border-gray-400'} 
+                                    ${risco ? 'bg-customYellow' : 'bg-transparent'}`}>
+
+                                    {risco && <Check color="white" size={13} strokeWidth={6}/>}
+                                    
+                                </Pressable>
+                                
+                            </View>
+
                         </View>
-
-                        <Text className="ml-4 text-md">BRT</Text>
-
-                        <Pressable onPress={() => clickBrt()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${brt ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${brt ? 'bg-customYellow' : 'bg-transparent'}`}>
-
-                            {brt && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
-
-                    {/* trem */}
-                    <View className="flex-row items-center mb-3 ml-1">
-
-                        <View style={{backgroundColor: colors.tremBG, padding: 8, borderRadius: 50}}>
-                            <Train color={colors.trem} size={20} />
-                        </View>
-
-                        <Text className="ml-4 text-md">Trem</Text>
-
-                        <Pressable onPress={() => clickTrem()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${trem ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${trem ? 'bg-customYellow' : 'bg-transparent'}`}>
-
-                            {trem && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
-
-                    {/* metro */}
-                    <View className="flex-row items-center mb-3 ml-1">
-
-                        <View style={{backgroundColor: colors.metroBG, padding: 8, borderRadius: 50}}>
-                            <TrainFrontTunnel color={colors.metro} size={20} />
-                        </View>
-
-                        <Text className="ml-4 text-md">Metrô</Text>
-
-                        <Pressable onPress={() => clickMetro()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${metro ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${metro ? 'bg-customYellow' : 'bg-transparent'}`}>
-
-                            {metro && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
 
                 </View>
+            )}
 
-            <Text className="text-customDivider font-bold">  ______________________________</Text>
-
-            <Text className="ml-4 mt-3 text-lg font-bold" >Informações no mapa</Text>
-
-                {/*opcoes de transporte*/}
-                <View className=" mt-3">
-
-                    {/* ônibus */}
-                    <View className="flex-row items-center mb-3 ml-1">
-
-                        <View style={{backgroundColor: colors.transitoBG, padding: 8, borderRadius: 50}}>
-                            <Car color={colors.transito} size={20} />
-                        </View>
-
-                        <Text className="ml-4 text-md">Trânsito</Text>
-
-                        <Pressable onPress={() => clickTransito()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${transito ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${transito ? 'bg-customYellow' : 'bg-transparent'}`}>
-
-                            {transito && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
-
-                    {/* brt */}
-                    <View className="flex-row items-center mb-3 ml-1">
-
-                        <View style={{backgroundColor: colors.riscoBG, padding: 8, borderRadius: 50}}>
-                            <TriangleAlert color={colors.risco} size={20} />
-                        </View>
-
-                        <Text className="ml-4 text-md">Áreas de Risco</Text>
-
-                        <Pressable onPress={() => clickRisco()} 
-                        className={`ml-auto p-1 h-6 w-6 rounded-md
-                            ${risco ? 'border border-customYellow' : 'border-2 border-gray-400'} 
-                            ${risco ? 'bg-customYellow' : 'bg-transparent'}`}>
-
-                            {risco && <Check color="white" size={13} strokeWidth={6}/>}
-                            
-                        </Pressable>
-                        
-                    </View>
-
-                </View>
-
-        </View>
+        </>
 
     );
 }

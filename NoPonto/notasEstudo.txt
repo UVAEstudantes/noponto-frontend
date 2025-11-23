@@ -1,0 +1,18 @@
+- Um estado recebe dois valores, um para o valor atual  e outro q muda o valor atual.
+
+ex: const [ligado, setLigado] = useState(false);
+se usar a função "setLigado(true)", muda o valor do ligado para true e atualiza essa infirmação na tela
+
+(lembra os metodos get e set do C# e Java)
+
+esses states devem, geralmente, ficar no component pai
+
+-----------------------------------------------------------------------------------------------------------
+
+- renderização condicional - {filtroaberto && <View>...<View/>}
+significa q se o filtroaberto for true, então mostra o conteudo da <View>, senão é null
+
+forma reescrita disso: {filtroaberto ? <View>...<View/> : null} 
+
+-----------------------------------------------------------------------------------------------------------
+
