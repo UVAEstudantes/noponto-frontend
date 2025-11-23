@@ -14,6 +14,7 @@ module.exports = {
         customGray:"#F2F4F7",
         customDivider:"#DEDEDE",
         customDarkGray:"#8E8E93",
+        customLightGray:"#E4E4E4",
       },
     },
   },
