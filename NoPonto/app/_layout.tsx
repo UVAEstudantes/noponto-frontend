@@ -8,9 +8,9 @@ const _layout = () => {
     <>
       <Stack screenOptions={{headerShown: false}}>
           
-          <Stack.Screen name="favoritos"/>
-
           <Stack.Screen name="index"/>
+
+          <Stack.Screen name="favoritos"/>
 
           <Stack.Screen name="linhas"/>
 

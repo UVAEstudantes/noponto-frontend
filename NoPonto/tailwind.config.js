@@ -13,7 +13,27 @@ module.exports = {
         customBlack: "#1E1E1E",
         customGray:"#F2F4F7",
       },
+      spacing: {
+        '15': '3.75rem',
+        '18': '4.5rem',
+        '22': '5.5rem',
+        '26': '6.5rem',
+        '30': '7.5rem',
+        '34': '8.5rem',
+        '36': '9rem',
+        '56': '14rem',
+      },
+      inset: {
+        '15': '3.75rem',
+        '18': '4.5rem',
+        '22': '5.5rem',
+        '26': '6.5rem',
+        '30': '7.5rem',
+        '34': '8.5rem',
+        '36': '9rem',
+        '56': '14rem',
+      },
+
     },
   },
-  plugins: [],
 };
