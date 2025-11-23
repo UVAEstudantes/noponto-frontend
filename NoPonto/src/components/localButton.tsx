@@ -16,7 +16,7 @@ export default function LocalButton({location, mapRef}: {location: any, mapRef: 
     }
 
     return (
-        <Pressable onPress={locationUser} className=' absolute right-10 bottom-56 bg-customBlack p-3 rounded-full'>
+        <Pressable onPress={locationUser} className=' absolute right-10 bottom-[190px] bg-customBlack p-3 rounded-full'>
             <LocateFixed color="#FFC107" size={24} />
         </Pressable>
     );

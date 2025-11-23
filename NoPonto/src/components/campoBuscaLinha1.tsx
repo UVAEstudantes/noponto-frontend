@@ -1,6 +1,7 @@
 import { Search, SlidersHorizontal } from "lucide-react-native";
 import React from "react";
 import { Pressable, TextInput, View } from "react-native";
+import Filtro from "./filtro";
 
 export default function CampoBuscarLinha1(){ // deixei como 1 pq vai ter outro campo de buscar linha na tela de linhas
 
@@ -14,24 +15,29 @@ export default function CampoBuscarLinha1(){ // deixei como 1 pq vai ter outro c
     const [filtroaberto, setFiltroAberto] = React.useState(false);
 
     function abrirFiltros(){
+        //<Filtro />
         setFiltroAberto(!filtroaberto);
         console.log("abrir filtros", !filtroaberto);
     }
 
     return (
-        <View className=" absolute inset-x-5 top-12 m-5 ml-0 mr-18">
+        <>
+            <View className=" absolute inset-x-5 top-12 m-5 ml-0 mr-[60px]">
 
-                <TextInput className="bg-white rounded-3xl h-12 w-full px-12 mr-12" 
-                placeholder="Buscar Linhas"/>
+                    <TextInput className="bg-white rounded-3xl h-12 w-full px-12 mr-12" 
+                    placeholder="Buscar Linhas"/>
 
-                <Search  color={colors.customDarkGray}
-                style={{position: 'absolute', left: 10, top: 10 }} />
+                    <Search  color={colors.customDarkGray}
+                    style={{position: 'absolute', left: 10, top: 10 }} />
 
-                <Pressable onPress={abrirFiltros} className="bg-customBlack">
-                    <SlidersHorizontal color={filtroaberto ? colors.customYellow : colors.customGray} size={24}
-                    style={{position: 'absolute', right: -50, top: -30 }} />
-                </Pressable>
-        </View>
+                    <Pressable onPress={abrirFiltros} className="bg-customBlack">
+                        <SlidersHorizontal color={filtroaberto ? colors.customYellow : colors.customGray} size={24}
+                        style={{position: 'absolute', right: -50, top: -30 }} />
+                    </Pressable>
+            </View>
+
+            {filtroaberto && <Filtro />}
+        </>
     );
 }
 
