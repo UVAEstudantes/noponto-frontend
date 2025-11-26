@@ -1,8 +1,9 @@
-import CampoBuscarLinha1 from '@/src/components/campoBuscaLinha1';
 import Filtro from '@/src/components/filtro';
+import InputBusca from '@/src/components/inputBusca';
 import LocalButton from '@/src/components/localButton';
 import RotaButton from '@/src/components/rotaButton';
 import { getCurrentPositionAsync, LocationAccuracy, LocationObject, requestForegroundPermissionsAsync, watchPositionAsync } from 'expo-location';
+import { Search } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import MapView from "react-native-maps";
@@ -44,7 +45,9 @@ const Home = () => {
     }, []);
 
     return (
-        <View className=" flex-1 justify-center items-center bg-white">
+        <View className=" flex-1 flex-col items-center bg-white ">
+
+            
 
             {
                 location &&
@@ -76,10 +79,12 @@ const Home = () => {
                 />
                 
             }
-            <CampoBuscarLinha1 />
+            
+            <InputBusca placeholder="Buscar Linhas" icon={Search} className='absolute top-[4rem] w-[75%] right-[5rem]'/>
+            <Filtro transito={transito} clickTransito={clickTransito} />
+            
             <RotaButton />
             <LocalButton location={location} mapRef={mapRef}/>
-            <Filtro transito={transito} clickTransito={clickTransito} />
             
         </View>
     )

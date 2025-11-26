@@ -1,5 +1,7 @@
-import { Pressable, Text, View } from 'react-native'; 
+import InputBusca from '@/src/components/inputBusca';
+import { BusFront } from 'lucide-react-native';
 import React, { useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import MapView from 'react-native-maps';
 
 const linhas = () => {
@@ -76,6 +78,17 @@ const linhas = () => {
                     px-6 py-3 rounded-xl`}>
                         <Text >Metrô</Text>
                     </Pressable>
+
+                </View>
+
+                {/*input busca linha*/}
+                <View className='bg-customGray h-[100] w-[500] mt-10 pt-5 '>
+
+                    <Text>Linha</Text>
+                    <InputBusca placeholder="Buscar Linhas" icon={BusFront} />
+
+                    <Text className='mt-5'>Direção</Text>
+                    <InputBusca placeholder="Buscar Linhas" icon={BusFront} />                    
 
                 </View>
             </View>
