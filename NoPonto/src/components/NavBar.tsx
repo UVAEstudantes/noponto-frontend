@@ -13,7 +13,7 @@ export default function NavBar() {
     }
 
     return(
-        <View className = "absolute bottom-6 left-0 right-0 flex-row justify-around items-center mx-4 p-4 rounded-3xl shadow-lg bg-customBlack">
+        <View className = "absolute bottom-6 left-0 right-0 flex-row justify-around items-center mx-4 p-4 rounded-3xl shadow-sm bg-customBlack">
 
             {/*btn favorito*/}
             <Link href="/favoritos" asChild>

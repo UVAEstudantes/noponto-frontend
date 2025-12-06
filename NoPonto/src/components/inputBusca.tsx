@@ -1,9 +1,14 @@
-import { Search, SlidersHorizontal } from "lucide-react-native";
+import { Icon, LucideIcon, Search, SlidersHorizontal } from "lucide-react-native";
 import React from "react";
 import { Pressable, TextInput, View } from "react-native";
-import Filtro from "./filtro";
 
-export default function CampoBuscarLinha1(){ // deixei como 1 pq vai ter outro campo de buscar linha na tela de linhas
+interface InputBuscaProps {
+    icon?: LucideIcon;
+    placeholder?: string;
+    className?: string;
+}
+
+export default function InputBusca(props: InputBuscaProps){ // deixei generico agr
 
     const colors = {
     customYellow: '#FFC107',
@@ -13,17 +18,14 @@ export default function CampoBuscarLinha1(){ // deixei como 1 pq vai ter outro c
     }
 
     return (
-        <>
-            <View className=" absolute inset-x-5 top-12 m-5 ml-0 mr-[60px]">
+            <View className={`w-full ${props.className}`}>
 
                     <TextInput className="bg-white rounded-3xl h-12 w-full px-12 mr-12" 
-                    placeholder="Buscar Linhas"/>
+                    placeholder={props.placeholder}/>
 
-                    <Search  color={colors.customDarkGray}
-                    style={{position: 'absolute', left: 10, top: 10 }} />
+                    {props.icon &&  <props.icon color={colors.customDarkGray}
+                    style={{position: 'absolute', left: 10, top: 10 }} />}
             </View>
-
-        </>
     );
 }
 
