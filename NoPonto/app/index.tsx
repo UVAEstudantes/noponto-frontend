@@ -80,8 +80,8 @@ const Home = () => {
                 
             }
             
-            <InputBusca placeholder="Buscar Linhas" icon={Search} className='absolute top-[4rem] w-[75%] right-[5rem]'/>
-            <Filtro transito={transito} clickTransito={clickTransito} />
+            <InputBusca placeholder="Buscar Linhas" icon={Search} className='absolute top-[4rem] !w-3/4 right-[5rem]'/>
+            <Filtro transito={transito} clickTransito={clickTransito}/>
             
             <RotaButton />
             <LocalButton location={location} mapRef={mapRef}/>

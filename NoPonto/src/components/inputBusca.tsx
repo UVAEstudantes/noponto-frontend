@@ -18,7 +18,6 @@ export default function InputBusca(props: InputBuscaProps){ // deixei generico a
     }
 
     return (
-        <>
             <View className={`w-full ${props.className}`}>
 
                     <TextInput className="bg-white rounded-3xl h-12 w-full px-12 mr-12" 
@@ -27,8 +26,6 @@ export default function InputBusca(props: InputBuscaProps){ // deixei generico a
                     {props.icon &&  <props.icon color={colors.customDarkGray}
                     style={{position: 'absolute', left: 10, top: 10 }} />}
             </View>
-
-        </>
     );
 }
 

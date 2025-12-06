@@ -66,12 +66,13 @@ export default function Filtro({ transito , clickTransito}: { transito: boolean;
 
         <>
             {/*btn do filtro*/}
-            <View className=" absolute inset-x-5 top-[85px] m-5 ml-0 mr-[60px]">
-                <Pressable onPress={abrirFiltros} className="bg-customBlack">
-                    <SlidersHorizontal color={filtroaberto ? colors.customYellow : colors.customGray} size={24}
-                    style={{position: 'absolute', right: -50, top: -30 }} />
-                </Pressable>
-            </View>
+            <Pressable onPress={abrirFiltros} className="absolute mr-[-320px] mt-[48px] p-[20px]"
+            style={{backgroundColor:'transparent'}}>
+
+                <SlidersHorizontal color={filtroaberto ? colors.customYellow : colors.customGray} size={26}/>
+
+            </Pressable>
+
 
             {/*container filtro*/}
             { filtroaberto && (

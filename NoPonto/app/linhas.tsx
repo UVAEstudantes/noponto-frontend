@@ -1,6 +1,6 @@
 import InputBusca from '@/src/components/inputBusca';
-import { BusFront } from 'lucide-react-native';
-import React, { useState } from 'react';
+import { ArrowLeftRight, Bus, BusFront, ListFilter, LucideIcon, Train, TrainFrontTunnel } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MapView from 'react-native-maps';
 
@@ -14,7 +14,30 @@ const linhas = () => {
 
     const tipoModais = ["Ônibus", "BRT", "Trem", "Metrô" ];
 
-    const [modal, setModal] = useState<String | null>(null);
+    const [modal, setModal] = useState<String | null>("Ônibus");
+
+    const [placeholder, setPlaceholder] = useState("Selecione um tipo de Transporte");
+    const [icon, setIcon] = useState<LucideIcon>(ListFilter);
+
+    useEffect(() => {
+    if (modal === "Ônibus") {
+        setPlaceholder("Buscar Linhas Ônibus");
+        setIcon(BusFront);
+    } 
+    else if (modal === "BRT") {
+        setPlaceholder("Buscar Linhas BRT");
+        setIcon(Bus);
+    }
+    else if (modal === "Trem") {
+        setPlaceholder("Buscar Ramal");
+        setIcon(Train);
+    }
+    else if (modal === "Metrô") {
+        setPlaceholder("Buscar Linhas Metrô");
+        setIcon(TrainFrontTunnel);
+    }
+    }, [modal]);
+
 
     function clickModal(modalSelect: string){
         setModal(modalSelect);
@@ -27,7 +50,7 @@ const linhas = () => {
         <View className=" flex-1 justify-center items-center bg-white"> 
         
             <MapView 
-                style={{ width: '100%', height: '100%', bottom: -30 }}
+                style={{ width: '100%', height: '100%', bottom: 90 }}
 
                 mapType='standard' // tipo de mapa
                 showsUserLocation= {true}
@@ -50,7 +73,7 @@ const linhas = () => {
                         
             />
 
-            <View className=" items-center rounded-3xl bg-white w-full h-full shadow-md bg-customGray">
+            <View className=" items-center rounded-3xl w-full h-full shadow-md bg-customGray bottom-[10rem]">
                 <Text className="mt-7 text-2xl font-semibold">Linhas e Hórarios</Text>
                 
                 <View className='mt-8 flex-row justify-around w-[350px] px-1 bg-customLightGray py-2 rounded-xl'>
@@ -82,13 +105,11 @@ const linhas = () => {
                 </View>
 
                 {/*input busca linha*/}
-                <View className='bg-customGray h-[100] w-[500] mt-10 pt-5 '>
+                <View className='bg-customGray h-[100%] w-[500] mt-10 pt-5 '>
 
-                    <Text>Linha</Text>
-                    <InputBusca placeholder="Buscar Linhas" icon={BusFront} />
+                    <InputBusca placeholder={placeholder} icon={icon} className='left-[5rem] !w-[72%]' />
 
-                    <Text className='mt-5'>Direção</Text>
-                    <InputBusca placeholder="Buscar Linhas" icon={BusFront} />                    
+                    <InputBusca placeholder="Selecionar Direção" icon={ArrowLeftRight} className='left-[5rem] !w-[72%] mt-7' />                    
 
                 </View>
             </View>
