@@ -47,8 +47,6 @@ const Home = () => {
     return (
         <View className=" flex-1 flex-col items-center bg-white ">
 
-            
-
             {
                 location &&
 
