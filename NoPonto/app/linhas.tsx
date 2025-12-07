@@ -1,5 +1,6 @@
 import InputBusca from '@/src/components/inputBusca';
-import { ArrowLeftRight, Bus, BusFront, ListFilter, LucideIcon, Train, TrainFrontTunnel } from 'lucide-react-native';
+import Select from '@/src/components/select';
+import { ArrowLeftRight, ArrowRightLeft, Bus, BusFront, ListFilter, LucideIcon, Train, TrainFrontTunnel } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import MapView from 'react-native-maps';
@@ -107,9 +108,9 @@ const linhas = () => {
                 {/*input busca linha*/}
                 <View className='bg-customGray h-[100%] w-[500] mt-10 pt-5 '>
 
-                    <InputBusca placeholder={placeholder} icon={icon} className='left-[5rem] !w-[72%]' />
+                    <InputBusca placeholder={placeholder} icon={icon} className='left-[5rem] !w-[72%] mb-7' />
 
-                    <InputBusca placeholder="Selecionar Direção" icon={ArrowLeftRight} className='left-[5rem] !w-[72%] mt-7' />                    
+                    <Select placeholder="Selecione o Sentido" className='left-[5rem] !w-[72%]'/>                    
 
                 </View>
             </View>
