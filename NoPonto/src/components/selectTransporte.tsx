@@ -1,0 +1,71 @@
+import { useEffect, useRef, useState } from "react";
+import { Pressable, View, Text, Animated } from "react-native";
+
+export default function SelectTransporte(){
+
+    // animação ainda desalinhada, tentar capturar a posição do btn clicado pra calcular a posição do slider melhor
+
+    const tipoModais = ["Ônibus", "BRT", "Trem", "Metrô" ];
+
+    const [modal, setModal] = useState<String | null>("Ônibus");
+
+    const animLeft = useRef(new Animated.Value(0)).current;
+
+    const btnWidth = 90;
+    const sliderWidth = 70;
+
+    function clickModal(modalSelect: string, index: number){
+        setModal(modalSelect);
+        Animated.timing(animLeft, {
+            toValue: index * btnWidth + (btnWidth - sliderWidth) / 2,
+            duration: 250,
+            useNativeDriver: false,
+        }).start();
+    }
+
+
+    return(
+    
+        <View className='mt-8 flex-row justify-around w-[350px] px-1 bg-customLightGray py-2 rounded-xl'>
+
+            <Animated.View
+                style={{
+                    position: 'absolute',
+                    top: 7,
+                    
+                    left: animLeft,
+                    width: sliderWidth,
+                    height: '100%',
+                    backgroundColor: '#FFC107',
+                    borderRadius: 10,
+                }}
+            />
+
+
+            <Pressable onPress={() => clickModal(tipoModais[0], 0)} 
+            className={ "px-6 py-3 rounded-xl"}>
+                <Text>Ônibus</Text>
+            </Pressable>
+
+            <Pressable onPress={() => clickModal(tipoModais[1], 1)} 
+            className={ "px-6 py-3 rounded-xl"}>
+                <Text >BRT</Text>
+            </Pressable>
+
+            <Pressable onPress={() => clickModal(tipoModais[2], 2)} 
+            className={ "px-6 py-3 rounded-xl"}>
+                <Text >Trem</Text>
+            </Pressable>
+
+            <Pressable onPress={() => clickModal(tipoModais[3], 3)} 
+            className={ "px-6 py-3 rounded-xl"}>
+                <Text >Metrô</Text>
+            </Pressable>
+
+        </View>
+    
+    );
+
+}
+
+

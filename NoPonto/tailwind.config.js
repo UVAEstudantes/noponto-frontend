@@ -15,6 +15,7 @@ module.exports = {
         customDivider:"#DEDEDE",
         customDarkGray:"#8E8E93",
         customLightGray:"#E4E4E4",
+        customBlue:"#3E51AA",
       },
     },
   },

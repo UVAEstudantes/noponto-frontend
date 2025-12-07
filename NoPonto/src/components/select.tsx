@@ -34,10 +34,10 @@ export default function InputBusca(props: InputBuscaProps){
 
             <Pressable className="bg-white rounded-3xl h-12 w-full px-12 mr-12 relative"
         
-            onPress={() => { setOpen(!open); console.log("clicou"); }}>
+            onPress={() => { setOpen(!open); }}>
 
             <IconComponent color={colors.customDarkGray} 
-            style={{position: 'absolute', left: 10, top: 10 }} />
+            style={{position: 'absolute', left: 10, top: 9 }} />
 
             <Text className="text-gray-500 top-3">{value ? value.label : props.placeholder}</Text>
 
