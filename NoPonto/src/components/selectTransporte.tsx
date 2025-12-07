@@ -11,14 +11,22 @@ export default function SelectTransporte(){
 
     const animLeft = useRef(new Animated.Value(0)).current;
 
-    const btnWidth = 90;
-    const sliderWidth = 70;
+    const [containerWidth, setContainerWidth] = useState(0);
+    const sliderWidth = 85;
 
     function clickModal(modalSelect: string, index: number){
         setModal(modalSelect);
-        Animated.timing(animLeft, {
-            toValue: index * btnWidth + (btnWidth - sliderWidth) / 2,
-            duration: 250,
+        const btnWidth = containerWidth / 4;
+        let toPosition = index * btnWidth + (btnWidth - sliderWidth) / 2;
+        if(index === 2 || index === 3){
+            toPosition -= 5;
+        }else if (index === 0 || index === 1){
+            toPosition += 5;
+        }
+        Animated.spring(animLeft, {
+            toValue: toPosition,
+            bounciness: 5,
+            speed: 12,
             useNativeDriver: false,
         }).start();
     }
@@ -26,13 +34,13 @@ export default function SelectTransporte(){
 
     return(
     
-        <View className='mt-8 flex-row justify-around w-[350px] px-1 bg-customLightGray py-2 rounded-xl'>
+        <View className='mt-8 flex-row justify-around w-[350px] px-1 bg-customLightGray py-2 rounded-xl'
+        onLayout={(event) => {setContainerWidth(event.nativeEvent.layout.width);}}>
 
             <Animated.View
                 style={{
                     position: 'absolute',
-                    top: 7,
-                    
+                    top: 7,                    
                     left: animLeft,
                     width: sliderWidth,
                     height: '100%',
