@@ -19,9 +19,9 @@ export default function SelectTransporte(){
         const btnWidth = containerWidth / 4;
         let toPosition = index * btnWidth + (btnWidth - sliderWidth) / 2;
         if(index === 2 || index === 3){
-            toPosition -= 5;
+            toPosition -= 7;
         }else if (index === 0 || index === 1){
-            toPosition += 5;
+            toPosition += 7;
         }
         Animated.spring(animLeft, {
             toValue: toPosition,
