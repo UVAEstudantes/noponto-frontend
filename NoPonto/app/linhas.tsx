@@ -3,7 +3,7 @@ import Select from '@/src/components/select';
 import SelectTransporte from '@/src/components/selectTransporte';
 import { ArrowLeftRight, ArrowRightLeft, Bus, BusFront, ListFilter, LucideIcon, Train, TrainFrontTunnel } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import MapView from 'react-native-maps';
 
 const linhas = () => {
@@ -103,12 +103,14 @@ const linhas = () => {
         .map((s:string) => s.trim());
     };
 
+    const buscaAtiva = busca !== "" && data.length > 0;
+
     return ( 
 
-        <View className=" flex-1 justify-center items-center bg-white"> 
+        <View className=" flex-1 bg-white"> 
         
             <MapView 
-                style={{ width: '100%', height: '100%', bottom: 160 }}
+                style={{ position: 'absolute', top:0, left:0, right: 0, bottom: 0, zIndex:0 }}
 
                 mapType='standard' // tipo de mapa
                 showsUserLocation= {true}
@@ -131,46 +133,82 @@ const linhas = () => {
 
             />
 
-            <View className=" items-center rounded-3xl w-full h-full shadow-md bg-customGray bottom-[17rem]">
-                <Text className="mt-7 text-2xl font-semibold">Linhas e Hórarios</Text>
-                
-                <SelectTransporte modal={modal} setModal={setModal}/>
+            {/*container de linhas*/}
+            
+            <FlatList
+                scrollEnabled={!buscaAtiva}
+                className='absolute rounded-3xl w-full h-[75%] bottom-0 bg-customGray z-10'
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                data={[{key: 'content'}]}
+                //renderItem={null}
+                keyExtractor={(item) => item.key}
+                contentContainerStyle={{ paddingBottom: 80 }}
+                renderItem={() => (
 
-                {/*input buscar linha*/}
-                <View className='bg-customGray h-[100%] w-[500] mt-5 pt-5 '>
+                <>
 
-                    <InputBusca placeholder={placeholder} icon={icon} className='left-[5rem] !w-[72%] mb-7' 
-                    value={busca} onChangeText={buscarLinhas}
-                    />
+                    <Text className="mt-7 text-2xl font-semibold self-center">Linhas e Hórarios</Text>
+                    
+                    <SelectTransporte modal={modal} setModal={setModal}/>
 
-                    {busca !== "" && data.length > 0 && (
-                    <View className='h-[150px] bottom-[1rem] mb-4'>
+                    {/*input buscar linha*/}
+                    <View className='bg-customGray mt-5 pt-5 '>
 
-                        <FlatList // lista de linhas
-                            keyboardShouldPersistTaps='handled'
-                            showsVerticalScrollIndicator={false}
-                            data={busca === "" ? [] : data} // mostra lista so se tiver algo digitado
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => (
-                                <Pressable className='bg-white rounded-xl p-3 mb-2 mx-10 w-[71%] left-[38px]'
-                                onPress={() => listaSelecionada(item)}>
-                                    <Text className='text-lg font-semibold'>{item.nome}</Text>
-                                    <Text className='text-gray-500'>{item.sentido}</Text>
-                                </Pressable>
-                            )}
+                        <InputBusca placeholder={placeholder} icon={icon} className='!w-[90%] self-center mb-5' 
+                        value={busca} onChangeText={buscarLinhas}
                         />
+
+                        {buscaAtiva && (
+                            <View className="h-[150] bg-white rounded-xl mx-10 w-[90%] self-center shadow-sm border border-gray-200 overflow-hidden mb-4">
+                                <ScrollView 
+                                    nestedScrollEnabled={true} 
+                                    keyboardShouldPersistTaps="handled"
+                                    showsVerticalScrollIndicator={true}
+                                >
+                                    {data.map((item) => (
+                                        <Pressable
+                                            key={item.id}
+                                            onPress={() => listaSelecionada(item)}
+                                            className="p-4 border-b border-gray-100 active:bg-gray-200"
+                                        >
+                                            <Text className="text-lg font-semibold">{item.nome}</Text>
+                                            <Text className="text-gray-500 text-sm">{item.sentido}</Text>
+                                        </Pressable>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        )}
+
+                        <Select placeholder="Selecione o Sentido" className='!w-[90%] self-center'
+                        options={sentido()}
+                        value={sentidoSelecionado}
+                        onChange={setSentidoSelecionado}/>
+                                        
+
                     </View>
+                    
+                    {/*container de resultado*/}
+                    {linhaSelecionada && sentidoSelecionado && (
+                    <View className='w-full mt-8 rounded-3xl'>
+                    
+                    <Text className='left-8 font-semibold'>Linha {busca} - {sentidoSelecionado}</Text>
+
+                        <View className='bg-white m-8 p-5 rounded-2xl h-[120px] shadow-md'>
+
+                        </View>
+                        <View className='bg-black m-8 p-5 rounded-2xl h-[300px] shadow-md'>
+
+                        </View>
+
+                    </View> 
                     )}
+                </>
+            )}
+            />
 
-                    <Select placeholder="Selecione o Sentido" className='left-[5rem] !w-[72%]'
-                    options={sentido()}
-                    value={sentidoSelecionado}
-                    onChange={setSentidoSelecionado}/>
-                                       
-
-                </View>
-            </View>
-        </View> 
+        </View>
+           
     )
 }
 

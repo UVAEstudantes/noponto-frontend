@@ -4,6 +4,7 @@ import { Pressable, View, Text, Animated } from "react-native";
 interface Props {
     modal: String | null;
     setModal: (modal: string) => void;
+    //className?: string;
 }
 
 export default function SelectTransporte(props: Props){
@@ -20,17 +21,24 @@ export default function SelectTransporte(props: Props){
     const sliderWidth = 85;
 
     function clickModal(modalSelect: string, index: number){
+        
         props.setModal(modalSelect);
         
         const btnWidth = containerWidth / 4;
         let toPosition = index * btnWidth + (btnWidth - sliderWidth) / 2;
-        if(index === 3){
-            toPosition -= 7;
-        }else if(index === 2){
-            toPosition -= 3;
-        }else if (index === 0 || index === 1){
+
+        if (index === 0)
             toPosition += 7;
-        }
+
+        else if (index === 1)
+            toPosition += 3;
+
+        else if(index === 2)
+            toPosition -= 3;
+
+        else if(index === 3)
+            toPosition -= 7;
+        
         Animated.spring(animLeft, {
             toValue: toPosition,
             bounciness: 5,
@@ -42,7 +50,7 @@ export default function SelectTransporte(props: Props){
 
     return(
     
-        <View className='mt-8 flex-row justify-around w-[350px] px-1 bg-customLightGray py-2 rounded-xl'
+        <View className="mt-8 flex-row justify-around w-[90%] px-1 bg-customLightGray py-2 rounded-xl self-center"
         onLayout={(event) => {setContainerWidth(event.nativeEvent.layout.width);}}>
 
             <Animated.View
