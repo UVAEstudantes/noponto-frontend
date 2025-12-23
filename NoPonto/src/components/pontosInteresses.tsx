@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   CornerUpLeft,
 } from "lucide-react-native";
+import Animated, { FadeIn, FadeInUp, FadeOut, FadeOutDown, LinearTransition } from "react-native-reanimated";
 
 interface Ponto {
   id: number;
@@ -24,6 +25,7 @@ interface Ponto {
 
 interface Props {
   pontos?: Ponto[];
+  scrollDown?: () => void;
 }
 
 // Função para decidir o ícone baseado no nome
@@ -43,14 +45,18 @@ function iconPorTitulo(title: string): LucideIcon {
   return MapPin; // ícone padrão
 }
 
-export default function PontosInteresses({ pontos }: Props) {
+export default function PontosInteresses({ pontos, scrollDown }: Props) {
   const [mostrar, setMostrar] = useState(false);
 
   const texto = mostrar ? "Ver menos" : "Ver mais";
 
   function apertarMostrar() {
-    setMostrar(!mostrar);
-    console.log("Mostrar pontos de interesse:", !mostrar);
+    const novoMostrar = !mostrar;
+    setMostrar(novoMostrar);
+    console.log("Mostrar pontos de interesse:", novoMostrar);
+    if (scrollDown && novoMostrar) {
+      scrollDown();
+    }
   }
 
   const pontosExibidos = mostrar ? pontos : pontos?.slice(0, 4);
@@ -64,7 +70,9 @@ export default function PontosInteresses({ pontos }: Props) {
 
         {pontos?.length! <= 4 ? null : (
           <Pressable
-            onPress={apertarMostrar}
+            onPress={() => {
+              apertarMostrar();
+            }}
             className="m-5 mt-0 mb-4 font-semibold text-lg ml-auto bg-customYellow px-3 p-5 py-2 rounded-2xl shadow-md"
           >
             <Text className="font-semibold">{texto}</Text>
@@ -72,11 +80,19 @@ export default function PontosInteresses({ pontos }: Props) {
         )}
       </View>
 
-      <View className="mx-5 bg-white rounded-2xl shadow-md overflow-hidden">
-        {pontosExibidos?.map((ponto) => {
+      <Animated.View
+        entering={FadeIn.duration(500)}
+        exiting={FadeOut.duration(500)}
+        layout={LinearTransition}
+        className="mx-5 bg-white rounded-2xl shadow-md overflow-hidden">
+        
+        {pontosExibidos?.map((ponto, index) => {
           const Icon = iconPorTitulo(ponto.title);
           return (
-            <View
+            <Animated.View
+              entering={FadeInUp.duration(400).delay(index * 100).springify()}
+              exiting={FadeOutDown.duration(200)}
+              layout={LinearTransition.springify()}
               key={ponto.id}
               className="p-4 border-b border-gray-200 relative rounded-2xl"
             >
@@ -95,10 +111,11 @@ export default function PontosInteresses({ pontos }: Props) {
                   {ponto.title}
                 </Text>
               </View>
-            </View>
+            </Animated.View>
           );
         })}
-      </View>
+      </Animated.View>  
     </View>
+    
   );
 }

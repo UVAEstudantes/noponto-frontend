@@ -15,13 +15,21 @@ import {
   TrainFrontTunnel,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  FlatList,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import MapView from "react-native-maps";
+import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
 
 const linhas = () => {
   const [modal, setModal] = useState<String | null>("Onibus");
   const [placeholder, setPlaceholder] = useState(
-    "Selecione um tipo de Transporte",
+    "Selecione um tipo de Transporte"
   );
   const [icon, setIcon] = useState<LucideIcon>(ListFilter);
 
@@ -50,7 +58,7 @@ const linhas = () => {
   const [data, setData] = useState(mockLinhas);
   const [linhaSelecionada, setLinhaSelecionada] = useState<any>(null);
   const [sentidoSelecionado, setSentidoSelecionado] = useState<string | null>(
-    null,
+    null
   );
 
   const buscarLinhas = (text: string) => {
@@ -61,7 +69,7 @@ const linhas = () => {
     const filtrar = mockLinhas.filter(
       (linha) =>
         linha.nome.toLowerCase().startsWith(text.toLowerCase()) &&
-        linha.modal.toLowerCase() === modalFormatado,
+        linha.modal.toLowerCase() === modalFormatado
     );
 
     setData(filtrar);
@@ -72,6 +80,7 @@ const linhas = () => {
     setBusca(linha.nome);
     setData([]);
     setLinhaSelecionada(linha);
+    Keyboard.dismiss(); // esconde o teclado dps de selecionar uma linha
   };
 
   useEffect(() => {
@@ -89,6 +98,19 @@ const linhas = () => {
   };
 
   const buscaAtiva = busca !== "" && data.length > 0;
+
+  const scrollRef = React.createRef<FlatList>();
+
+const scrollDown = () => {
+  setTimeout(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollToOffset({
+        offset: 550,
+        animated: true,
+      });
+    }
+  }, 400);
+};
 
   return (
     <View className=" flex-1 bg-white">
@@ -123,6 +145,7 @@ const linhas = () => {
       {/*container de linhas*/}
 
       <FlatList
+        ref={scrollRef}
         scrollEnabled={!buscaAtiva}
         className="absolute rounded-3xl w-full h-[75%] bottom-0 mb-8 bg-customGray z-10"
         showsVerticalScrollIndicator={false}
@@ -150,7 +173,11 @@ const linhas = () => {
               />
 
               {buscaAtiva && (
-                <View className="h-[150] bg-white rounded-xl mx-10 w-[90%] self-center shadow-sm border border-gray-200 overflow-hidden mb-4">
+                <Animated.View
+                  entering={FadeInUp.duration(400).springify()}
+                  layout={LinearTransition}
+                  className="h-[150] bg-white rounded-xl mx-10 w-[90%] self-center shadow-sm border border-gray-200 overflow-hidden mb-4"
+                >
                   <ScrollView
                     nestedScrollEnabled={true}
                     keyboardShouldPersistTaps="handled"
@@ -171,7 +198,7 @@ const linhas = () => {
                       </Pressable>
                     ))}
                   </ScrollView>
-                </View>
+                </Animated.View>
               )}
 
               <Select
@@ -185,7 +212,10 @@ const linhas = () => {
 
             {/*container de resultado*/}
             {linhaSelecionada && sentidoSelecionado && (
-              <View className="w-full mt-8 h-full">
+              <Animated.View
+                entering={FadeInUp.duration(400).springify()}
+                className="w-full mt-8 h-full"
+              >
                 <Text className="left-6 font-semibold mb-4 text-lg">
                   Linha {busca} - {sentidoSelecionado}
                 </Text>
@@ -203,8 +233,9 @@ const linhas = () => {
                       linhaSelecionada.nome as keyof typeof pontosPorLinha
                     ]
                   }
+                  scrollDown={scrollDown}
                 />
-              </View>
+              </Animated.View>
             )}
           </>
         )}
