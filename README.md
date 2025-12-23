@@ -91,14 +91,12 @@ pnpm ios      # iOS com tunnel
 Você pode usar classes do Tailwind diretamente no `className` dos componentes:
 
 ```tsx
-import { View, Text } from 'react-native';
+import { View, Text } from "react-native";
 
 export function MyComponent() {
   return (
     <View className="flex-1 bg-white p-4">
-      <Text className="text-2xl font-bold text-blue-600">
-        Olá, NativeWind!
-      </Text>
+      <Text className="text-2xl font-bold text-blue-600">Olá, NativeWind!</Text>
     </View>
   );
 }
@@ -160,4 +158,3 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
-
