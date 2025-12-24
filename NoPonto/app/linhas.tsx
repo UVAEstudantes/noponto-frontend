@@ -1,9 +1,10 @@
-import Chegada from "@/src/components/chegada";
 import InputBusca from "@/src/components/inputBusca";
-import PontosInteresses from "@/src/components/pontosInteresses";
+import Chegada from "@/src/components/linhasComponents/chegada";
+import PontosInteresses from "@/src/components/linhasComponents/pontosInteresses";
+import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
+import Tarifas from "@/src/components/linhasComponents/tarifas";
+import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
-import SelectTransporte from "@/src/components/selectTransporte";
-import Tarifas from "@/src/components/tarifas";
 import { mockLinhas } from "@/src/mocks/linhasMocks";
 import { pontosPorLinha } from "@/src/mocks/pontosInteresseMock";
 import {
@@ -14,18 +15,10 @@ import {
   Train,
   TrainFrontTunnel,
 } from "lucide-react-native";
-import React, { use, useEffect, useState } from "react";
-import {
-  DimensionValue,
-  FlatList,
-  Keyboard,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import React, { useEffect, useState } from "react";
+import { DimensionValue, FlatList, Keyboard, Text, View } from "react-native";
 import MapView from "react-native-maps";
-import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeInUp } from "react-native-reanimated";
 
 const linhas = () => {
   const [modal, setModal] = useState<string | null>("Onibus");
@@ -199,32 +192,12 @@ const linhas = () => {
                 />
 
                 {buscaAtiva && (
-                  <Animated.View
-                    entering={FadeInUp.duration(400).springify()}
-                    layout={LinearTransition}
-                    className="h-[150] bg-white rounded-xl mx-10 w-[90%] self-center shadow-sm border border-gray-200 overflow-hidden mb-4"
-                  >
-                    <ScrollView
-                      nestedScrollEnabled={true}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={true}
-                    >
-                      {data.map((item) => (
-                        <Pressable
-                          key={item.id}
-                          onPress={() => listaSelecionada(item)}
-                          className="p-4 border-b border-gray-100 active:bg-gray-200"
-                        >
-                          <Text className="text-lg font-semibold">
-                            {item.nome}
-                          </Text>
-                          <Text className="text-gray-500 text-sm">
-                            {item.sentido}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </Animated.View>
+                  <ResultadoBusca
+                    data={data}
+                    listaSelecionada={listaSelecionada}
+                    className="bg-white rounded-2xl !w-[90%] self-center mb-5 shadow-lg"
+                    maxHeight={150}
+                  />
                 )}
 
                 <Select

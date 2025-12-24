@@ -1,3 +1,5 @@
+// container usado na tela de linhas para mostrar a chegada estimada e proxima viagem
+
 import { View, Text } from "react-native";
 import { BusFront, HistoryIcon, Hourglass } from "lucide-react-native";
 

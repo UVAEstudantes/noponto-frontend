@@ -1,3 +1,5 @@
+// componente de filtro lateral para selecionar tipos de transporte e informações no mapa
+
 import {
   Bus,
   BusFront,
@@ -30,18 +32,34 @@ const colors = {
   riscoBG: "#F1EAD4",
 };
 
+interface FiltroProps {
+  transito: boolean;
+  clickTransito: () => void;
+  onibus: boolean;
+  setOnibus: (value: boolean) => void;
+  brt: boolean;
+  setBrt: (value: boolean) => void;
+  trem: boolean;
+  setTrem: (value: boolean) => void;
+  metro: boolean;
+  setMetro: (value: boolean) => void;
+}
+
 export default function Filtro({
   transito,
   clickTransito,
-}: {
-  transito: boolean;
-  clickTransito: () => void;
-}) {
-  const [onibus, setOnibus] = React.useState(false);
-  const [brt, setBrt] = React.useState(false);
-  const [trem, setTrem] = React.useState(false);
-  const [metro, setMetro] = React.useState(false);
+  onibus,
+  setOnibus,
+  brt,
+  setBrt,
+  trem,
+  setTrem,
+  metro,
+  setMetro,
+}: FiltroProps) {
   const [risco, setRisco] = React.useState(false);
+
+  const tipoModais = ["Onibus", "BRT", "Trem", "Metro"];
 
   const [filtroaberto, setFiltroAberto] = React.useState(false);
 
@@ -51,18 +69,26 @@ export default function Filtro({
   }
 
   function clickOnibus() {
+    // Não permite desmarcar se for o único selecionado
+    if (onibus && !brt && !trem && !metro) return;
     setOnibus(!onibus);
     console.log("onibus:", !onibus);
   }
   function clickBrt() {
+    // Não permite desmarcar se for o único selecionado
+    if (brt && !onibus && !trem && !metro) return;
     setBrt(!brt);
     console.log("brt:", !brt);
   }
   function clickTrem() {
+    // Não permite desmarcar se for o único selecionado
+    if (trem && !onibus && !brt && !metro) return;
     setTrem(!trem);
     console.log("trem:", !trem);
   }
   function clickMetro() {
+    // Não permite desmarcar se for o único selecionado
+    if (metro && !onibus && !brt && !trem) return;
     setMetro(!metro);
     console.log("metro:", !metro);
   }
