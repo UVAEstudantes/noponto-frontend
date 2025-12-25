@@ -69,25 +69,21 @@ export default function Filtro({
   }
 
   function clickOnibus() {
-    // Não permite desmarcar se for o único selecionado
     if (onibus && !brt && !trem && !metro) return;
     setOnibus(!onibus);
     console.log("onibus:", !onibus);
   }
   function clickBrt() {
-    // Não permite desmarcar se for o único selecionado
     if (brt && !onibus && !trem && !metro) return;
     setBrt(!brt);
     console.log("brt:", !brt);
   }
   function clickTrem() {
-    // Não permite desmarcar se for o único selecionado
     if (trem && !onibus && !brt && !metro) return;
     setTrem(!trem);
     console.log("trem:", !trem);
   }
   function clickMetro() {
-    // Não permite desmarcar se for o único selecionado
     if (metro && !onibus && !brt && !trem) return;
     setMetro(!metro);
     console.log("metro:", !metro);

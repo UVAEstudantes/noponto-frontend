@@ -16,7 +16,6 @@ interface Props {
 }
 
 export default function InputBusca(props: Props) {
-  // deixei generico agr
 
   const colors = {
     customYellow: "#FFC107",
