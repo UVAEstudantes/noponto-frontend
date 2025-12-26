@@ -1,4 +1,8 @@
-import { Banknote, CreditCardIcon } from "lucide-react-native";
+import {
+  Banknote,
+  CircleDollarSign,
+  CreditCardIcon,
+} from "lucide-react-native";
 import { View, Text } from "react-native";
 import { Float } from "react-native/Libraries/Types/CodegenTypes";
 
@@ -32,10 +36,19 @@ function jae() {
   );
 }
 
+function pix() {
+  return (
+    <View className="w-[70px] bg-[#d0fffaff] rounded-2xl items-center flex-row ml-3 mr-3 pl-2 py-1">
+      <CircleDollarSign color="#31b5a8" size={18} style={{ marginLeft: 5 }} />
+      <Text className="text-sm font-semibold ml-2">Pix</Text>
+    </View>
+  );
+}
+
 const formasDePagamento = {
   onibus: [dinheiro, jae],
   brt: [jae],
-  trem: [rioCard, dinheiro],
+  trem: [rioCard, dinheiro, pix],
   metro: [rioCard, dinheiro, jae],
 };
 

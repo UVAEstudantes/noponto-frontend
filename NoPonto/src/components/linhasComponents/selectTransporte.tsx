@@ -1,34 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Pressable, View, Text, Animated } from "react-native";
 
 interface Props {
-  modal: String | null;
+  modal: string | null;
   setModal: (modal: string) => void;
-  //className?: string;
 }
 
 export default function SelectTransporte(props: Props) {
-  // animação ainda desalinhada, tentar capturar a posição do btn clicado pra calcular a posição do slider melhor
-
   const tipoModais = ["Onibus", "BRT", "Trem", "Metro"];
-
-  //const [modal, setModal] = useState<String | null>("Ônibus");
-
   const animLeft = useRef(new Animated.Value(0)).current;
-
   const [containerWidth, setContainerWidth] = useState(0);
   const sliderWidth = 85;
 
-  function clickModal(modalSelect: string, index: number) {
-    props.setModal(modalSelect);
-
-    const btnWidth = containerWidth / 4;
+  const getPos = useCallback((index: number, width: number) => {
+    const btnWidth = width / 4;
     let toPosition = index * btnWidth + (btnWidth - sliderWidth) / 2;
 
     if (index === 0) toPosition += 7;
     else if (index === 1) toPosition += 3;
     else if (index === 2) toPosition -= 3;
     else if (index === 3) toPosition -= 7;
+    
+    return toPosition;
+  }, [sliderWidth]);
+
+  useEffect(() => {
+    if (containerWidth > 0) {
+      const initialIndex = tipoModais.indexOf(props.modal as string);
+      const targetIndex = initialIndex !== -1 ? initialIndex : 0;
+      const initialPos = getPos(targetIndex, containerWidth);
+
+      animLeft.setValue(initialPos);
+    }
+  }, [containerWidth]);
+
+  function clickModal(modalSelect: string, index: number) {
+    props.setModal(modalSelect);
+    const toPosition = getPos(index, containerWidth);
 
     Animated.spring(animLeft, {
       toValue: toPosition,
@@ -57,33 +65,15 @@ export default function SelectTransporte(props: Props) {
         }}
       />
 
-      <Pressable
-        onPress={() => clickModal(tipoModais[0], 0)}
-        className={"px-6 py-3 rounded-xl"}
-      >
-        <Text>Ônibus</Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => clickModal(tipoModais[1], 1)}
-        className={"px-6 py-3 rounded-xl"}
-      >
-        <Text>BRT</Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => clickModal(tipoModais[2], 2)}
-        className={"px-6 py-3 rounded-xl"}
-      >
-        <Text>Trem</Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => clickModal(tipoModais[3], 3)}
-        className={"px-6 py-3 rounded-xl"}
-      >
-        <Text>Metrô</Text>
-      </Pressable>
+      {tipoModais.map((item, index) => (
+        <Pressable
+          key={item}
+          onPress={() => clickModal(item, index)}
+          className={"px-6 py-3 rounded-xl"}
+        >
+          <Text>{item === "Onibus" ? "Ônibus" : item === "Metro" ? "Metrô" : item}</Text>
+        </Pressable>
+      ))}
     </View>
   );
 }

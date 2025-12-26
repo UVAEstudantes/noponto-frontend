@@ -1,23 +1,26 @@
+import NavBar from "@/src/components/NavBar";
 import { Stack } from "expo-router";
 import React from "react";
-import NavBar from "@/src/components/NavBar";
-import "../global.css";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Provider as PaperProvider } from "react-native-paper";
+import "../global.css";
 
 const _layout = () => {
   return (
-    <PaperProvider>
-      <>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="favoritos" />
-          <Stack.Screen name="linhas" />
-          <Stack.Screen name="configuracao" />
-        </Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PaperProvider>
+        <>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="favoritos" />
+            <Stack.Screen name="linhas" />
+            <Stack.Screen name="configuracao" />
+          </Stack>
 
-        <NavBar />
-      </>
-    </PaperProvider>
+          <NavBar />
+        </>
+      </PaperProvider>
+    </GestureHandlerRootView>
   );
 };
 
