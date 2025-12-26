@@ -136,7 +136,7 @@ const LinhasContainer = ({
       {/* Container das linhas */}
       <Animated.View
         style={[estiloAnimado, { width: larguraContainer }]}
-        className="absolute top-[20%] left-0 rounded-r-lg h-[60%] bg-white shadow-2xl z-2"
+        className="absolute top-[20%] left-0 rounded-r-lg h-[60%] bg-white shadow-2xl z-10"
       >
         <View className="flex-1 p-4">
           {/* Header */}

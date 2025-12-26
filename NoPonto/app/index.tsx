@@ -257,7 +257,7 @@ const Home = () => {
         <ResultadoBusca
           data={data}
           listaSelecionada={listaSelecionada}
-          className="absolute top-[8rem] !w-3/4 right-[5rem] bg-white shadow-lg rounded-2xl z-10"
+          className="absolute top-[8rem] !w-3/4 right-[5rem] bg-white shadow-lg rounded-2xl z-20"
           maxHeight={400}
         />
       )}

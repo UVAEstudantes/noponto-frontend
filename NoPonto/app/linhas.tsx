@@ -5,6 +5,7 @@ import SelectTransporte from "@/src/components/linhasComponents/selectTransporte
 import Tarifas from "@/src/components/linhasComponents/tarifas";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
+import { mockItinerarios } from "@/src/mocks/itinerariosMocks";
 import { mockLinhas } from "@/src/mocks/linhasMocks";
 import { pontosPorLinha } from "@/src/mocks/pontosInteresseMock";
 import {
@@ -15,10 +16,24 @@ import {
   Train,
   TrainFrontTunnel,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
-import { DimensionValue, FlatList, Keyboard, Text, View } from "react-native";
-import MapView from "react-native-maps";
-import Animated, { FadeInUp } from "react-native-reanimated";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Dimensions,
+  FlatList,
+  Keyboard,
+  Platform,
+  StatusBar,
+  Text,
+  View,
+} from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import MapView, { Marker, Polyline } from "react-native-maps";
+import Animated, {
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 const linhas = () => {
   const [modal, setModal] = useState<string | null>("Onibus");
@@ -106,18 +121,29 @@ const linhas = () => {
     }, 400);
   };
 
-  const [telaLinhas, setTelaLinhas] = useState<DimensionValue>("50%");
+  const screenHeight = Dimensions.get("window").height;
+  const statusBarHeight =
+    Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0;
+  const MIN_HEIGHT = screenHeight * 0.3; // 30%
+  const MAX_HEIGHT = screenHeight * 1.0; // 100%
+  const DEFAULT_HEIGHT = screenHeight * 0.5; // 50%
+
+  const translateY = useSharedValue(0);
+  const containerHeight = useSharedValue(DEFAULT_HEIGHT);
+  const startHeight = useSharedValue(DEFAULT_HEIGHT);
 
   useEffect(() => {
     const tecladoAberto = Keyboard.addListener("keyboardDidShow", () => {
-      setTelaLinhas("80%");
+      containerHeight.value = withSpring(screenHeight * 0.8);
     });
     const tecladoFechado = Keyboard.addListener("keyboardDidHide", () => {
       if (sentidoSelecionado) {
-        setTelaLinhas("75%");
+        containerHeight.value = withSpring(screenHeight * 0.75);
       } else if (linhaSelecionada) {
-        setTelaLinhas("55%");
-      } else setTelaLinhas("50%");
+        containerHeight.value = withSpring(screenHeight * 0.55);
+      } else {
+        containerHeight.value = withSpring(DEFAULT_HEIGHT);
+      }
     });
 
     return () => {
@@ -128,13 +154,83 @@ const linhas = () => {
 
   useEffect(() => {
     if (sentidoSelecionado && linhaSelecionada) {
-      setTelaLinhas("75%");
+      containerHeight.value = withSpring(screenHeight * 0.75);
     }
   }, [sentidoSelecionado]);
+
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      startHeight.value = containerHeight.value;
+    })
+    .onUpdate((event) => {
+      const newHeight = startHeight.value - event.translationY;
+      if (newHeight >= MIN_HEIGHT && newHeight <= MAX_HEIGHT) {
+        containerHeight.value = newHeight;
+      }
+    })
+    .onEnd((event) => {
+      const newHeight = startHeight.value - event.translationY;
+
+      // Snap para valores específicos se estiver próximo
+      if (newHeight < MIN_HEIGHT + 50) {
+        containerHeight.value = withSpring(MIN_HEIGHT);
+      } else if (newHeight > MAX_HEIGHT - 50) {
+        containerHeight.value = withSpring(MAX_HEIGHT);
+      } else if (Math.abs(newHeight - DEFAULT_HEIGHT) < 80) {
+        containerHeight.value = withSpring(DEFAULT_HEIGHT);
+      } else {
+        containerHeight.value = withSpring(
+          Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight))
+        );
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const isFullScreen = containerHeight.value > screenHeight * 0.95;
+    return {
+      height: containerHeight.value,
+      paddingTop: isFullScreen ? statusBarHeight : 0,
+    };
+  });
+
+  const itinerarioLinha = linhaSelecionada
+    ? mockItinerarios[linhaSelecionada.nome as keyof typeof mockItinerarios]
+    : null;
+
+  const coordenadasTrajeto = itinerarioLinha
+    ? itinerarioLinha.map((ponto) => ({
+        latitude: ponto.lat,
+        longitude: ponto.lng,
+      }))
+    : [];
+
+  const mapRef = useRef<MapView>(null);
+
+  // Focar no itinerário quando linha e sentido forem selecionados
+  useEffect(() => {
+    if (
+      linhaSelecionada &&
+      sentidoSelecionado &&
+      coordenadasTrajeto.length > 0
+    ) {
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coordenadasTrajeto, {
+          edgePadding: {
+            top: 20,
+            right: 40,
+            bottom: 20,
+            left: 40,
+          },
+          animated: true,
+        });
+      }, 600);
+    }
+  }, [linhaSelecionada, sentidoSelecionado]);
 
   return (
     <View className=" flex flex-col h-screen rounded-t-3xl overflow-hidden">
       <MapView
+        ref={mapRef}
         style={{ flex: 1 }}
         mapType="standard" // tipo de mapa
         showsUserLocation={true}
@@ -153,15 +249,63 @@ const linhas = () => {
           latitudeDelta: 0.2,
           longitudeDelta: 0.2,
         }}
-      />
+      >
+        {/* Desenhar o itinerário da linha */}
+        {coordenadasTrajeto.length > 0 && (
+          <>
+            <Polyline
+              coordinates={coordenadasTrajeto}
+              strokeColor="#2563eb"
+              strokeWidth={4}
+            />
+
+            {/* Marcador do ponto inicial */}
+            <Marker
+              coordinate={coordenadasTrajeto[0]}
+              title="Início"
+              description={sentidoSelecionado?.split(" ")[0] || "Ponto inicial"}
+              pinColor="green"
+            />
+
+            {/* Marcador do ponto final */}
+            <Marker
+              coordinate={coordenadasTrajeto[coordenadasTrajeto.length - 1]}
+              title="Fim"
+              description={
+                sentidoSelecionado?.split(" ").slice(-1)[0] || "Ponto final"
+              }
+              pinColor="red"
+            />
+          </>
+        )}
+      </MapView>
 
       {/*container de linhas*/}
       <Animated.View
-        style={{ height: telaLinhas as DimensionValue }}
-        className="flex-col bg-customGray rounded-t-3xl shadow-lg overflow-hidden"
+        style={[
+          animatedStyle,
+          {
+            backgroundColor: "#f3f4f6",
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: -3 },
+            shadowOpacity: 0.2,
+            shadowRadius: 5,
+            elevation: 10,
+            overflow: "hidden",
+          },
+        ]}
       >
+        {/* Indicador de arraste */}
+        <GestureDetector gesture={panGesture}>
+          <View className="w-full items-center justify-center py-4">
+            <View className="w-16 h-1.5 bg-gray-400 rounded-full" />
+          </View>
+        </GestureDetector>
+
         {/* container do select modal */}
-        <View className="pt-6 pb-2 mb-3 bg-customGray rounded-t-3xl overflow-hidden">
+        <View className="pb-2 mb-3 bg-customGray overflow-hidden">
           <Text className="mt-5 text-2xl font-semibold self-center">
             Linhas e Hórarios
           </Text>
