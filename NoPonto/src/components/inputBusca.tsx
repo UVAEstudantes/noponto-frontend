@@ -27,7 +27,7 @@ export default function InputBusca(props: Props) {
   return (
     <View className={`w-full ${props.className}`}>
       <TextInput
-        className="bg-white rounded-3xl h-12 w-full px-12 mr-12"
+        className="bg-white rounded-3xl h-12 w-full px-12 mr-12 shadow-md"
         placeholder={props.placeholder}
         value={props.value}
         onChangeText={props.onChangeText}

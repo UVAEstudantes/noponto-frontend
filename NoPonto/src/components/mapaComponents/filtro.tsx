@@ -102,8 +102,8 @@ export default function Filtro({
           e.stopPropagation();
           abrirFiltros();
         }}
-        className="absolute mr-[-320px] mt-[48px] p-[20px]"
-        style={{ backgroundColor: "transparent" }}
+        className="absolute right-[12px] top-[55px] p-[10px] rounded-full zindex-10"
+        style={{ backgroundColor: "black" }}
       >
         <SlidersHorizontal
           color={filtroaberto ? colors.customYellow : colors.customGray}

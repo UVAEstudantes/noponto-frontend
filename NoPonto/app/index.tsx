@@ -3,6 +3,7 @@ import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer from "@/src/components/mapaComponents/linhasContainer";
 import LocalButton from "@/src/components/mapaComponents/localButton";
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
+import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import { mockItinerarios } from "@/src/mocks/itinerariosMocks";
 import { mockLinhas } from "@/src/mocks/linhasMocks";
@@ -15,10 +16,10 @@ import {
   requestForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
-import { MapPin, Search } from "lucide-react-native";
+import { Search } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Keyboard, View } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import { Keyboard, Pressable, View } from "react-native";
+//import MapView, { Marker, Polyline } from "react-native-maps";
 
 const Home = () => {
   const [transito, setTransito] = React.useState(false);
@@ -32,7 +33,7 @@ const Home = () => {
     console.log("transito: ", transito);
   }
 
-  const mapRef = React.useRef<MapView>(null);
+  const mapRef = React.useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
 
   async function requestLocationPermissions() {
@@ -49,16 +50,23 @@ const Home = () => {
   }, []);
 
   useEffect(() => {
-    watchPositionAsync(
-      {
-        accuracy: LocationAccuracy.Highest,
-        timeInterval: 1000,
-        distanceInterval: 1,
-      },
-      (response) => {
-        setLocation(response);
-      }
-    );
+    let subscription: any;
+
+    async function startWatching() {
+      subscription = await watchPositionAsync(
+        {
+          accuracy: LocationAccuracy.Highest,
+          timeInterval: 2000, // Atualiza a cada 2 segundos
+          distanceInterval: 5, // Ou a cada 5 metros
+        },
+        (response) => {
+          setLocation(response); // Isso disparará o re-render e atualizará o MapaOSM
+        }
+      );
+    }
+
+    startWatching();
+    return () => subscription?.remove(); // Limpa ao fechar
   }, []);
 
   const [data, setData] = useState(mockLinhas);
@@ -122,6 +130,25 @@ const Home = () => {
           ativa: true,
         },
       ]);
+
+      // Centralizar no itinerário da linha selecionada
+      const itinerario =
+        mockItinerarios[linha.nome as keyof typeof mockItinerarios];
+      if (
+        itinerario &&
+        itinerario.length > 0 &&
+        mapRef.current?.fitToCoordinates
+      ) {
+        setTimeout(() => {
+          const coordenadas = itinerario.map(
+            (p: { lat: number; lng: number }) => ({
+              latitude: p.lat,
+              longitude: p.lng,
+            })
+          );
+          mapRef.current?.fitToCoordinates(coordenadas);
+        }, 500);
+      }
     }
 
     // Limpar busca após selecionar
@@ -165,85 +192,34 @@ const Home = () => {
       }))
     : [];
 
+  const dadosParaMapa = linhasSelecionadas
+    .filter((l) => l.ativa)
+    .map((linha) => ({
+      nome: linha.nome,
+      cor: linha.cor,
+      coordenadas:
+        mockItinerarios[linha.nome as keyof typeof mockItinerarios]?.map(
+          (p: { lat: number; lng: number }) => [p.lat, p.lng]
+        ) || [],
+      posicoes: mockPosicoes.filter((p) => p.linha === linha.nome),
+    }));
+
   return (
-    <View className=" flex-1 flex-col items-center bg-white ">
+    <View className="flex-1 flex-col">
       {location && (
-        <MapView
-          style={{ width: "100%", height: "100%" }}
+        <MapaOSM
           ref={mapRef}
-          mapType="standard" // tipo de mapa
-          showsUserLocation={true}
-          followsUserLocation={true}
-          showsMyLocationButton={false}
-          showsTraffic={transito} // mostrar transito se clicar no check transito
-          onPress={() => setContainerAberto(false)} // Fechar container ao clicar no mapa
-          customMapStyle={[
-            // remover os locais como lojas e coisas do tipo
-            {
-              featureType: "poi",
-              stylers: [{ visibility: "off" }],
-            },
-          ]}
-          initialRegion={{
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          }}
-        >
-          {/* Trajetos e marcadores das linhas selecionadas */}
-          {linhasParaMostrar.map((linha) => {
-            const itinerario =
-              mockItinerarios[linha.nome as keyof typeof mockItinerarios];
-            const coordenadas = itinerario
-              ? itinerario.map((ponto) => ({
-                  latitude: ponto.lat,
-                  longitude: ponto.lng,
-                }))
-              : [];
-            const posicoes = mockPosicoes.filter((p) => p.linha === linha.nome);
+          location={location}
+          linhasParaMostrar={dadosParaMapa}
+        />
+      )}
 
-            return (
-              <React.Fragment key={linha.nome}>
-                {/* Trajeto da linha */}
-                {coordenadas.length > 0 && (
-                  <Polyline
-                    coordinates={coordenadas}
-                    strokeColor={linha.cor}
-                    strokeWidth={3}
-                  />
-                )}
-
-                {/* Marcadores dos veículos */}
-                {posicoes.map((posicao) => (
-                  <Marker
-                    key={`${linha.nome}-${posicao.id}`}
-                    coordinate={{
-                      latitude: posicao.latitude,
-                      longitude: posicao.longitude,
-                    }}
-                    title={`${linha.nome} - ${posicao.id}`}
-                  >
-                    <View
-                      style={{
-                        width: 24,
-                        height: 24,
-                        backgroundColor: linha.cor,
-                        borderRadius: 12,
-                        justifyContent: "center",
-                        alignItems: "center",
-                        borderWidth: 2,
-                        borderColor: "white",
-                      }}
-                    >
-                      <MapPin color="white" size={16} />
-                    </View>
-                  </Marker>
-                ))}
-              </React.Fragment>
-            );
-          })}
-        </MapView>
+      {/* Pressable para fechar container quando clicar fora */}
+      {containerAberto && (
+        <Pressable
+          onPress={() => setContainerAberto(false)}
+          className="absolute inset-0 z-10"
+        />
       )}
 
       <InputBusca
@@ -253,6 +229,7 @@ const Home = () => {
         value={busca}
         onChangeText={buscarLinhas}
       />
+
       {buscaAtiva && (
         <ResultadoBusca
           data={data}
@@ -264,7 +241,7 @@ const Home = () => {
 
       <Filtro
         transito={transito}
-        clickTransito={clickTransito}
+        clickTransito={() => setTransito(!transito)}
         onibus={onibus}
         setOnibus={setOnibus}
         brt={brt}
@@ -278,7 +255,6 @@ const Home = () => {
       <RotaButton />
       <LocalButton location={location} mapRef={mapRef} />
 
-      {/* Container de linhas selecionadas */}
       <LinhasContainer
         linhasSelecionadas={linhasSelecionadas}
         aoRemoverLinha={removerLinha}
