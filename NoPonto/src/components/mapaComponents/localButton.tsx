@@ -1,6 +1,6 @@
 import { LocateFixed } from "lucide-react-native";
-import React, { useRef } from "react";
-import { Pressable, Text } from "react-native";
+import React from "react";
+import { Pressable } from "react-native";
 
 export default function LocalButton({
   location,
@@ -11,15 +11,22 @@ export default function LocalButton({
 }) {
   function locationUser() {
     if (mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        },
-        1000,
-      );
+      // Para o mapa OSM, usa a função centerOnUser exposta via ref
+      if (mapRef.current.centerOnUser) {
+        mapRef.current.centerOnUser();
+      }
+      // Fallback para react-native-maps (se voltar a usar)
+      else if (mapRef.current.animateToRegion) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          },
+          1000
+        );
+      }
     }
   }
 

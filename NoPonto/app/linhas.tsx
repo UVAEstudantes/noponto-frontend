@@ -3,11 +3,20 @@ import Chegada from "@/src/components/linhasComponents/chegada";
 import PontosInteresses from "@/src/components/linhasComponents/pontosInteresses";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
 import Tarifas from "@/src/components/linhasComponents/tarifas";
+import MapaOSM from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
 import { mockItinerarios } from "@/src/mocks/itinerariosMocks";
 import { mockLinhas } from "@/src/mocks/linhasMocks";
 import { pontosPorLinha } from "@/src/mocks/pontosInteresseMock";
+import { mockPosicoes } from "@/src/mocks/posicaoMocks";
+import {
+  getCurrentPositionAsync,
+  LocationAccuracy,
+  LocationObject,
+  requestForegroundPermissionsAsync,
+  watchPositionAsync,
+} from "expo-location";
 import {
   Bus,
   BusFront,
@@ -27,7 +36,6 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import MapView, { Marker, Polyline } from "react-native-maps";
 import Animated, {
   FadeInUp,
   useAnimatedStyle,
@@ -36,6 +44,38 @@ import Animated, {
 } from "react-native-reanimated";
 
 const linhas = () => {
+  const [location, setLocation] = useState<LocationObject | null>(null);
+
+  async function requestLocationPermissions() {
+    const { granted } = await requestForegroundPermissionsAsync();
+    if (granted) {
+      const location = await getCurrentPositionAsync();
+      setLocation(location);
+    }
+  }
+
+  useEffect(() => {
+    requestLocationPermissions();
+  }, []);
+
+  useEffect(() => {
+    let subscription: any;
+    async function startWatching() {
+      subscription = await watchPositionAsync(
+        {
+          accuracy: LocationAccuracy.Highest,
+          timeInterval: 2000,
+          distanceInterval: 5,
+        },
+        (response) => {
+          setLocation(response);
+        }
+      );
+    }
+    startWatching();
+    return () => subscription?.remove();
+  }, []);
+
   const [modal, setModal] = useState<string | null>("Onibus");
   const [placeholder, setPlaceholder] = useState(
     "Selecione um tipo de Transporte"
@@ -75,11 +115,17 @@ const linhas = () => {
 
     const modalFormatado = modal?.toLowerCase();
 
-    const filtrar = mockLinhas.filter(
-      (linha) =>
-        linha.nome.toLowerCase().startsWith(text.toLowerCase()) &&
-        linha.modal.toLowerCase() === modalFormatado
-    );
+    // Se tiver 1 ou menos caracteres, usa startsWith, senão usa includes
+    const usarStartsWith = text.length <= 1;
+
+    const filtrar = mockLinhas.filter((linha) => {
+      const modalMatch = linha.modal.toLowerCase() === modalFormatado;
+      const nomeMatch = usarStartsWith
+        ? linha.nome.toLowerCase().startsWith(text.toLowerCase())
+        : linha.nome.toLowerCase().includes(text.toLowerCase());
+
+      return nomeMatch && modalMatch;
+    });
 
     setData(filtrar);
   };
@@ -204,81 +250,51 @@ const linhas = () => {
       }))
     : [];
 
-  const mapRef = useRef<MapView>(null);
+  // Dados formatados para o MapaOSM
+  const dadosParaMapa =
+    linhaSelecionada && sentidoSelecionado
+      ? [
+          {
+            nome: linhaSelecionada.nome,
+            cor: "#2563eb",
+            modal: linhaSelecionada.modal,
+            coordenadas:
+              itinerarioLinha?.map((p: { lat: number; lng: number }) => [
+                p.lat,
+                p.lng,
+              ]) || [],
+            posicoes: mockPosicoes.filter(
+              (p) => p.linha === linhaSelecionada.nome
+            ),
+          },
+        ]
+      : [];
 
-  // Focar no itinerário quando linha e sentido forem selecionados
+  const mapRef = useRef<any>(null);
+
+  // Centralizar no itinerário quando linha e sentido forem selecionados
   useEffect(() => {
     if (
       linhaSelecionada &&
       sentidoSelecionado &&
-      coordenadasTrajeto.length > 0
+      coordenadasTrajeto.length > 0 &&
+      mapRef.current?.fitToCoordinates
     ) {
       setTimeout(() => {
-        mapRef.current?.fitToCoordinates(coordenadasTrajeto, {
-          edgePadding: {
-            top: 20,
-            right: 40,
-            bottom: 20,
-            left: 40,
-          },
-          animated: true,
-        });
-      }, 600);
+        mapRef.current.fitToCoordinates(coordenadasTrajeto);
+      }, 500);
     }
   }, [linhaSelecionada, sentidoSelecionado]);
 
   return (
     <View className=" flex flex-col h-screen rounded-t-3xl overflow-hidden">
-      <MapView
-        ref={mapRef}
-        style={{ flex: 1 }}
-        mapType="standard" // tipo de mapa
-        showsUserLocation={true}
-        followsUserLocation={true}
-        showsMyLocationButton={false}
-        customMapStyle={[
-          // remover os locais como lojas e coisas do tipo
-          {
-            featureType: "poi",
-            stylers: [{ visibility: "off" }],
-          },
-        ]}
-        initialRegion={{
-          latitude: -22.882384145462976,
-          longitude: -43.16511972224441,
-          latitudeDelta: 0.2,
-          longitudeDelta: 0.2,
-        }}
-      >
-        {/* Desenhar o itinerário da linha */}
-        {coordenadasTrajeto.length > 0 && (
-          <>
-            <Polyline
-              coordinates={coordenadasTrajeto}
-              strokeColor="#2563eb"
-              strokeWidth={4}
-            />
-
-            {/* Marcador do ponto inicial */}
-            <Marker
-              coordinate={coordenadasTrajeto[0]}
-              title="Início"
-              description={sentidoSelecionado?.split(" ")[0] || "Ponto inicial"}
-              pinColor="green"
-            />
-
-            {/* Marcador do ponto final */}
-            <Marker
-              coordinate={coordenadasTrajeto[coordenadasTrajeto.length - 1]}
-              title="Fim"
-              description={
-                sentidoSelecionado?.split(" ").slice(-1)[0] || "Ponto final"
-              }
-              pinColor="red"
-            />
-          </>
-        )}
-      </MapView>
+      {location && (
+        <MapaOSM
+          ref={mapRef}
+          location={location}
+          linhasParaMostrar={dadosParaMapa}
+        />
+      )}
 
       {/*container de linhas*/}
       <Animated.View
