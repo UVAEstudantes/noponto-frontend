@@ -16,6 +16,8 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
+const maxLinhasView = 5;
+
 interface LinhaSelecionada {
   nome: string;
   modal: string;
@@ -23,7 +25,7 @@ interface LinhaSelecionada {
   ativa: boolean;
 }
 
-interface LinhasContainerProps {
+interface Props {
   linhasSelecionadas: LinhaSelecionada[];
   aoRemoverLinha: (nome: string) => void;
   aoToggleAtiva: (nome: string) => void;
@@ -92,7 +94,7 @@ const LinhasContainer = ({
   aoToggleAtiva,
   aberto,
   aoToggleAberto,
-}: LinhasContainerProps) => {
+}: Props) => {
   const larguraContainer = 250;
   const translateX = useSharedValue(-larguraContainer);
 
@@ -145,7 +147,7 @@ const LinhasContainer = ({
               Linhas Selecionadas
             </Text>
             <Text className="text-sm text-gray-500">
-              {linhasSelecionadas.length}/10
+              {linhasSelecionadas.length}/{maxLinhasView}
             </Text>
           </View>
 

@@ -20,6 +20,9 @@ import { Search } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
 //import MapView, { Marker, Polyline } from "react-native-maps";
+import { salvarLinhas, carregarLinhasSalvas } from "@/src/services/storage";
+
+const MaxLinhasView = 5;
 
 const Home = () => {
   const [transito, setTransito] = React.useState(false);
@@ -118,7 +121,7 @@ const Home = () => {
 
     // Adicionar linha à lista de selecionadas se não estiver e não tiver chegado ao limite
     const jaExiste = linhasSelecionadas.some((l) => l.nome === linha.nome);
-    if (!jaExiste && linhasSelecionadas.length < 10) {
+    if (!jaExiste && linhasSelecionadas.length < MaxLinhasView) {
       const coresEmUso = linhasSelecionadas.map((l) => l.cor);
       const novaCor = gerarCorAleatoria(coresEmUso);
       setLinhasSelecionadas([
@@ -203,6 +206,21 @@ const Home = () => {
         ) || [],
       posicoes: mockPosicoes.filter((p) => p.linha === linha.nome),
     }));
+
+  useEffect(() => { // carrega linhas salvas do storage ao iniciar
+    const carregar = async () => {
+      const linhas = await carregarLinhasSalvas();
+      if (linhas.length > 0) {
+        setLinhasSelecionadas(linhas);
+      }
+    };
+    carregar();
+  }, []);
+
+  useEffect(() => { // salva linhas no storage
+    if(linhasSelecionadas.length > 0)
+    salvarLinhas(linhasSelecionadas);
+  }, [linhasSelecionadas]);
 
   return (
     <View className="flex-1 flex-col">

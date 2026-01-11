@@ -37,7 +37,11 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       },
     }));
 
+    const [mapReady, setMapReady] = React.useState(false);
+
     useEffect(() => {
+      if (!mapReady || !location?.coords) return;
+
       const data = {
         userLocation: [location.coords.latitude, location.coords.longitude],
         heading: location.coords.heading,
@@ -45,17 +49,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         darkMode: darkMode,
       };
 
-      const injectJS = `
-        (function() {
-          if(window.updateMap) { 
-            window.updateMap(${JSON.stringify(data)}); 
-          } else {
-            window.pendingData = ${JSON.stringify(data)};
-          }
-        })();
-      `;
-      webViewRef.current?.injectJavaScript(injectJS);
-    }, [location, linhasParaMostrar, darkMode]);
+      webViewRef.current?.injectJavaScript(`
+          window.updateMap(${JSON.stringify(data)});
+        `);
+      }, [mapReady, location, linhasParaMostrar, darkMode]);
 
     const mapHTML = `
     <!DOCTYPE html>
@@ -146,7 +143,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
               window.updateMap(window.pendingData);
             }
             
-            setTimeout(function() { map.invalidateSize(); }, 400);
+            window.ReactNativeWebView?.postMessage("map_ready");
           };
 
           window.centerOnUser = function() {
@@ -244,6 +241,11 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         domStorageEnabled={true}
         onLoadEnd={() => {
           webViewRef.current?.injectJavaScript(`if(map) map.invalidateSize();`);
+        }}
+        onMessage={(event) => {
+          if (event.nativeEvent.data === "map_ready") {
+            setMapReady(true);
+          }
         }}
       />
     );
