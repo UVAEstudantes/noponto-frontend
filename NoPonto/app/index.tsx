@@ -1,4 +1,5 @@
 import InputBusca from "@/src/components/inputBusca";
+import { useTema } from "@/src/hooks/useTema";
 import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer from "@/src/components/mapaComponents/linhasContainer";
 import LocalButton from "@/src/components/mapaComponents/localButton";
@@ -25,6 +26,7 @@ import { salvarLinhas, carregarLinhasSalvas } from "@/src/services/storage";
 const MaxLinhasView = 5;
 
 const Home = () => {
+  const { temaAtual, estiloMapaAtual, cores } = useTema();
   const [transito, setTransito] = React.useState(false);
   const [onibus, setOnibus] = React.useState(true);
   const [brt, setBrt] = React.useState(false);
@@ -75,12 +77,12 @@ const Home = () => {
   const [busca, setBusca] = useState("");
   const [linhaSelecionada, setLinhaSelecionada] = useState<any>(null);
   const [linhasSelecionadas, setLinhasSelecionadas] = useState<
-    Array<{
+    {
       nome: string;
       modal: string;
       cor: string;
       ativa: boolean;
-    }>
+    }[]
   >([]);
   const [containerAberto, setContainerAberto] = useState(false);
 
@@ -175,25 +177,6 @@ const Home = () => {
     );
   };
 
-  // Filtrar apenas linhas ativas
-  const linhasParaMostrar = linhasSelecionadas.filter((l) => l.ativa);
-
-  const posicoesLinha = mockPosicoes.filter(
-    (p) => p.linha === linhaSelecionada?.nome,
-  );
-
-  // Pegar o itinerario da linha selecionada
-  const itinerarioLinha = linhaSelecionada
-    ? mockItinerarios[linhaSelecionada.nome as keyof typeof mockItinerarios]
-    : null;
-
-  const coordenadasTrajeto = itinerarioLinha
-    ? itinerarioLinha.map((ponto) => ({
-        latitude: ponto.lat,
-        longitude: ponto.lng,
-      }))
-    : [];
-
   const dadosParaMapa = linhasSelecionadas
     .filter((l) => l.ativa)
     .map((linha) => ({
@@ -223,13 +206,18 @@ const Home = () => {
   }, [linhasSelecionadas]);
 
   return (
-    <View className="flex-1 flex-col">
+    <View
+      className="flex-1 flex-col"
+      style={{ backgroundColor: cores.fundoApp }}
+    >
       {location && (
         <MapaOSM
           ref={mapRef}
           location={location}
           linhasParaMostrar={dadosParaMapa}
           showTraffic={transito}
+          darkMode={temaAtual === "escuro"}
+          estiloMapa={estiloMapaAtual}
         />
       )}
 
@@ -253,7 +241,7 @@ const Home = () => {
         <ResultadoBusca
           data={data}
           listaSelecionada={listaSelecionada}
-          className="absolute top-[8rem] !w-3/4 right-[5rem] bg-white shadow-lg rounded-2xl z-20"
+          className="absolute top-[8rem] !w-3/4 right-[5rem] shadow-lg rounded-2xl z-20"
           maxHeight={400}
         />
       )}

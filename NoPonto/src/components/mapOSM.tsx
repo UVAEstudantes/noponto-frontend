@@ -2,8 +2,14 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
 } from "react";
+import {
+  ESTILO_MAPA_PADRAO,
+  EstiloMapaId,
+  estilosMapaDisponiveis,
+} from "@/src/constants/estilosMapa";
 import { WebView } from "react-native-webview";
 
 interface MapaOSMProps {
@@ -11,6 +17,7 @@ interface MapaOSMProps {
   linhasParaMostrar: any[];
   darkMode?: boolean;
   showTraffic?: boolean;
+  estiloMapa?: EstiloMapaId;
 }
 
 export interface MapaOSMRef {
@@ -20,12 +27,61 @@ export interface MapaOSMRef {
   ) => void;
 }
 
+const classesEstiloMapa = estilosMapaDisponiveis
+  .map((estilo) => `estilo-${estilo.id}`)
+  .join(" ");
+
+const filtrosEstiloMapaCSS = estilosMapaDisponiveis
+  .map(
+    (estilo) => `
+          #map.light-mode.estilo-${estilo.id} .leaflet-tile {
+            filter: ${estilo.filtroLight};
+          }
+
+          #map.dark-mode.estilo-${estilo.id} .leaflet-tile {
+            filter: ${estilo.filtroDark};
+          }
+    `,
+  )
+  .join("\n");
+
+const estilosMapaJS = estilosMapaDisponiveis
+  .map((estilo) => `"${estilo.id}"`)
+  .join(", ");
+
 const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   (
-    { location, linhasParaMostrar, darkMode = false, showTraffic = false },
+    {
+      location,
+      linhasParaMostrar,
+      darkMode = false,
+      showTraffic = false,
+      estiloMapa = ESTILO_MAPA_PADRAO,
+    },
     ref,
   ) => {
     const webViewRef = useRef<WebView>(null);
+    const coordenadasIniciaisRef = useRef<{
+      latitude: number;
+      longitude: number;
+    } | null>(null);
+
+    if (!coordenadasIniciaisRef.current && location?.coords) {
+      coordenadasIniciaisRef.current = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+    }
+
+    const latitudeInicial =
+      coordenadasIniciaisRef.current?.latitude ??
+      location?.coords?.latitude ??
+      -22.9068;
+
+    const longitudeInicial =
+      coordenadasIniciaisRef.current?.longitude ??
+      location?.coords?.longitude ??
+      -43.1729;
 
     useImperativeHandle(ref, () => ({
       centerOnUser: () => {
@@ -52,14 +108,24 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         linhas: linhasParaMostrar,
         darkMode: darkMode,
         showTraffic: showTraffic,
+        estiloMapa: estiloMapa,
       };
 
       webViewRef.current?.injectJavaScript(`
           window.updateMap(${JSON.stringify(data)});
         `);
-    }, [mapReady, location, linhasParaMostrar, darkMode, showTraffic]);
+    }, [
+      mapReady,
+      location,
+      linhasParaMostrar,
+      darkMode,
+      showTraffic,
+      estiloMapa,
+    ]);
 
-    const mapHTML = `
+    // Mantemos o HTML estável para evitar recarregar o WebView ao alternar tema.
+    const mapHTML = useMemo(
+      () => `
     <!DOCTYPE html>
     <html>
       <head>
@@ -68,8 +134,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-          html, body { height: 100%; width: 100%; margin: 0; padding: 0; background-color: ${darkMode ? "#1a1a1a" : "#f0f0f0"}; }
+          html, body { height: 100%; width: 100%; margin: 0; padding: 0; background-color: #f0f0f0; }
           #map { height: 100%; width: 100%; position: absolute; top: 0; left: 0; }
+
+          .leaflet-tile {
+            transition: filter 0.25s ease;
+          }
+
+          ${filtrosEstiloMapaCSS}
           
           .user-container { 
             display: flex; 
@@ -80,7 +152,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           .user-dot { 
             width: 12px; 
             height: 12px; 
-            background: #2196F3; 
+            background: #4FC3F7; 
             border: 2.5px solid white; 
             border-radius: 50%; 
             box-shadow: 0 0 6px rgba(0,0,0,0.4); 
@@ -94,7 +166,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
             border-left: 6px solid transparent; 
             border-right: 6px solid transparent; 
-            border-bottom: 6px solid #2196F3; 
+            border-bottom: 6px solid #4FC3F7; 
             
             top: -7px; /* Mais próxima da bolinha devido à altura menor */
             
@@ -117,7 +189,55 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         <div id="map"></div>
         <script>
           var map, tiles, trafficTiles, userMarker, linesLayer, vehiclesLayer;
+          var estilosMapaDisponiveis = [${estilosMapaJS}];
+          var classesEstiloMapa = "${classesEstiloMapa}";
           var autoFollow = true;
+
+          function normalizarEstiloMapa(estiloId) {
+            if (typeof estiloId !== 'string') {
+              return '${ESTILO_MAPA_PADRAO}';
+            }
+
+            return estilosMapaDisponiveis.indexOf(estiloId) >= 0
+              ? estiloId
+              : '${ESTILO_MAPA_PADRAO}';
+          }
+
+          function setMapStyle(estiloId) {
+            var mapEl = document.getElementById('map');
+
+            if (!mapEl) {
+              return;
+            }
+
+            classesEstiloMapa.split(' ').forEach(function(classe) {
+              if (classe) {
+                mapEl.classList.remove(classe);
+              }
+            });
+
+            mapEl.classList.add('estilo-' + normalizarEstiloMapa(estiloId));
+          }
+
+          function setDarkMode(isDark) {
+            var mapEl = document.getElementById('map');
+
+            if (!mapEl) {
+              return;
+            }
+
+            if (isDark) {
+              mapEl.classList.add('dark-mode');
+              mapEl.classList.remove('light-mode');
+              document.body.style.backgroundColor = '#1a1a1a';
+              document.documentElement.style.backgroundColor = '#1a1a1a';
+            } else {
+              mapEl.classList.remove('dark-mode');
+              mapEl.classList.add('light-mode');
+              document.body.style.backgroundColor = '#f0f0f0';
+              document.documentElement.style.backgroundColor = '#f0f0f0';
+            }
+          }
 
           function setTrafficVisibility(showTraffic) {
             if (!map) return;
@@ -142,16 +262,16 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
             map = L.map('map', { 
               zoomControl: false, 
               attributionControl: false 
-            }).setView([${location.coords.latitude}, ${location.coords.longitude}], 15);
+            }).setView([${latitudeInicial}, ${longitudeInicial}], 15);
 
-            tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/${darkMode ? "dark_all" : "rastertiles/voyager"}/{z}/{x}/{y}{r}.png', {
+            tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
               maxZoom: 19
             }).addTo(map);
 
             linesLayer = L.layerGroup().addTo(map);
             vehiclesLayer = L.layerGroup().addTo(map);
 
-            userMarker = L.marker([${location.coords.latitude}, ${location.coords.longitude}], {
+            userMarker = L.marker([${latitudeInicial}, ${longitudeInicial}], {
               icon: L.divIcon({
                 className: 'user-container',
                 html: '<div class="user-arrow"></div><div class="user-dot"></div>',
@@ -160,6 +280,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
               }),
               zIndexOffset: 1000
             }).addTo(map);
+
+            setMapStyle('${ESTILO_MAPA_PADRAO}');
+            setDarkMode(false);
 
             map.on('dragstart', function() { autoFollow = false; });
 
@@ -192,6 +315,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           window.updateMap = function(data) {
             if(!map || !linesLayer || !vehiclesLayer) return;
 
+            setMapStyle(data.estiloMapa);
+            setDarkMode(Boolean(data.darkMode));
             setTrafficVisibility(Boolean(data.showTraffic));
 
             var pos = L.latLng(data.userLocation[0], data.userLocation[1]);
@@ -218,9 +343,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
                 if(linha.coordenadas && linha.coordenadas.length > 0) {
                   hasLines = true;
                   L.polyline(linha.coordenadas, {
-                    color: linha.cor || '#2196F3',
+                    color: linha.cor || (data.darkMode ? '#4FC3F7' : '#2196F3'),
                     weight: 4,
-                    opacity: 0.6
+                    opacity: data.darkMode ? 0.8 : 0.6
                   }).addTo(linesLayer);
                 }
 
@@ -255,14 +380,16 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         </script>
       </body>
     </html>
-    `;
+    `,
+      [latitudeInicial, longitudeInicial],
+    );
 
     return (
       <WebView
         ref={webViewRef}
         originWhitelist={["*"]}
         source={{ html: mapHTML }}
-        style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#fff" }}
+        style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#f0f0f0" }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         onLoadEnd={() => {

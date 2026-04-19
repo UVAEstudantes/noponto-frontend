@@ -1,4 +1,5 @@
 import InputBusca from "@/src/components/inputBusca";
+import { useTema } from "@/src/hooks/useTema";
 import Chegada from "@/src/components/linhasComponents/chegada";
 import PontosInteresses from "@/src/components/linhasComponents/pontosInteresses";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
@@ -25,7 +26,7 @@ import {
   Train,
   TrainFrontTunnel,
 } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   FlatList,
@@ -43,7 +44,8 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
-const linhas = () => {
+const Linhas = () => {
+  const { temaAtual, estiloMapaAtual, cores } = useTema();
   const [location, setLocation] = useState<LocationObject | null>(null);
 
   async function requestLocationPermissions() {
@@ -174,7 +176,6 @@ const linhas = () => {
   const MAX_HEIGHT = screenHeight * 1.0; // 100%
   const DEFAULT_HEIGHT = screenHeight * 0.5; // 50%
 
-  const translateY = useSharedValue(0);
   const containerHeight = useSharedValue(DEFAULT_HEIGHT);
   const startHeight = useSharedValue(DEFAULT_HEIGHT);
 
@@ -196,13 +197,19 @@ const linhas = () => {
       tecladoAberto.remove();
       tecladoFechado.remove();
     };
-  }, [linhaSelecionada, sentidoSelecionado]);
+  }, [
+    linhaSelecionada,
+    sentidoSelecionado,
+    containerHeight,
+    screenHeight,
+    DEFAULT_HEIGHT,
+  ]);
 
   useEffect(() => {
     if (sentidoSelecionado && linhaSelecionada) {
       containerHeight.value = withSpring(screenHeight * 0.75);
     }
-  }, [sentidoSelecionado]);
+  }, [sentidoSelecionado, linhaSelecionada, containerHeight, screenHeight]);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -243,12 +250,16 @@ const linhas = () => {
     ? mockItinerarios[linhaSelecionada.nome as keyof typeof mockItinerarios]
     : null;
 
-  const coordenadasTrajeto = itinerarioLinha
-    ? itinerarioLinha.map((ponto) => ({
-        latitude: ponto.lat,
-        longitude: ponto.lng,
-      }))
-    : [];
+  const coordenadasTrajeto = useMemo(
+    () =>
+      itinerarioLinha
+        ? itinerarioLinha.map((ponto) => ({
+            latitude: ponto.lat,
+            longitude: ponto.lng,
+          }))
+        : [],
+    [itinerarioLinha],
+  );
 
   // Dados formatados para o MapaOSM
   const dadosParaMapa =
@@ -284,15 +295,17 @@ const linhas = () => {
         mapRef.current.fitToCoordinates(coordenadasTrajeto);
       }, 500);
     }
-  }, [linhaSelecionada, sentidoSelecionado]);
+  }, [linhaSelecionada, sentidoSelecionado, coordenadasTrajeto]);
 
   return (
-    <View className="flex-1 bg-customGray">
+    <View className="flex-1" style={{ backgroundColor: cores.fundoApp }}>
       {location && (
         <MapaOSM
           ref={mapRef}
           location={location}
           linhasParaMostrar={dadosParaMapa}
+          darkMode={temaAtual === "escuro"}
+          estiloMapa={estiloMapaAtual}
         />
       )}
 
@@ -301,10 +314,10 @@ const linhas = () => {
         style={[
           animatedStyle,
           {
-            backgroundColor: "#f3f4f6",
+            backgroundColor: cores.fundoApp,
             borderTopLeftRadius: 24,
             borderTopRightRadius: 24,
-            shadowColor: "#000",
+            shadowColor: cores.sombra,
             shadowOffset: { width: 0, height: -3 },
             shadowOpacity: 0.2,
             shadowRadius: 5,
@@ -316,13 +329,22 @@ const linhas = () => {
         {/* Indicador de arraste */}
         <GestureDetector gesture={panGesture}>
           <View className="w-full items-center justify-center py-4">
-            <View className="w-16 h-1.5 bg-gray-400 rounded-full" />
+            <View
+              className="w-16 h-1.5 rounded-full"
+              style={{ backgroundColor: cores.borda }}
+            />
           </View>
         </GestureDetector>
 
         {/* container do select modal */}
-        <View className="pb-2 mb-3 bg-customGray overflow-hidden">
-          <Text className="mt-5 text-2xl font-semibold self-center">
+        <View
+          className="pb-2 mb-3 overflow-hidden"
+          style={{ backgroundColor: cores.fundoApp }}
+        >
+          <Text
+            className="mt-5 text-2xl font-semibold self-center"
+            style={{ color: cores.textoPrimario }}
+          >
             Linhas e Hórarios
           </Text>
 
@@ -342,7 +364,10 @@ const linhas = () => {
           renderItem={() => (
             <>
               {/*input buscar linha*/}
-              <View className="bg-customGray mt-2 pt-5 ">
+              <View
+                className="mt-2 pt-5"
+                style={{ backgroundColor: cores.fundoApp }}
+              >
                 <InputBusca
                   placeholder={placeholder}
                   icon={icon}
@@ -355,7 +380,7 @@ const linhas = () => {
                   <ResultadoBusca
                     data={data}
                     listaSelecionada={listaSelecionada}
-                    className="bg-white rounded-2xl !w-[90%] self-center mb-5 shadow-lg"
+                    className="rounded-2xl !w-[90%] self-center mb-5 shadow-lg"
                     maxHeight={150}
                   />
                 )}
@@ -375,7 +400,10 @@ const linhas = () => {
                   entering={FadeInUp.duration(400).springify()}
                   className="w-full mt-8 h-full"
                 >
-                  <Text className="left-6 font-semibold mb-4 text-lg">
+                  <Text
+                    className="left-6 font-semibold mb-4 text-lg"
+                    style={{ color: cores.textoPrimario }}
+                  >
                     Linha {busca} - {sentidoSelecionado}
                   </Text>
 
@@ -404,4 +432,4 @@ const linhas = () => {
   );
 };
 
-export default linhas;
+export default Linhas;

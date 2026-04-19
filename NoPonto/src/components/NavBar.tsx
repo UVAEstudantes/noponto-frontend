@@ -1,4 +1,5 @@
 import { Link, usePathname } from "expo-router";
+import { useTema } from "@/src/hooks/useTema";
 import React, { useEffect, useState } from "react";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import {
@@ -34,12 +35,6 @@ const tabs: TabItem[] = [
   { href: "/configuracao", label: "Mais", Icon: Settings },
 ];
 
-const colors = {
-  customYellow: "#FFC107",
-  customBlack: "#1E1E1E",
-  customGray: "#F2F4F7",
-};
-
 function routeMatches(href: TabRoute, pathname: string) {
   if (href === "/") {
     return pathname === "/";
@@ -50,6 +45,7 @@ function routeMatches(href: TabRoute, pathname: string) {
 
 export default function NavBar() {
   const pathname = usePathname();
+  const { cores } = useTema();
   const { width: screenWidth } = useWindowDimensions();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -121,7 +117,7 @@ export default function NavBar() {
   return (
     <Animated.View
       className="absolute bottom-6 overflow-hidden bg-customBlack shadow-sm"
-      style={containerAnimatedStyle}
+      style={[containerAnimatedStyle, { backgroundColor: cores.fundoNav }]}
     >
       <Animated.View
         className="h-full flex-row items-center pl-2"
@@ -142,15 +138,17 @@ export default function NavBar() {
                   style={{ width: tabWidth }}
                 >
                   <tab.Icon
-                    color={active ? colors.customYellow : colors.customGray}
+                    color={active ? cores.iconePrimario : cores.iconeSecundario}
                     size={20}
                     strokeWidth={active ? 2.4 : 2.1}
                   />
                   <Text
-                    className={
-                      "pt-0.5 text-[11px] " +
-                      (active ? "text-customYellow" : "text-customGray")
-                    }
+                    className="pt-0.5 text-[11px]"
+                    style={{
+                      color: active
+                        ? cores.textoDestaque
+                        : cores.textoSecundario,
+                    }}
                   >
                     {tab.label}
                   </Text>
@@ -173,9 +171,9 @@ export default function NavBar() {
       >
         <Animated.View style={toggleAnimatedStyle}>
           {collapsed ? (
-            <PanelRightOpen color={colors.customYellow} size={22} />
+            <PanelRightOpen color={cores.iconePrimario} size={22} />
           ) : (
-            <PanelRightClose color={colors.customGray} size={22} />
+            <PanelRightClose color={cores.iconeSecundario} size={22} />
           )}
         </Animated.View>
       </Pressable>
