@@ -10,27 +10,31 @@ interface MapaOSMProps {
   location: any;
   linhasParaMostrar: any[];
   darkMode?: boolean;
+  showTraffic?: boolean;
 }
 
 export interface MapaOSMRef {
   centerOnUser: () => void;
   fitToCoordinates: (
-    coordinates: Array<{ latitude: number; longitude: number }>
+    coordinates: { latitude: number; longitude: number }[],
   ) => void;
 }
 
 const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
-  ({ location, linhasParaMostrar, darkMode = false }, ref) => {
+  (
+    { location, linhasParaMostrar, darkMode = false, showTraffic = false },
+    ref,
+  ) => {
     const webViewRef = useRef<WebView>(null);
 
     useImperativeHandle(ref, () => ({
       centerOnUser: () => {
         webViewRef.current?.injectJavaScript(
-          `if(window.centerOnUser) window.centerOnUser();`
+          `if(window.centerOnUser) window.centerOnUser();`,
         );
       },
       fitToCoordinates: (
-        coordinates: Array<{ latitude: number; longitude: number }>
+        coordinates: { latitude: number; longitude: number }[],
       ) => {
         const injectJS = `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`;
         webViewRef.current?.injectJavaScript(injectJS);
@@ -47,12 +51,13 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         heading: location.coords.heading,
         linhas: linhasParaMostrar,
         darkMode: darkMode,
+        showTraffic: showTraffic,
       };
 
       webViewRef.current?.injectJavaScript(`
           window.updateMap(${JSON.stringify(data)});
         `);
-      }, [mapReady, location, linhasParaMostrar, darkMode]);
+    }, [mapReady, location, linhasParaMostrar, darkMode, showTraffic]);
 
     const mapHTML = `
     <!DOCTYPE html>
@@ -111,8 +116,27 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       <body>
         <div id="map"></div>
         <script>
-          var map, tiles, userMarker, linesLayer, vehiclesLayer;
+          var map, tiles, trafficTiles, userMarker, linesLayer, vehiclesLayer;
           var autoFollow = true;
+
+          function setTrafficVisibility(showTraffic) {
+            if (!map) return;
+
+            if (showTraffic) {
+              if (!trafficTiles) {
+                trafficTiles = L.tileLayer('https://mt0.google.com/vt?lyrs=traffic&x={x}&y={y}&z={z}', {
+                  maxZoom: 20,
+                  opacity: 0.9,
+                });
+              }
+
+              if (!map.hasLayer(trafficTiles)) {
+                trafficTiles.addTo(map);
+              }
+            } else if (trafficTiles && map.hasLayer(trafficTiles)) {
+              map.removeLayer(trafficTiles);
+            }
+          }
 
           window.onload = function() {
             map = L.map('map', { 
@@ -167,6 +191,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
           window.updateMap = function(data) {
             if(!map || !linesLayer || !vehiclesLayer) return;
+
+            setTrafficVisibility(Boolean(data.showTraffic));
 
             var pos = L.latLng(data.userLocation[0], data.userLocation[1]);
             userMarker.setLatLng(pos);
@@ -249,7 +275,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         }}
       />
     );
-  }
+  },
 );
+
+MapaOSM.displayName = "MapaOSM";
 
 export default MapaOSM;

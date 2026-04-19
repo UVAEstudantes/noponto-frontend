@@ -10,7 +10,16 @@ const _layout = () => {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PaperProvider>
         <>
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: "fade_from_bottom",
+              animationDuration: 280,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+              contentStyle: { backgroundColor: "#FFFFFF" },
+            }}
+          >
             <Stack.Screen name="index" />
             <Stack.Screen name="favoritos" />
             <Stack.Screen name="linhas" />

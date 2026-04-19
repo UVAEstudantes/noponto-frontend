@@ -32,8 +32,7 @@ const Home = () => {
   const [metro, setMetro] = React.useState(false);
 
   function clickTransito() {
-    setTransito(!transito);
-    console.log("transito: ", transito);
+    setTransito((prev) => !prev);
   }
 
   const mapRef = React.useRef<MapaOSMRef>(null);
@@ -64,7 +63,7 @@ const Home = () => {
         },
         (response) => {
           setLocation(response); // Isso disparará o re-render e atualizará o MapaOSM
-        }
+        },
       );
     }
 
@@ -147,7 +146,7 @@ const Home = () => {
             (p: { lat: number; lng: number }) => ({
               latitude: p.lat,
               longitude: p.lng,
-            })
+            }),
           );
           mapRef.current?.fitToCoordinates(coordenadas);
         }, 500);
@@ -171,8 +170,8 @@ const Home = () => {
   const toggleAtiva = (nome: string) => {
     setLinhasSelecionadas(
       linhasSelecionadas.map((l) =>
-        l.nome === nome ? { ...l, ativa: !l.ativa } : l
-      )
+        l.nome === nome ? { ...l, ativa: !l.ativa } : l,
+      ),
     );
   };
 
@@ -180,7 +179,7 @@ const Home = () => {
   const linhasParaMostrar = linhasSelecionadas.filter((l) => l.ativa);
 
   const posicoesLinha = mockPosicoes.filter(
-    (p) => p.linha === linhaSelecionada?.nome
+    (p) => p.linha === linhaSelecionada?.nome,
   );
 
   // Pegar o itinerario da linha selecionada
@@ -202,12 +201,13 @@ const Home = () => {
       cor: linha.cor,
       coordenadas:
         mockItinerarios[linha.nome as keyof typeof mockItinerarios]?.map(
-          (p: { lat: number; lng: number }) => [p.lat, p.lng]
+          (p: { lat: number; lng: number }) => [p.lat, p.lng],
         ) || [],
       posicoes: mockPosicoes.filter((p) => p.linha === linha.nome),
     }));
 
-  useEffect(() => { // carrega linhas salvas do storage ao iniciar
+  useEffect(() => {
+    // carrega linhas salvas do storage ao iniciar
     const carregar = async () => {
       const linhas = await carregarLinhasSalvas();
       if (linhas.length > 0) {
@@ -217,9 +217,9 @@ const Home = () => {
     carregar();
   }, []);
 
-  useEffect(() => { // salva linhas no storage
-    if(linhasSelecionadas.length > 0)
-    salvarLinhas(linhasSelecionadas);
+  useEffect(() => {
+    // salva linhas no storage
+    if (linhasSelecionadas.length > 0) salvarLinhas(linhasSelecionadas);
   }, [linhasSelecionadas]);
 
   return (
@@ -229,6 +229,7 @@ const Home = () => {
           ref={mapRef}
           location={location}
           linhasParaMostrar={dadosParaMapa}
+          showTraffic={transito}
         />
       )}
 
@@ -259,7 +260,7 @@ const Home = () => {
 
       <Filtro
         transito={transito}
-        clickTransito={() => setTransito(!transito)}
+        clickTransito={clickTransito}
         onibus={onibus}
         setOnibus={setOnibus}
         brt={brt}

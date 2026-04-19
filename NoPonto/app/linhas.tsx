@@ -69,7 +69,7 @@ const linhas = () => {
         },
         (response) => {
           setLocation(response);
-        }
+        },
       );
     }
     startWatching();
@@ -78,7 +78,7 @@ const linhas = () => {
 
   const [modal, setModal] = useState<string | null>("Onibus");
   const [placeholder, setPlaceholder] = useState(
-    "Selecione um tipo de Transporte"
+    "Selecione um tipo de Transporte",
   );
   const [icon, setIcon] = useState<LucideIcon>(ListFilter);
 
@@ -107,7 +107,7 @@ const linhas = () => {
   const [data, setData] = useState(mockLinhas);
   const [linhaSelecionada, setLinhaSelecionada] = useState<any>(null);
   const [sentidoSelecionado, setSentidoSelecionado] = useState<string | null>(
-    null
+    null,
   );
 
   const buscarLinhas = (text: string) => {
@@ -226,7 +226,7 @@ const linhas = () => {
         containerHeight.value = withSpring(DEFAULT_HEIGHT);
       } else {
         containerHeight.value = withSpring(
-          Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight))
+          Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight)),
         );
       }
     });
@@ -264,7 +264,7 @@ const linhas = () => {
                 p.lng,
               ]) || [],
             posicoes: mockPosicoes.filter(
-              (p) => p.linha === linhaSelecionada.nome
+              (p) => p.linha === linhaSelecionada.nome,
             ),
           },
         ]
@@ -287,7 +287,7 @@ const linhas = () => {
   }, [linhaSelecionada, sentidoSelecionado]);
 
   return (
-    <View className=" flex flex-col h-screen rounded-t-3xl overflow-hidden">
+    <View className="flex-1 bg-customGray">
       {location && (
         <MapaOSM
           ref={mapRef}
