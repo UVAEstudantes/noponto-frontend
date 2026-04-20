@@ -6,9 +6,9 @@ import LocalButton from "@/src/components/mapaComponents/localButton";
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
 import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
-import { mockItinerarios } from "@/src/mocks/itinerariosMocks";
-import { mockLinhas } from "@/src/mocks/linhasMocks";
-import { mockPosicoes } from "@/src/mocks/posicaoMocks";
+import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
+import { chaveLinhaModal } from "@/src/services/mobilidadeRio";
+import { LinhaTempoReal, ModalApiTransporte } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -18,15 +18,43 @@ import {
   watchPositionAsync,
 } from "expo-location";
 import { Search } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
-//import MapView, { Marker, Polyline } from "react-native-maps";
 import { salvarLinhas, carregarLinhasSalvas } from "@/src/services/storage";
 
 const MaxLinhasView = 5;
 
+type LinhaSelecionada = {
+  nome: string;
+  modal: string;
+  cor: string;
+  ativa: boolean;
+};
+
+function normalizarModalApi(modal: string): ModalApiTransporte | null {
+  const valor = modal.trim().toLowerCase();
+
+  if (valor === "onibus") {
+    return "onibus";
+  }
+
+  if (valor === "brt") {
+    return "brt";
+  }
+
+  return null;
+}
+
 const Home = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
+  const {
+    linhasDisponiveis,
+    itinerariosPorLinha,
+    garantirItinerarioLinha,
+    getVeiculosLinha,
+    getSentidoLinha,
+  } = useMobilidadeRio();
+
   const [transito, setTransito] = React.useState(false);
   const [onibus, setOnibus] = React.useState(true);
   const [brt, setBrt] = React.useState(false);
@@ -73,137 +101,198 @@ const Home = () => {
     return () => subscription?.remove(); // Limpa ao fechar
   }, []);
 
-  const [data, setData] = useState(mockLinhas);
+  const [data, setData] = useState<LinhaTempoReal[]>([]);
   const [busca, setBusca] = useState("");
-  const [linhaSelecionada, setLinhaSelecionada] = useState<any>(null);
   const [linhasSelecionadas, setLinhasSelecionadas] = useState<
-    {
-      nome: string;
-      modal: string;
-      cor: string;
-      ativa: boolean;
-    }[]
+    LinhaSelecionada[]
   >([]);
   const [containerAberto, setContainerAberto] = useState(false);
 
   const buscaAtiva = busca !== "" && data.length > 0;
 
-  const buscarLinhas = (text: string) => {
-    setBusca(text);
-    setContainerAberto(false); // Fechar container ao buscar
+  const buscarLinhas = useCallback(
+    (textoBusca: string) => {
+      setBusca(textoBusca);
+      setContainerAberto(false);
 
-    // Array de modais selecionados
-    const modaisSelecionados: string[] = [];
-    if (onibus) modaisSelecionados.push("onibus");
-    if (brt) modaisSelecionados.push("brt");
-    if (trem) modaisSelecionados.push("trem");
-    if (metro) modaisSelecionados.push("metro");
+      const modaisSelecionados: string[] = [];
+      if (onibus) modaisSelecionados.push("onibus");
+      if (brt) modaisSelecionados.push("brt");
+      if (trem) modaisSelecionados.push("trem");
+      if (metro) modaisSelecionados.push("metro");
 
-    // Se tiver 1 ou menos caracteres, usa startsWith, senão usa includes (da pra melhorar usando o include se não encontrar nada com o startWith)
-    const usarStartsWith = text.length <= 1;
+      const termo = textoBusca.trim().toLowerCase();
+      const usarStartsWith = termo.length <= 1;
 
-    const filtrar = mockLinhas.filter((linha) => {
-      const modalMatch = modaisSelecionados.includes(linha.modal.toLowerCase());
-      const nomeMatch = usarStartsWith
-        ? linha.nome.toLowerCase().startsWith(text.toLowerCase())
-        : linha.nome.toLowerCase().includes(text.toLowerCase());
+      const filtradas = linhasDisponiveis.filter((linha) => {
+        const modalMatch = modaisSelecionados.includes(
+          linha.modal.toLowerCase(),
+        );
+        if (!modalMatch) {
+          return false;
+        }
 
-      return nomeMatch && modalMatch;
-    });
+        if (!termo) {
+          return true;
+        }
 
-    setData(filtrar);
-  };
+        return usarStartsWith
+          ? linha.nome.toLowerCase().startsWith(termo)
+          : linha.nome.toLowerCase().includes(termo);
+      });
 
-  const listaSelecionada = (linha: any) => {
-    // esconde a lista e pega o nome se clicar em um item da lista
+      setData(filtradas);
+
+      filtradas.slice(0, 10).forEach((linha) => {
+        void garantirItinerarioLinha(linha.nome, linha.modal);
+      });
+    },
+    [linhasDisponiveis, onibus, brt, trem, metro, garantirItinerarioLinha],
+  );
+
+  const listaSelecionada = async (linha: LinhaTempoReal) => {
     setData([]);
-    setLinhaSelecionada(linha);
-    Keyboard.dismiss(); // esconde o teclado dps de selecionar uma linha
+    Keyboard.dismiss();
 
-    // Adicionar linha à lista de selecionadas se não estiver e não tiver chegado ao limite
-    const jaExiste = linhasSelecionadas.some((l) => l.nome === linha.nome);
-    if (!jaExiste && linhasSelecionadas.length < MaxLinhasView) {
-      const coresEmUso = linhasSelecionadas.map((l) => l.cor);
-      const novaCor = gerarCorAleatoria(coresEmUso);
-      setLinhasSelecionadas([
-        ...linhasSelecionadas,
+    setLinhasSelecionadas((anterior) => {
+      const jaExiste = anterior.some((item) => item.nome === linha.nome);
+
+      if (jaExiste || anterior.length >= MaxLinhasView) {
+        return anterior;
+      }
+
+      const novaCor = gerarCorAleatoria(anterior.map((item) => item.cor));
+
+      return [
+        ...anterior,
         {
           nome: linha.nome,
           modal: linha.modal,
           cor: novaCor,
           ativa: true,
         },
-      ]);
+      ];
+    });
 
-      // Centralizar no itinerário da linha selecionada
-      const itinerario =
-        mockItinerarios[linha.nome as keyof typeof mockItinerarios];
-      if (
-        itinerario &&
-        itinerario.length > 0 &&
-        mapRef.current?.fitToCoordinates
-      ) {
+    const modal = normalizarModalApi(linha.modal);
+    if (modal) {
+      const itinerario = await garantirItinerarioLinha(linha.nome, modal);
+      const primeiroSegmento = itinerario?.segmentos?.[0] ?? [];
+
+      if (primeiroSegmento.length > 1 && mapRef.current?.fitToCoordinates) {
+        const coordenadas = primeiroSegmento.map(([latitude, longitude]) => ({
+          latitude,
+          longitude,
+        }));
+
         setTimeout(() => {
-          const coordenadas = itinerario.map(
-            (p: { lat: number; lng: number }) => ({
-              latitude: p.lat,
-              longitude: p.lng,
-            }),
-          );
           mapRef.current?.fitToCoordinates(coordenadas);
-        }, 500);
+        }, 350);
       }
     }
 
-    // Limpar busca após selecionar
     setBusca("");
   };
 
-  // Funções de manipulação das linhas selecionadas
   const removerLinha = (nome: string) => {
-    setLinhasSelecionadas(linhasSelecionadas.filter((l) => l.nome !== nome));
-    // Se a linha removida era a linha selecionada atual, limpar
-    if (linhaSelecionada?.nome === nome) {
-      setLinhaSelecionada(null);
-      setBusca("");
-    }
+    setLinhasSelecionadas((anterior) =>
+      anterior.filter((linha) => linha.nome !== nome),
+    );
   };
 
   const toggleAtiva = (nome: string) => {
-    setLinhasSelecionadas(
-      linhasSelecionadas.map((l) =>
-        l.nome === nome ? { ...l, ativa: !l.ativa } : l,
+    setLinhasSelecionadas((anterior) =>
+      anterior.map((linha) =>
+        linha.nome === nome ? { ...linha, ativa: !linha.ativa } : linha,
       ),
     );
   };
 
-  const dadosParaMapa = linhasSelecionadas
-    .filter((l) => l.ativa)
-    .map((linha) => ({
-      nome: linha.nome,
-      cor: linha.cor,
-      coordenadas:
-        mockItinerarios[linha.nome as keyof typeof mockItinerarios]?.map(
-          (p: { lat: number; lng: number }) => [p.lat, p.lng],
-        ) || [],
-      posicoes: mockPosicoes.filter((p) => p.linha === linha.nome),
-    }));
+  const dadosParaMapa = useMemo(
+    () =>
+      linhasSelecionadas
+        .filter((linha) => linha.ativa)
+        .map((linha) => {
+          const modal = normalizarModalApi(linha.modal);
+          if (!modal) {
+            return null;
+          }
+
+          const chave = chaveLinhaModal(linha.nome, modal);
+          const itinerario = itinerariosPorLinha[chave];
+          const segmentos = itinerario?.segmentos ?? [];
+          const sentidoNomeLinha = getSentidoLinha(linha.nome, modal);
+
+          return {
+            nome: linha.nome,
+            cor: linha.cor,
+            modal,
+            segmentos,
+            coordenadas: segmentos[0] ?? [],
+            posicoes: getVeiculosLinha(linha.nome, modal).map((veiculo) => ({
+              id: veiculo.id,
+              latitude: veiculo.latitude,
+              longitude: veiculo.longitude,
+              direcao: veiculo.direcao,
+              velocidade: veiculo.velocidade,
+              sentido: veiculo.sentido,
+              sentidoNome: sentidoNomeLinha,
+              trajeto: veiculo.trajeto,
+              timestamp: veiculo.timestamp,
+            })),
+          };
+        })
+        .filter((linha): linha is NonNullable<typeof linha> => Boolean(linha)),
+    [
+      linhasSelecionadas,
+      itinerariosPorLinha,
+      getVeiculosLinha,
+      getSentidoLinha,
+    ],
+  );
+
+  const dadosBuscaComDestino = useMemo(
+    () =>
+      data.map((linha) => ({
+        ...linha,
+        sentido: getSentidoLinha(linha.nome, linha.modal),
+      })),
+    [data, getSentidoLinha],
+  );
 
   useEffect(() => {
-    // carrega linhas salvas do storage ao iniciar
     const carregar = async () => {
       const linhas = await carregarLinhasSalvas();
-      if (linhas.length > 0) {
+      if (Array.isArray(linhas) && linhas.length > 0) {
         setLinhasSelecionadas(linhas);
       }
     };
-    carregar();
+    void carregar();
   }, []);
 
   useEffect(() => {
-    // salva linhas no storage
-    if (linhasSelecionadas.length > 0) salvarLinhas(linhasSelecionadas);
+    void salvarLinhas(linhasSelecionadas);
   }, [linhasSelecionadas]);
+
+  useEffect(() => {
+    if (!busca.trim()) {
+      setData([]);
+      return;
+    }
+
+    buscarLinhas(busca);
+  }, [linhasDisponiveis, onibus, brt, trem, metro, busca, buscarLinhas]);
+
+  useEffect(() => {
+    linhasSelecionadas.forEach((linha) => {
+      const modal = normalizarModalApi(linha.modal);
+      if (!modal) {
+        return;
+      }
+
+      void garantirItinerarioLinha(linha.nome, modal);
+    });
+  }, [linhasSelecionadas, garantirItinerarioLinha]);
 
   return (
     <View
@@ -239,7 +328,7 @@ const Home = () => {
 
       {buscaAtiva && (
         <ResultadoBusca
-          data={data}
+          data={dadosBuscaComDestino}
           listaSelecionada={listaSelecionada}
           className="absolute top-[8rem] !w-3/4 right-[5rem] shadow-lg rounded-2xl z-20"
           maxHeight={400}

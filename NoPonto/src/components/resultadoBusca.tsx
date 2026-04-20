@@ -2,18 +2,22 @@ import { Pressable, ScrollView, Text } from "react-native";
 import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
 import { useTema } from "@/src/hooks/useTema";
 
-interface Props {
-  data: { id: number; nome: string; sentido: string }[];
-  listaSelecionada: (item: {
-    id: number;
-    nome: string;
-    sentido: string;
-  }) => void;
+interface ItemResultadoBusca {
+  id: number | string;
+  nome: string;
+  sentido: string;
+}
+
+interface Props<T extends ItemResultadoBusca> {
+  data: T[];
+  listaSelecionada: (item: T) => void;
   className?: string;
   maxHeight?: number;
 }
 
-export default function ResultadoBusca(props: Props) {
+export default function ResultadoBusca<T extends ItemResultadoBusca>(
+  props: Props<T>,
+) {
   const { cores } = useTema();
   const maxHeight = props.maxHeight || 400;
   const itemHeight = 72; // altura aproximada de cada item (p-4 + texto)

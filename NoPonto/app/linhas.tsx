@@ -1,5 +1,6 @@
 import InputBusca from "@/src/components/inputBusca";
 import { useTema } from "@/src/hooks/useTema";
+import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
 import Chegada from "@/src/components/linhasComponents/chegada";
 import PontosInteresses from "@/src/components/linhasComponents/pontosInteresses";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
@@ -7,10 +8,14 @@ import Tarifas from "@/src/components/linhasComponents/tarifas";
 import MapaOSM from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
-import { mockItinerarios } from "@/src/mocks/itinerariosMocks";
-import { mockLinhas } from "@/src/mocks/linhasMocks";
 import { pontosPorLinha } from "@/src/mocks/pontosInteresseMock";
-import { mockPosicoes } from "@/src/mocks/posicaoMocks";
+import { chaveLinhaModal } from "@/src/services/mobilidadeRio";
+import {
+  ItinerarioLinha,
+  LinhaTempoReal,
+  ModalApiTransporte,
+  VeiculoTempoReal,
+} from "@/src/types/transporte";
 import {
   getCurrentPositionAsync,
   LocationAccuracy,
@@ -26,7 +31,13 @@ import {
   Train,
   TrainFrontTunnel,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Dimensions,
   FlatList,
@@ -44,8 +55,189 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
+function normalizarModalApi(
+  modalSelecionado: string | null | undefined,
+): ModalApiTransporte | null {
+  if (!modalSelecionado) {
+    return null;
+  }
+
+  const valor = modalSelecionado.trim().toLowerCase();
+
+  if (valor === "onibus") {
+    return "onibus";
+  }
+
+  if (valor === "brt") {
+    return "brt";
+  }
+
+  return null;
+}
+
+type SentidoLinha = "ida" | "volta";
+
+function normalizarSentidoSelecionado(
+  valor: string | null,
+): SentidoLinha | null {
+  if (!valor) {
+    return null;
+  }
+
+  const normalizado = valor.trim().toLowerCase();
+
+  if (normalizado.startsWith("ida")) {
+    return "ida";
+  }
+
+  if (normalizado.startsWith("volta")) {
+    return "volta";
+  }
+
+  return null;
+}
+
+function normalizarSentidoVeiculo(
+  sentido: string | undefined,
+): SentidoLinha | null {
+  if (!sentido) {
+    return null;
+  }
+
+  const normalizado = sentido.trim().toLowerCase();
+
+  if (normalizado.startsWith("ida")) {
+    return "ida";
+  }
+
+  if (normalizado.startsWith("volta")) {
+    return "volta";
+  }
+
+  return null;
+}
+
+function nomeSentidoPorTipo(
+  itinerario: ItinerarioLinha | null,
+  tipoSentido: SentidoLinha | null,
+): string | null {
+  if (!tipoSentido) {
+    return null;
+  }
+
+  if (tipoSentido === "ida") {
+    return itinerario?.destinoIda?.trim() || "Ida";
+  }
+
+  return itinerario?.destinoVolta?.trim() || "Volta";
+}
+
+function distanciaQuadradaPontoParaSegmento(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const modulo2 = abx * abx + aby * aby;
+
+  const t =
+    modulo2 === 0
+      ? 0
+      : Math.max(0, Math.min(1, (apx * abx + apy * aby) / modulo2));
+
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  const dx = px - cx;
+  const dy = py - cy;
+
+  return dx * dx + dy * dy;
+}
+
+function menorDistanciaQuadradaTrajeto(
+  latitude: number,
+  longitude: number,
+  trajeto: [number, number][] | undefined,
+): number {
+  if (!trajeto || trajeto.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  let menorDistancia = Number.POSITIVE_INFINITY;
+
+  for (let indice = 0; indice < trajeto.length - 1; indice += 1) {
+    const [latA, lngA] = trajeto[indice];
+    const [latB, lngB] = trajeto[indice + 1];
+
+    const distancia = distanciaQuadradaPontoParaSegmento(
+      latitude,
+      longitude,
+      latA,
+      lngA,
+      latB,
+      lngB,
+    );
+
+    if (distancia < menorDistancia) {
+      menorDistancia = distancia;
+    }
+  }
+
+  return menorDistancia;
+}
+
+function estimarSentidoPorItinerario(
+  veiculo: VeiculoTempoReal,
+  itinerario: ItinerarioLinha | null,
+): SentidoLinha | null {
+  if (!itinerario) {
+    return null;
+  }
+
+  const distanciaIda = menorDistanciaQuadradaTrajeto(
+    veiculo.latitude,
+    veiculo.longitude,
+    itinerario.ida,
+  );
+
+  const distanciaVolta = menorDistanciaQuadradaTrajeto(
+    veiculo.latitude,
+    veiculo.longitude,
+    itinerario.volta,
+  );
+
+  const idaValida = Number.isFinite(distanciaIda);
+  const voltaValida = Number.isFinite(distanciaVolta);
+
+  if (idaValida && !voltaValida) {
+    return "ida";
+  }
+
+  if (voltaValida && !idaValida) {
+    return "volta";
+  }
+
+  if (!idaValida && !voltaValida) {
+    return null;
+  }
+
+  return distanciaIda <= distanciaVolta ? "ida" : "volta";
+}
+
 const Linhas = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
+  const {
+    linhasDisponiveis,
+    itinerariosPorLinha,
+    garantirItinerarioLinha,
+    getVeiculosLinha,
+    getSentidoLinha,
+  } = useMobilidadeRio();
   const [location, setLocation] = useState<LocationObject | null>(null);
 
   async function requestLocationPermissions() {
@@ -106,37 +298,53 @@ const Linhas = () => {
   }, [modal]);
 
   const [busca, setBusca] = useState("");
-  const [data, setData] = useState(mockLinhas);
-  const [linhaSelecionada, setLinhaSelecionada] = useState<any>(null);
+  const [data, setData] = useState<LinhaTempoReal[]>([]);
+  const [linhaSelecionada, setLinhaSelecionada] =
+    useState<LinhaTempoReal | null>(null);
   const [sentidoSelecionado, setSentidoSelecionado] = useState<string | null>(
     null,
   );
 
-  const buscarLinhas = (text: string) => {
-    setBusca(text);
+  const buscarLinhas = useCallback(
+    (text: string) => {
+      setBusca(text);
 
-    const modalFormatado = modal?.toLowerCase();
+      const modalAtual = normalizarModalApi(modal);
+      if (!modalAtual) {
+        setData([]);
+        return;
+      }
 
-    // Se tiver 1 ou menos caracteres, usa startsWith, senão usa includes
-    const usarStartsWith = text.length <= 1;
+      const termo = text.trim().toLowerCase();
+      const usarStartsWith = termo.length <= 1;
 
-    const filtrar = mockLinhas.filter((linha) => {
-      const modalMatch = linha.modal.toLowerCase() === modalFormatado;
-      const nomeMatch = usarStartsWith
-        ? linha.nome.toLowerCase().startsWith(text.toLowerCase())
-        : linha.nome.toLowerCase().includes(text.toLowerCase());
+      const filtrar = linhasDisponiveis.filter((linha) => {
+        const modalMatch = linha.modal === modalAtual;
+        const nomeMatch = usarStartsWith
+          ? linha.nome.toLowerCase().startsWith(termo)
+          : linha.nome.toLowerCase().includes(termo);
 
-      return nomeMatch && modalMatch;
-    });
+        return nomeMatch && modalMatch;
+      });
 
-    setData(filtrar);
-  };
+      setData(filtrar);
 
-  const listaSelecionada = (linha: any) => {
+      filtrar.slice(0, 10).forEach((linha) => {
+        void garantirItinerarioLinha(linha.nome, linha.modal);
+      });
+    },
+    [linhasDisponiveis, modal, garantirItinerarioLinha],
+  );
+
+  const listaSelecionada = (linha: LinhaTempoReal) => {
     // esconde a lista e pega o nome se clicar em um item da lista
     setBusca(linha.nome);
     setData([]);
     setLinhaSelecionada(linha);
+    setSentidoSelecionado(null);
+
+    void garantirItinerarioLinha(linha.nome, linha.modal);
+
     Keyboard.dismiss(); // esconde o teclado dps de selecionar uma linha
   };
 
@@ -147,12 +355,6 @@ const Linhas = () => {
     setLinhaSelecionada(null);
     setSentidoSelecionado(null);
   }, [modal]);
-
-  const sentido = () => {
-    if (!linhaSelecionada) return [];
-
-    return linhaSelecionada.sentido.split("↔").map((s: string) => s.trim());
-  };
 
   const buscaAtiva = busca !== "" && data.length > 0;
 
@@ -246,37 +448,165 @@ const Linhas = () => {
     };
   });
 
-  const itinerarioLinha = linhaSelecionada
-    ? mockItinerarios[linhaSelecionada.nome as keyof typeof mockItinerarios]
+  const modalLinhaSelecionada = linhaSelecionada
+    ? normalizarModalApi(linhaSelecionada.modal)
     : null;
+
+  const chaveItinerario =
+    linhaSelecionada && modalLinhaSelecionada
+      ? chaveLinhaModal(linhaSelecionada.nome, modalLinhaSelecionada)
+      : null;
+
+  const itinerarioLinha = chaveItinerario
+    ? itinerariosPorLinha[chaveItinerario]
+    : null;
+
+  const opcoesSentido = useMemo<string[]>(() => {
+    if (!itinerarioLinha) {
+      if (!linhaSelecionada) {
+        return [];
+      }
+
+      return linhaSelecionada.sentido
+        .split("↔")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    const opcoes: string[] = [];
+
+    if (itinerarioLinha.ida?.length) {
+      const destinoIda = itinerarioLinha.destinoIda?.trim();
+      opcoes.push(destinoIda ? `Ida - ${destinoIda}` : "Ida");
+    }
+
+    if (itinerarioLinha.volta?.length) {
+      const destinoVolta = itinerarioLinha.destinoVolta?.trim();
+      opcoes.push(destinoVolta ? `Volta - ${destinoVolta}` : "Volta");
+    }
+
+    if (opcoes.length > 0) {
+      return opcoes;
+    }
+
+    return (
+      linhaSelecionada?.sentido
+        .split("↔")
+        .map((item) => item.trim())
+        .filter(Boolean) ?? []
+    );
+  }, [itinerarioLinha, linhaSelecionada]);
+
+  const segmentosTrajeto = useMemo(() => {
+    if (!itinerarioLinha) {
+      return [] as [number, number][][];
+    }
+
+    const sentidoNormalizado = sentidoSelecionado?.trim().toLowerCase();
+
+    if (sentidoNormalizado?.startsWith("ida") && itinerarioLinha.ida) {
+      return [itinerarioLinha.ida];
+    }
+
+    if (sentidoNormalizado?.startsWith("volta") && itinerarioLinha.volta) {
+      return [itinerarioLinha.volta];
+    }
+
+    return itinerarioLinha.segmentos;
+  }, [itinerarioLinha, sentidoSelecionado]);
 
   const coordenadasTrajeto = useMemo(
     () =>
-      itinerarioLinha
-        ? itinerarioLinha.map((ponto) => ({
-            latitude: ponto.lat,
-            longitude: ponto.lng,
-          }))
-        : [],
-    [itinerarioLinha],
+      (segmentosTrajeto[0] ?? []).map(([latitude, longitude]) => ({
+        latitude,
+        longitude,
+      })),
+    [segmentosTrajeto],
   );
+
+  const tipoSentidoSelecionado = useMemo(
+    () => normalizarSentidoSelecionado(sentidoSelecionado),
+    [sentidoSelecionado],
+  );
+
+  const nomeSentidoSelecionado = useMemo(() => {
+    const nome = nomeSentidoPorTipo(itinerarioLinha, tipoSentidoSelecionado);
+    if (nome) {
+      return nome;
+    }
+
+    if (!sentidoSelecionado) {
+      return null;
+    }
+
+    const partes = sentidoSelecionado.split("-");
+    if (partes.length > 1) {
+      return partes.slice(1).join("-").trim();
+    }
+
+    return sentidoSelecionado;
+  }, [itinerarioLinha, tipoSentidoSelecionado, sentidoSelecionado]);
+
+  const veiculosPorSentido = useMemo(() => {
+    if (
+      !linhaSelecionada ||
+      !modalLinhaSelecionada ||
+      !tipoSentidoSelecionado
+    ) {
+      return [] as VeiculoTempoReal[];
+    }
+
+    return getVeiculosLinha(
+      linhaSelecionada.nome,
+      modalLinhaSelecionada,
+    ).filter((veiculo) => {
+      const sentidoApi = normalizarSentidoVeiculo(veiculo.sentido);
+      if (sentidoApi) {
+        return sentidoApi === tipoSentidoSelecionado;
+      }
+
+      const sentidoEstimado = estimarSentidoPorItinerario(
+        veiculo,
+        itinerarioLinha,
+      );
+
+      return sentidoEstimado === tipoSentidoSelecionado;
+    });
+  }, [
+    linhaSelecionada,
+    modalLinhaSelecionada,
+    tipoSentidoSelecionado,
+    getVeiculosLinha,
+    itinerarioLinha,
+  ]);
 
   // Dados formatados para o MapaOSM
   const dadosParaMapa =
-    linhaSelecionada && sentidoSelecionado
+    linhaSelecionada && modalLinhaSelecionada && sentidoSelecionado
       ? [
           {
             nome: linhaSelecionada.nome,
             cor: "#2563eb",
-            modal: linhaSelecionada.modal,
-            coordenadas:
-              itinerarioLinha?.map((p: { lat: number; lng: number }) => [
-                p.lat,
-                p.lng,
-              ]) || [],
-            posicoes: mockPosicoes.filter(
-              (p) => p.linha === linhaSelecionada.nome,
-            ),
+            modal: modalLinhaSelecionada,
+            segmentos: segmentosTrajeto,
+            coordenadas: segmentosTrajeto[0] ?? [],
+            posicoes: veiculosPorSentido.map((veiculo) => ({
+              id: veiculo.id,
+              latitude: veiculo.latitude,
+              longitude: veiculo.longitude,
+              direcao: veiculo.direcao,
+              velocidade: veiculo.velocidade,
+              sentido: veiculo.sentido,
+              sentidoNome:
+                nomeSentidoSelecionado ??
+                nomeSentidoPorTipo(
+                  itinerarioLinha,
+                  normalizarSentidoVeiculo(veiculo.sentido),
+                ) ??
+                undefined,
+              trajeto: veiculo.trajeto,
+              timestamp: veiculo.timestamp,
+            })),
           },
         ]
       : [];
@@ -285,9 +615,30 @@ const Linhas = () => {
 
   // Centralizar no itinerário quando linha e sentido forem selecionados
   useEffect(() => {
+    if (!linhaSelecionada) {
+      return;
+    }
+
+    const modalApi = normalizarModalApi(linhaSelecionada.modal);
+    if (!modalApi) {
+      return;
+    }
+
+    void garantirItinerarioLinha(linhaSelecionada.nome, modalApi);
+  }, [linhaSelecionada, garantirItinerarioLinha]);
+
+  useEffect(() => {
+    if (!busca.trim()) {
+      setData([]);
+      return;
+    }
+
+    buscarLinhas(busca);
+  }, [linhasDisponiveis, modal, busca, buscarLinhas]);
+
+  useEffect(() => {
     if (
       linhaSelecionada &&
-      sentidoSelecionado &&
       coordenadasTrajeto.length > 0 &&
       mapRef.current?.fitToCoordinates
     ) {
@@ -295,7 +646,28 @@ const Linhas = () => {
         mapRef.current.fitToCoordinates(coordenadasTrajeto);
       }, 500);
     }
-  }, [linhaSelecionada, sentidoSelecionado, coordenadasTrajeto]);
+  }, [linhaSelecionada, coordenadasTrajeto]);
+
+  useEffect(() => {
+    if (!linhaSelecionada || opcoesSentido.length === 0) {
+      return;
+    }
+
+    if (sentidoSelecionado && opcoesSentido.includes(sentidoSelecionado)) {
+      return;
+    }
+
+    setSentidoSelecionado(opcoesSentido[0]);
+  }, [linhaSelecionada, opcoesSentido, sentidoSelecionado]);
+
+  const dadosBuscaComDestino = useMemo(
+    () =>
+      data.map((linha) => ({
+        ...linha,
+        sentido: getSentidoLinha(linha.nome, linha.modal),
+      })),
+    [data, getSentidoLinha],
+  );
 
   return (
     <View className="flex-1" style={{ backgroundColor: cores.fundoApp }}>
@@ -378,7 +750,7 @@ const Linhas = () => {
 
                 {buscaAtiva && (
                   <ResultadoBusca
-                    data={data}
+                    data={dadosBuscaComDestino}
                     listaSelecionada={listaSelecionada}
                     className="rounded-2xl !w-[90%] self-center mb-5 shadow-lg"
                     maxHeight={150}
@@ -388,7 +760,7 @@ const Linhas = () => {
                 <Select
                   placeholder="Selecione o Sentido"
                   className="!w-[90%] self-center"
-                  options={sentido()}
+                  options={opcoesSentido}
                   value={sentidoSelecionado}
                   onChange={setSentidoSelecionado}
                 />
