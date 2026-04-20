@@ -10,13 +10,11 @@ import {
   TrainFrontTunnel,
   TriangleAlert,
 } from "lucide-react-native";
+import { useTema } from "@/src/hooks/useTema";
 import React from "react";
 import { Pressable, Text, TouchableWithoutFeedback, View } from "react-native";
 
-const colors = {
-  customYellow: "#FFC107",
-  customGray: "#F2F4F7",
-
+const colorsLight = {
   bus: "#1156EA",
   busBG: "#D7E2EF",
   brt: "#038B0F",
@@ -30,6 +28,22 @@ const colors = {
   transitoBG: "#DEDEDE",
   risco: "#EEB600",
   riscoBG: "#F1EAD4",
+};
+
+const colorsDark = {
+  bus: "#7AA2FF",
+  busBG: "#1D2F52",
+  brt: "#6BD991",
+  brtBG: "#153B28",
+  trem: "#FF8080",
+  tremBG: "#4A1F25",
+  metro: "#FFC270",
+  metroBG: "#4D3515",
+
+  transito: "#D5E2F5",
+  transitoBG: "#2A3441",
+  risco: "#FFD166",
+  riscoBG: "#4A3C18",
 };
 
 interface FiltroProps {
@@ -57,11 +71,17 @@ export default function Filtro({
   metro,
   setMetro,
 }: FiltroProps) {
+  const { cores, temaAtual } = useTema();
   const [risco, setRisco] = React.useState(false);
-
-  const tipoModais = ["Onibus", "BRT", "Trem", "Metro"];
+  const colors = temaAtual === "escuro" ? colorsDark : colorsLight;
 
   const [filtroaberto, setFiltroAberto] = React.useState(false);
+
+  const estiloToggle = (ativo: boolean) => ({
+    borderColor: ativo ? cores.fundoPrimario : cores.borda,
+    borderWidth: ativo ? 1 : 2,
+    backgroundColor: ativo ? cores.fundoPrimario : "transparent",
+  });
 
   function abrirFiltros() {
     setFiltroAberto(!filtroaberto);
@@ -103,10 +123,10 @@ export default function Filtro({
           abrirFiltros();
         }}
         className="absolute right-[12px] top-[55px] p-[10px] rounded-full zindex-10"
-        style={{ backgroundColor: "black" }}
+        style={{ backgroundColor: cores.fundoNav }}
       >
         <SlidersHorizontal
-          color={filtroaberto ? colors.customYellow : colors.customGray}
+          color={filtroaberto ? cores.iconePrimario : cores.iconeSecundario}
           size={26}
         />
       </Pressable>
@@ -115,13 +135,26 @@ export default function Filtro({
       {filtroaberto && (
         <Pressable
           className="absolute w-full h-full zindex-5"
+          style={{ backgroundColor: cores.overlay }}
           onPress={() => setFiltroAberto(false)} // fecha ao clicar fora
         >
           {/*container filtro*/}
           {filtroaberto && (
             <TouchableWithoutFeedback onPress={() => setFiltroAberto(true)}>
-              <View className="absolute right-5 top-[120px] bg-customGray p-5 h-[410px] w-[250px] rounded-xl shadow-lg">
-                <Text className="ml-4 mt-0 text-lg font-bold">Transportes</Text>
+              <View
+                className="absolute right-5 top-[120px] p-5 h-[410px] w-[250px] rounded-xl shadow-lg"
+                style={{
+                  backgroundColor: cores.fundoPainel,
+                  borderColor: cores.borda,
+                  borderWidth: 1,
+                }}
+              >
+                <Text
+                  className="ml-4 mt-0 text-lg font-bold"
+                  style={{ color: cores.textoPrimario }}
+                >
+                  Transportes
+                </Text>
 
                 {/*opcoes de transporte*/}
                 <View className=" mt-3">
@@ -137,13 +170,17 @@ export default function Filtro({
                       <BusFront color={colors.bus} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">Ônibus</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      Ônibus
+                    </Text>
 
                     <Pressable
                       onPress={() => clickOnibus()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${onibus ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${onibus ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(onibus)}
                     >
                       {onibus && (
                         <Check color="white" size={13} strokeWidth={6} />
@@ -163,13 +200,17 @@ export default function Filtro({
                       <Bus color={colors.brt} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">BRT</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      BRT
+                    </Text>
 
                     <Pressable
                       onPress={() => clickBrt()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${brt ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${brt ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(brt)}
                     >
                       {brt && <Check color="white" size={13} strokeWidth={6} />}
                     </Pressable>
@@ -187,13 +228,17 @@ export default function Filtro({
                       <Train color={colors.trem} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">Trem</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      Trem
+                    </Text>
 
                     <Pressable
                       onPress={() => clickTrem()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${trem ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${trem ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(trem)}
                     >
                       {trem && (
                         <Check color="white" size={13} strokeWidth={6} />
@@ -213,13 +258,17 @@ export default function Filtro({
                       <TrainFrontTunnel color={colors.metro} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">Metrô</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      Metrô
+                    </Text>
 
                     <Pressable
                       onPress={() => clickMetro()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${metro ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${metro ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(metro)}
                     >
                       {metro && (
                         <Check color="white" size={13} strokeWidth={6} />
@@ -228,12 +277,15 @@ export default function Filtro({
                   </View>
                 </View>
 
-                <Text className="text-customDivider font-bold">
-                  {" "}
-                  ______________________________
-                </Text>
+                <View
+                  className="h-[1px] my-2"
+                  style={{ backgroundColor: cores.borda }}
+                />
 
-                <Text className="ml-4 mt-3 text-lg font-bold">
+                <Text
+                  className="ml-4 mt-3 text-lg font-bold"
+                  style={{ color: cores.textoPrimario }}
+                >
                   Informações no mapa
                 </Text>
 
@@ -251,13 +303,17 @@ export default function Filtro({
                       <Car color={colors.transito} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">Trânsito</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      Trânsito
+                    </Text>
 
                     <Pressable
                       onPress={() => clickTransito()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${transito ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${transito ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(transito)}
                     >
                       {transito && (
                         <Check color="white" size={13} strokeWidth={6} />
@@ -277,13 +333,17 @@ export default function Filtro({
                       <TriangleAlert color={colors.risco} size={20} />
                     </View>
 
-                    <Text className="ml-4 text-md">Áreas de Risco</Text>
+                    <Text
+                      className="ml-4 text-md"
+                      style={{ color: cores.textoPrimario }}
+                    >
+                      Áreas de Risco
+                    </Text>
 
                     <Pressable
                       onPress={() => clickRisco()}
-                      className={`ml-auto p-1 h-6 w-6 rounded-md
-                                                ${risco ? "border border-customYellow" : "border-2 border-gray-400"} 
-                                                ${risco ? "bg-customYellow" : "bg-transparent"}`}
+                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      style={estiloToggle(risco)}
                     >
                       {risco && (
                         <Check color="white" size={13} strokeWidth={6} />

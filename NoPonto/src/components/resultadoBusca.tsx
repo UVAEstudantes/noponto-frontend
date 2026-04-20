@@ -1,18 +1,24 @@
 import { Pressable, ScrollView, Text } from "react-native";
 import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
+import { useTema } from "@/src/hooks/useTema";
 
-interface Props {
-  data: Array<{ id: number; nome: string; sentido: string }>;
-  listaSelecionada: (item: {
-    id: number;
-    nome: string;
-    sentido: string;
-  }) => void;
+interface ItemResultadoBusca {
+  id: number | string;
+  nome: string;
+  sentido: string;
+}
+
+interface Props<T extends ItemResultadoBusca> {
+  data: T[];
+  listaSelecionada: (item: T) => void;
   className?: string;
   maxHeight?: number;
 }
 
-export default function ResultadoBusca(props: Props) {
+export default function ResultadoBusca<T extends ItemResultadoBusca>(
+  props: Props<T>,
+) {
+  const { cores } = useTema();
   const maxHeight = props.maxHeight || 400;
   const itemHeight = 72; // altura aproximada de cada item (p-4 + texto)
   const calculatedHeight = Math.min(props.data.length * itemHeight, maxHeight);
@@ -22,7 +28,12 @@ export default function ResultadoBusca(props: Props) {
       entering={FadeInUp.duration(400).springify()}
       layout={LinearTransition}
       className={props.className}
-      style={{ height: calculatedHeight }}
+      style={{
+        height: calculatedHeight,
+        backgroundColor: cores.fundoCard,
+        borderColor: cores.borda,
+        borderWidth: 1,
+      }}
     >
       <ScrollView
         nestedScrollEnabled={true}
@@ -33,10 +44,21 @@ export default function ResultadoBusca(props: Props) {
           <Pressable
             key={item.id}
             onPress={() => props.listaSelecionada(item)}
-            className="p-4 border-b border-gray-100 active:bg-gray-200"
+            className="p-4"
+            style={{
+              borderBottomColor: cores.bordaSuave,
+              borderBottomWidth: 1,
+            }}
           >
-            <Text className="text-lg font-semibold">{item.nome}</Text>
-            <Text className="text-gray-500 text-sm">{item.sentido}</Text>
+            <Text
+              className="text-lg font-semibold"
+              style={{ color: cores.textoPrimario }}
+            >
+              {item.nome}
+            </Text>
+            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
+              {item.sentido}
+            </Text>
           </Pressable>
         ))}
       </ScrollView>

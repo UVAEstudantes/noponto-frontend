@@ -3,12 +3,12 @@ import {
   CircleDollarSign,
   CreditCardIcon,
 } from "lucide-react-native";
+import { useTema } from "@/src/hooks/useTema";
 import { View, Text } from "react-native";
-import { Float } from "react-native/Libraries/Types/CodegenTypes";
 
 interface Props {
   valor?: number;
-  modal?: String;
+  modal?: string;
 }
 
 function rioCard() {
@@ -53,38 +53,56 @@ const formasDePagamento = {
 };
 
 export default function Tarifas(props: Props) {
+  const { cores } = useTema();
+
   const pagamentos =
     formasDePagamento[props.modal as keyof typeof formasDePagamento];
 
   return (
-    <View className="m-5 mt-0 bg-white rounded-2xl h-[95px] shadow-md">
+    <View
+      className="m-5 mt-0 rounded-2xl h-[95px] shadow-md"
+      style={{
+        backgroundColor: cores.fundoCard,
+        borderColor: cores.borda,
+        borderWidth: 1,
+      }}
+    >
       {/* header */}
       <View className=" p-4 rounded-t-2xl">
         <Banknote
-          color="#8E8E93"
+          color={cores.iconeSecundario}
           style={{
             position: "absolute",
             width: 20,
             height: 20,
-            borderColor: "#ffffff",
+            borderColor: cores.borda,
             marginLeft: 18,
             marginTop: 12,
           }}
         />
 
         <View>
-          <Text className="color-customBlack font-semibold px-[40px]">
+          <Text
+            className="font-semibold px-[40px]"
+            style={{ color: cores.textoPrimario }}
+          >
             Tarifa
           </Text>
-          <Text className="absolute right-0 color-customBlack font-semibold px-[10px]">
+          <Text
+            className="absolute right-0 font-semibold px-[10px]"
+            style={{ color: cores.textoPrimario }}
+          >
             R$ {props.valor?.toFixed(2).replace(".", ",")}
           </Text>
         </View>
       </View>
 
       {/* formas de pagamento */}
-      <View className=" p-4 pl-1 rounded-t-2xl border-t border-gray-200 flex-row ">
-        {pagamentos.map((FormaDePagamento, index) => (
+      <View
+        className=" p-4 pl-1 rounded-t-2xl border-t flex-row "
+        style={{ borderColor: cores.borda }}
+      >
+        {pagamentos?.map((FormaDePagamento, index) => (
           <FormaDePagamento key={index} />
         ))}
       </View>

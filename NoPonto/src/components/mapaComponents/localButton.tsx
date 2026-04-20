@@ -1,4 +1,5 @@
 import { LocateFixed } from "lucide-react-native";
+import { useTema } from "@/src/hooks/useTema";
 import React from "react";
 import { Pressable } from "react-native";
 
@@ -9,6 +10,8 @@ export default function LocalButton({
   location: any;
   mapRef: React.RefObject<any>;
 }) {
+  const { cores } = useTema();
+
   function locationUser() {
     if (mapRef.current) {
       // Para o mapa OSM, usa a função centerOnUser exposta via ref
@@ -24,7 +27,7 @@ export default function LocalButton({
             latitudeDelta: 0.005,
             longitudeDelta: 0.005,
           },
-          1000
+          1000,
         );
       }
     }
@@ -34,8 +37,9 @@ export default function LocalButton({
     <Pressable
       onPress={locationUser}
       className=" absolute right-10 bottom-[190px] bg-customBlack p-3 rounded-full"
+      style={{ backgroundColor: cores.fundoNav }}
     >
-      <LocateFixed color="#FFC107" size={24} />
+      <LocateFixed color={cores.iconePrimario} size={24} />
     </Pressable>
   );
 }

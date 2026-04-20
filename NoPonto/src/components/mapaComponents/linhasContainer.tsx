@@ -8,6 +8,7 @@ import {
   TrainFront,
   X,
 } from "lucide-react-native";
+import { useTema } from "@/src/hooks/useTema";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
@@ -52,15 +53,15 @@ const clarearCor = (hex: string, percent: number = 80): string => {
   const num = parseInt(hex.replace("#", ""), 16);
   const r = Math.min(
     255,
-    ((num >> 16) & 0xff) + (255 - ((num >> 16) & 0xff)) * (percent / 100)
+    ((num >> 16) & 0xff) + (255 - ((num >> 16) & 0xff)) * (percent / 100),
   );
   const g = Math.min(
     255,
-    ((num >> 8) & 0xff) + (255 - ((num >> 8) & 0xff)) * (percent / 100)
+    ((num >> 8) & 0xff) + (255 - ((num >> 8) & 0xff)) * (percent / 100),
   );
   const b = Math.min(
     255,
-    (num & 0xff) + (255 - (num & 0xff)) * (percent / 100)
+    (num & 0xff) + (255 - (num & 0xff)) * (percent / 100),
   );
   return (
     "#" +
@@ -95,6 +96,7 @@ const LinhasContainer = ({
   aberto,
   aoToggleAberto,
 }: Props) => {
+  const { cores } = useTema();
   const larguraContainer = 250;
   const translateX = useSharedValue(-larguraContainer);
 
@@ -115,7 +117,7 @@ const LinhasContainer = ({
       damping: 35,
       stiffness: 120,
     });
-  }, [aberto]);
+  }, [aberto, translateX]);
 
   return (
     <>
@@ -125,11 +127,22 @@ const LinhasContainer = ({
         className="absolute top-[20%] left-0 z-[1]"
       >
         <Pressable onPress={aoToggleAberto}>
-          <View className="rounded-r-full bg-white w-[50px] h-[60px] shadow-lg items-center justify-center">
+          <View
+            className="rounded-r-full w-[50px] h-[60px] shadow-lg items-center justify-center"
+            style={{ backgroundColor: cores.fundoPainel }}
+          >
             {aberto ? (
-              <ChevronLeft color={"#FFC107"} size={30} strokeWidth={4} />
+              <ChevronLeft
+                color={cores.iconePrimario}
+                size={30}
+                strokeWidth={4}
+              />
             ) : (
-              <ChevronRight color={"#FFC107"} size={30} strokeWidth={4} />
+              <ChevronRight
+                color={cores.iconePrimario}
+                size={30}
+                strokeWidth={4}
+              />
             )}
           </View>
         </Pressable>
@@ -137,16 +150,27 @@ const LinhasContainer = ({
 
       {/* Container das linhas */}
       <Animated.View
-        style={[estiloAnimado, { width: larguraContainer }]}
-        className="absolute top-[20%] left-0 rounded-r-lg h-[60%] bg-white shadow-2xl z-10"
+        style={[
+          estiloAnimado,
+          {
+            width: larguraContainer,
+            backgroundColor: cores.fundoPainel,
+            borderColor: cores.borda,
+            borderWidth: 1,
+          },
+        ]}
+        className="absolute top-[20%] left-0 rounded-r-lg h-[60%] shadow-2xl z-10"
       >
         <View className="flex-1 p-4">
           {/* Header */}
           <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-lg font-bold text-gray-800">
+            <Text
+              className="text-lg font-bold"
+              style={{ color: cores.textoPrimario }}
+            >
               Linhas Selecionadas
             </Text>
-            <Text className="text-sm text-gray-500">
+            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
               {linhasSelecionadas.length}/{maxLinhasView}
             </Text>
           </View>
@@ -155,7 +179,10 @@ const LinhasContainer = ({
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
             {linhasSelecionadas.length === 0 ? (
               <View className="flex-1 items-center justify-center py-8">
-                <Text className="text-gray-400 text-center">
+                <Text
+                  className="text-center"
+                  style={{ color: cores.textoSecundario }}
+                >
                   Nenhuma linha selecionada{"\n"}
                   Busque e selecione linhas
                 </Text>
@@ -164,11 +191,13 @@ const LinhasContainer = ({
               linhasSelecionadas.map((linha) => (
                 <View
                   key={linha.nome}
-                  className={`mb-2 p-2 rounded-lg border flex-row items-center ${
-                    linha.ativa
-                      ? "border-gray-300 bg-white"
-                      : "border-gray-200 bg-gray-50"
-                  }`}
+                  className="mb-2 p-2 rounded-lg border flex-row items-center"
+                  style={{
+                    borderColor: linha.ativa ? cores.borda : cores.bordaSuave,
+                    backgroundColor: linha.ativa
+                      ? cores.fundoCard
+                      : cores.fundoSecundario,
+                  }}
                 >
                   {/* Ícone do modal com fundo colorido */}
                   <View
@@ -180,9 +209,12 @@ const LinhasContainer = ({
 
                   {/* Nome da linha */}
                   <Text
-                    className={`font-bold text-sm flex-1 ${
-                      linha.ativa ? "text-gray-800" : "text-gray-400"
-                    }`}
+                    className="font-bold text-sm flex-1"
+                    style={{
+                      color: linha.ativa
+                        ? cores.textoPrimario
+                        : cores.textoSecundario,
+                    }}
                   >
                     {linha.nome}
                   </Text>
@@ -192,21 +224,23 @@ const LinhasContainer = ({
                     {/* Ativar/Desativar */}
                     <Pressable
                       onPress={() => aoToggleAtiva(linha.nome)}
-                      className="p-1.5 rounded-lg bg-gray-100"
+                      className="p-1.5 rounded-lg"
+                      style={{ backgroundColor: cores.fundoSecundario }}
                     >
                       {linha.ativa ? (
-                        <Eye color="#666" size={16} />
+                        <Eye color={cores.iconeSecundario} size={16} />
                       ) : (
-                        <EyeOff color="#999" size={16} />
+                        <EyeOff color={cores.textoSecundario} size={16} />
                       )}
                     </Pressable>
 
                     {/* Remover */}
                     <Pressable
                       onPress={() => aoRemoverLinha(linha.nome)}
-                      className="p-1.5 rounded-lg bg-red-100"
+                      className="p-1.5 rounded-lg"
+                      style={{ backgroundColor: cores.fundoSecundario }}
                     >
-                      <X color="#ef4444" size={16} />
+                      <X color={cores.perigo} size={16} />
                     </Pressable>
                   </View>
                 </View>

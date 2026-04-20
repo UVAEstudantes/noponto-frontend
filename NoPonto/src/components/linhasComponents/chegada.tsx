@@ -1,5 +1,6 @@
 // container usado na tela de linhas para mostrar a chegada estimada e proxima viagem
 
+import { useTema } from "@/src/hooks/useTema";
 import { View, Text } from "react-native";
 import { BusFront, HistoryIcon, Hourglass } from "lucide-react-native";
 
@@ -8,27 +9,45 @@ interface Props {
 }
 
 export default function Chegada(props: Props) {
+  const { cores } = useTema();
+
   return (
-    <View className="m-5 mt-0 bg-white rounded-2xl h-[145px] shadow-md">
+    <View
+      className="m-5 mt-0 rounded-2xl h-[145px] shadow-md"
+      style={{
+        backgroundColor: cores.fundoCard,
+        borderColor: cores.borda,
+        borderWidth: 1,
+      }}
+    >
       {/* header */}
-      <View className=" p-4 bg-customBlack rounded-t-2xl">
+      <View
+        className=" p-4 rounded-t-2xl"
+        style={{ backgroundColor: cores.fundoNav }}
+      >
         <HistoryIcon
-          color="#FFC107"
+          color={cores.iconePrimario}
           style={{
             position: "absolute",
             width: 20,
             height: 20,
-            borderColor: "#ffffff",
+            borderColor: cores.borda,
             marginLeft: 18,
             marginTop: 12,
           }}
         />
 
         <View>
-          <Text className="color-white font-semibold px-[40px]">
+          <Text
+            className="font-semibold px-[40px]"
+            style={{ color: cores.textoInverso }}
+          >
             Chegada Estimada
           </Text>
-          <Text className="absolute right-0 color-customYellow px-[10px]">
+          <Text
+            className="absolute right-0 px-[10px]"
+            style={{ color: cores.textoDestaque }}
+          >
             Apróx. 5 minutos
           </Text>
         </View>
@@ -37,46 +56,61 @@ export default function Chegada(props: Props) {
       {/* proxima viagem */}
       <View className=" p-4 rounded-t-2xl ">
         <BusFront
-          color="#8E8E93"
+          color={cores.iconeSecundario}
           style={{
             position: "absolute",
             width: 20,
             height: 20,
-            borderColor: "#ffffff",
+            borderColor: cores.borda,
             marginLeft: 18,
             marginTop: 12,
           }}
         />
 
         <View>
-          <Text className="color-customBlack font-semibold px-[40px]">
+          <Text
+            className="font-semibold px-[40px]"
+            style={{ color: cores.textoPrimario }}
+          >
             Próxima Viagem
           </Text>
-          <Text className="absolute right-0 color-customBlack font-semibold px-[10px]">
+          <Text
+            className="absolute right-0 font-semibold px-[10px]"
+            style={{ color: cores.textoPrimario }}
+          >
             14:30
           </Text>
         </View>
       </View>
 
       {/* intervalo */}
-      <View className=" p-4 rounded-t-2xl border-t border-gray-200">
+      <View
+        className=" p-4 rounded-t-2xl border-t"
+        style={{ borderColor: cores.borda }}
+      >
         <Hourglass
-          color="#8E8E93"
+          color={cores.iconeSecundario}
           style={{
             position: "absolute",
             width: 20,
             height: 20,
-            borderColor: "#ffffff",
+            borderColor: cores.borda,
             marginLeft: 18,
             marginTop: 12,
           }}
         />
 
         <View>
-          <Text className="color-customBlack font-semibold px-[40px]">
+          <Text
+            className="font-semibold px-[40px]"
+            style={{ color: cores.textoPrimario }}
+          >
             Intervalo
           </Text>
-          <Text className="absolute right-0 color-customBlack font-semibold px-[10px]">
+          <Text
+            className="absolute right-0 font-semibold px-[10px]"
+            style={{ color: cores.textoPrimario }}
+          >
             {props.intervalo}
           </Text>
         </View>
