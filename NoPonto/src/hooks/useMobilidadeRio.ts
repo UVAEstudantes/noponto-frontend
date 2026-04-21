@@ -5,6 +5,7 @@ import {
   chaveLinhaModal,
   construirLinhasDisponiveis,
 } from "@/src/services/mobilidadeRio";
+
 import {
   ItinerarioLinha,
   LinhaTempoReal,
@@ -12,9 +13,16 @@ import {
   VeiculoTempoReal,
 } from "@/src/types/transporte";
 
-const INTERVALO_ATUALIZACAO_MS = 20_000;
+import {
+  iniciarGpsHub,
+  conectarGpsHub,
+} from "@/src/services/gpsHub";
 
-function formatarSentidoDestinos(itinerario: ItinerarioLinha | null | undefined) {
+const INTERVALO_ATUALIZACAO_MS = 60_000;
+
+function formatarSentidoDestinos(
+  itinerario: ItinerarioLinha | null | undefined,
+) {
   const destinoIda = itinerario?.destinoIda?.trim() ?? "";
   const destinoVolta = itinerario?.destinoVolta?.trim() ?? "";
 
@@ -26,34 +34,36 @@ function formatarSentidoDestinos(itinerario: ItinerarioLinha | null | undefined)
     return `${destinoIda} ↔ ${destinoVolta}`;
   }
 
-  if (destinoIda) {
-    return destinoIda;
-  }
-
-  if (destinoVolta) {
-    return destinoVolta;
-  }
+  if (destinoIda) return destinoIda;
+  if (destinoVolta) return destinoVolta;
 
   return "Ida ↔ Volta";
 }
 
 export function useMobilidadeRio() {
-  const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
-  const [linhasDisponiveis, setLinhasDisponiveis] = useState<LinhaTempoReal[]>(
-    [],
-  );
-  const [itinerariosPorLinha, setItinerariosPorLinha] = useState<
-    Record<string, ItinerarioLinha | null>
-  >({});
+
+  const [veiculos, setVeiculos] =
+    useState<VeiculoTempoReal[]>([]);
+
+  const [linhasDisponiveis, setLinhasDisponiveis] =
+    useState<LinhaTempoReal[]>([]);
+
+  const [itinerariosPorLinha, setItinerariosPorLinha] =
+    useState<Record<string, ItinerarioLinha | null>>({});
+
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
   const montadoRef = useRef(true);
-  const requisicaoEmAndamentoRef = useRef(false);
-  const itinerariosRef = useRef<Record<string, ItinerarioLinha | null>>({});
-  const itinerariosEmAndamentoRef = useRef<
-    Partial<Record<string, Promise<ItinerarioLinha | null>>>
-  >({});
+  const itinerariosRef =
+    useRef<Record<string, ItinerarioLinha | null>>({});
+
+  const itinerariosEmAndamentoRef =
+    useRef<
+      Partial<
+        Record<string, Promise<ItinerarioLinha | null>>
+      >
+    >({});
 
   useEffect(() => {
     itinerariosRef.current = itinerariosPorLinha;
@@ -65,125 +75,213 @@ export function useMobilidadeRio() {
     };
   }, []);
 
-  const atualizarTempoReal = useCallback(async () => {
-    if (requisicaoEmAndamentoRef.current) {
-      return;
-    }
-
-    requisicaoEmAndamentoRef.current = true;
-
-    try {
-      const listaVeiculos = await buscarVeiculosTempoReal();
-
-      if (!montadoRef.current) {
-        return;
-      }
-
-      setVeiculos(listaVeiculos);
-      setLinhasDisponiveis(construirLinhasDisponiveis(listaVeiculos));
-      setErro(null);
-    } catch (error) {
-      if (!montadoRef.current) {
-        return;
-      }
-
-      const mensagem =
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel carregar os dados de transporte.";
-      setErro(mensagem);
-    } finally {
-      if (montadoRef.current) {
-        setCarregando(false);
-      }
-      requisicaoEmAndamentoRef.current = false;
-    }
-  }, []);
+  /* ---------------- SIGNALR ---------------- */
 
   useEffect(() => {
-    void atualizarTempoReal();
 
-    const intervalo = setInterval(() => {
-      void atualizarTempoReal();
-    }, INTERVALO_ATUALIZACAO_MS);
+    iniciarGpsHub(
+      (listaVeiculos) => {
+
+        if (!montadoRef.current) return;
+
+        if (!Array.isArray(listaVeiculos)) {
+          return;
+        }
+
+        console.log(
+          "🚍 realtime recebido:",
+          listaVeiculos.length,
+        );
+
+        setVeiculos(listaVeiculos);
+
+        setLinhasDisponiveis(
+          construirLinhasDisponiveis(
+            listaVeiculos,
+          ),
+        );
+
+        setErro(null);
+        setCarregando(false);
+      },
+    );
+
+    conectarGpsHub();
+
+    // ❗ NÃO parar conexão ao trocar tela
+
+  }, []);
+
+  /* -------- fallback HTTP -------- */
+
+  useEffect(() => {
+
+    async function fallback() {
+
+      try {
+
+        const lista =
+          await buscarVeiculosTempoReal();
+
+        if (!montadoRef.current) return;
+
+        if (!Array.isArray(lista)) return;
+
+        setVeiculos(lista);
+
+        setLinhasDisponiveis(
+          construirLinhasDisponiveis(lista),
+        );
+
+        setCarregando(false);
+
+      } catch (err) {
+
+        console.log("fallback erro", err);
+
+      }
+
+    }
+
+    fallback();
+
+    const intervalo = setInterval(
+      fallback,
+      INTERVALO_ATUALIZACAO_MS,
+    );
 
     return () => clearInterval(intervalo);
-  }, [atualizarTempoReal]);
 
-  const garantirItinerarioLinha = useCallback(
-    async (linha: string, modal: ModalApiTransporte) => {
-      const chave = chaveLinhaModal(linha, modal);
-      const itinerarioEmCache = itinerariosRef.current[chave];
+  }, []);
 
-      if (itinerarioEmCache) {
-        return itinerarioEmCache;
-      }
+  /* ---------- itinerário ---------- */
 
-      if (itinerariosEmAndamentoRef.current[chave]) {
-        return itinerariosEmAndamentoRef.current[chave];
-      }
+  const garantirItinerarioLinha =
+    useCallback(
+      async (
+        linha: string,
+        modal: ModalApiTransporte,
+      ) => {
 
-      const promessa = buscarItinerarioLinha(linha, modal)
-        .then((itinerario) => {
-          if (!montadoRef.current) {
-            return itinerario;
-          }
+        const chave =
+          chaveLinhaModal(linha, modal);
 
-          setItinerariosPorLinha((anterior) => {
-            if (itinerario && anterior[chave]) {
-              return anterior;
-            }
+        const cache =
+          itinerariosRef.current[chave];
 
-            const proximo = {
-              ...anterior,
-              [chave]: itinerario,
-            };
+        if (cache) return cache;
 
-            itinerariosRef.current = proximo;
-            return proximo;
-          });
+        if (
+          itinerariosEmAndamentoRef
+            .current[chave]
+        ) {
+          return itinerariosEmAndamentoRef
+            .current[chave];
+        }
 
-          return itinerario;
-        })
-        .finally(() => {
-          delete itinerariosEmAndamentoRef.current[chave];
-        });
+        const promessa =
+          buscarItinerarioLinha(
+            linha,
+            modal,
+          )
+            .then((itinerario) => {
 
-      itinerariosEmAndamentoRef.current[chave] = promessa;
-      return promessa;
-    },
-    [],
-  );
+              if (!montadoRef.current)
+                return itinerario;
 
-  const getVeiculosLinha = useCallback(
-    (linha: string, modal: ModalApiTransporte) => {
-      const nomeLinha = linha.trim().toUpperCase();
-      return veiculos.filter(
-        (veiculo) => veiculo.modal === modal && veiculo.linha === nomeLinha,
-      );
-    },
-    [veiculos],
-  );
+              setItinerariosPorLinha(
+                (anterior) => ({
 
-  const getSentidoLinha = useCallback(
-    (linha: string, modal: ModalApiTransporte) => {
-      const chave = chaveLinhaModal(linha, modal);
-      return formatarSentidoDestinos(itinerariosPorLinha[chave]);
-    },
-    [itinerariosPorLinha],
-  );
+                  ...anterior,
+                  [chave]: itinerario,
 
-  const linhasOrdenadas = useMemo(() => linhasDisponiveis, [linhasDisponiveis]);
+                }),
+              );
+
+              return itinerario;
+
+            })
+            .finally(() => {
+
+              delete itinerariosEmAndamentoRef
+                .current[chave];
+
+            });
+
+        itinerariosEmAndamentoRef
+          .current[chave] = promessa;
+
+        return promessa;
+
+      },
+      [],
+    );
+
+  /* ---------- SAFE ---------- */
+
+  const getVeiculosLinha =
+    useCallback(
+      (
+        linha: string,
+        modal: ModalApiTransporte,
+      ): VeiculoTempoReal[] => {
+
+        if (!Array.isArray(veiculos))
+          return [];
+
+        const nomeLinha =
+          linha.trim().toUpperCase();
+
+        return veiculos.filter(
+          (veiculo) =>
+            veiculo.modal === modal &&
+            veiculo.linha === nomeLinha,
+        );
+
+      },
+      [veiculos],
+    );
+
+  const getSentidoLinha =
+    useCallback(
+      (
+        linha: string,
+        modal: ModalApiTransporte,
+      ) => {
+
+        const chave =
+          chaveLinhaModal(linha, modal);
+
+        return formatarSentidoDestinos(
+          itinerariosPorLinha[chave],
+        );
+
+      },
+      [itinerariosPorLinha],
+    );
+
+  const linhasOrdenadas =
+    useMemo(
+      () => linhasDisponiveis ?? [],
+      [linhasDisponiveis],
+    );
 
   return {
+
     carregando,
     erro,
+
     veiculos,
-    linhasDisponiveis: linhasOrdenadas,
+
+    linhasDisponiveis:
+      linhasOrdenadas,
+
     itinerariosPorLinha,
-    atualizarTempoReal,
+
     garantirItinerarioLinha,
+
     getVeiculosLinha,
     getSentidoLinha,
+
   };
 }

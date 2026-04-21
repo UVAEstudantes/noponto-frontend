@@ -3,5 +3,20 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
-  }
+  },
+  "cSpell.words": [
+    "ATUALIZACAO",
+    "codigo",
+    "Disponiveis",
+    "itinerario",
+    "itinerarios",
+    "Itinerarios",
+    "onibus",
+    "onreconnected",
+    "onreconnecting",
+    "requisicao",
+    "SIGNALR",
+    "veiculos",
+    "Veiculos"
+  ]
 }

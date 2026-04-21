@@ -213,41 +213,101 @@ const Home = () => {
       linhasSelecionadas
         .filter((linha) => linha.ativa)
         .map((linha) => {
-          const modal = normalizarModalApi(linha.modal);
+
+          const modal =
+            normalizarModalApi(
+              linha.modal,
+            );
+
           if (!modal) {
             return null;
           }
 
-          const chave = chaveLinhaModal(linha.nome, modal);
-          const itinerario = itinerariosPorLinha[chave];
-          const segmentos = itinerario?.segmentos ?? [];
-          const sentidoNomeLinha = getSentidoLinha(linha.nome, modal);
+          const chave =
+            chaveLinhaModal(
+              linha.nome,
+              modal,
+            );
+
+          const itinerario =
+            itinerariosPorLinha[chave];
+
+          const segmentos =
+            itinerario?.segmentos ?? [];
+
+          const sentidoNomeLinha =
+            getSentidoLinha(
+              linha.nome,
+              modal,
+            );
+
+          const veiculosLinha =
+            getVeiculosLinha(
+              linha.nome,
+              modal,
+            ) ?? [];
 
           return {
+
             nome: linha.nome,
             cor: linha.cor,
             modal,
+
             segmentos,
-            coordenadas: segmentos[0] ?? [],
-            posicoes: getVeiculosLinha(linha.nome, modal).map((veiculo) => ({
-              id: veiculo.id,
-              latitude: veiculo.latitude,
-              longitude: veiculo.longitude,
-              direcao: veiculo.direcao,
-              velocidade: veiculo.velocidade,
-              sentido: veiculo.sentido,
-              sentidoNome: sentidoNomeLinha,
-              trajeto: veiculo.trajeto,
-              timestamp: veiculo.timestamp,
-            })),
+
+            coordenadas:
+              segmentos[0] ?? [],
+
+            posicoes:
+
+              Array.isArray(
+                veiculosLinha,
+              )
+
+                ? veiculosLinha.map(
+                    (veiculo) => ({
+
+                      id: veiculo.id,
+                      latitude:
+                        veiculo.latitude,
+                      longitude:
+                        veiculo.longitude,
+                      direcao:
+                        veiculo.direcao,
+                      velocidade:
+                        veiculo.velocidade,
+                      sentido:
+                        veiculo.sentido,
+                      sentidoNome:
+                        sentidoNomeLinha,
+                      trajeto:
+                        veiculo.trajeto,
+                      timestamp:
+                        veiculo.timestamp,
+
+                    }),
+                  )
+
+                : [],
+
           };
+
         })
-        .filter((linha): linha is NonNullable<typeof linha> => Boolean(linha)),
+        .filter(
+          (
+            linha,
+          ): linha is NonNullable<
+            typeof linha
+          > => Boolean(linha),
+        ),
+
     [
+
       linhasSelecionadas,
       itinerariosPorLinha,
       getVeiculosLinha,
       getSentidoLinha,
+
     ],
   );
 
