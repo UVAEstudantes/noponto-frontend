@@ -53,6 +53,7 @@ interface MapaOSMProps {
   darkMode?: boolean;
   showTraffic?: boolean;
   estiloMapa?: EstiloMapaId;
+  onStopPress?: (parada: Parada) => void;
 }
 
 export interface MapaOSMRef {
@@ -84,6 +85,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       darkMode = false,
       showTraffic = false,
       estiloMapa = ESTILO_MAPA_PADRAO,
+      onStopPress,
     },
     ref,
   ) => {
@@ -192,11 +194,19 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .popup-title{font-weight:700;font-size:14px;color:#111}
     .popup-sub{font-size:12px;color:#555}
     .popup-time{font-size:12px;color:#666}
-    .popup-toggle{margin-top:2px;font-size:12px;color:#1f6feb;text-decoration:underline;cursor:pointer;user-select:none;align-self:flex-start}
-    .popup-details{display:none;border-top:1px dashed #e5e7eb;padding-top:8px;margin-top:4px}
-    .popup-details.open{display:block}
+    .popup-main{display:flex;flex-direction:column;gap:2px}
+    .popup-toggle{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f3f4f6;color:#1f2937;font-weight:600;font-size:12px;cursor:pointer;user-select:none;align-self:flex-start;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .popup-toggle .toggle-chevron{width:8px;height:8px;border:2px solid #6b7280;border-left:0;border-top:0;transform:rotate(45deg);transition:transform .2s ease}
+    .popup-toggle.open .toggle-chevron{transform:rotate(-135deg)}
+    .popup-details{max-height:0;opacity:0;overflow:hidden;border-top:1px dashed #e5e7eb;padding-top:0;margin-top:2px;transition:max-height .25s ease,opacity .2s ease,padding-top .2s ease}
+    .popup-details.open{max-height:160px;opacity:1;padding-top:8px}
     .popup-row{display:flex;gap:6px;color:#555}
     .popup-label{font-weight:600;color:#333;min-width:86px}
+
+    .stop-popup{min-width:180px}
+    .stop-title{font-weight:700;font-size:14px;color:#111}
+    .stop-sub{font-size:11px;color:#666;margin-top:2px}
+    .stop-hint{font-size:11px;color:#6b7280;margin-top:6px}
   </style>
 </head>
 <body>
@@ -398,8 +408,16 @@ function toggleDetails(btn){
   var el=document.getElementById(id);
   if(!el)return;
   var open=el.classList.contains('open');
-  if(open){el.classList.remove('open');btn.textContent='Mais detalhes';}
-  else{el.classList.add('open');btn.textContent='Menos detalhes';}
+  var label=btn.querySelector('.toggle-label');
+  if(open){
+    el.classList.remove('open');
+    btn.classList.remove('open');
+    if(label)label.textContent='Mais detalhes';
+  }else{
+    el.classList.add('open');
+    btn.classList.add('open');
+    if(label)label.textContent='Menos detalhes';
+  }
 }
 
 function buildPopup(linha,p,vid,heading){
@@ -407,7 +425,13 @@ function buildPopup(linha,p,vid,heading){
   var tsRaw=parseNum(p.timestamp);
   if(tsRaw&&tsRaw<1e12)tsRaw*=1000;
   var tsMs=tsRaw||null;
-  var sentido=p.sentidoNome||null;
+  var sentido=null;
+  if(p.itinerarioId&&linha&&linha.itinerarioSegmentoMap){
+    var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
+    if(segIdx===0)sentido='Ida';
+    else if(segIdx===1)sentido='Volta';
+  }
+  if(!sentido&&p.sentidoNome)sentido=p.sentidoNome;
   if(sentido&&linha&&linha.nome&&sentido===linha.nome)sentido=null;
   if(!sentido&&linha&&linha.modoSentido){
     if(linha.modoSentido==='ida')sentido='Ida';
@@ -436,12 +460,24 @@ function buildPopup(linha,p,vid,heading){
   html+='<div class="popup-time">Atualizado ha '+tempoHtml+'</div>';
   html+='</div>';
   html+='</div>';
-  html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">Mais detalhes</div>';
+  html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">'+
+        '<span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>';
   html+='<div class="popup-details" id="'+detailsId+'">';
   html+='<div class="popup-row"><span class="popup-label">Vel. media:</span>'+speedHtml+'</div>';
   html+='<div class="popup-row"><span class="popup-label">Prox. parada:</span>'+prox+'</div>';
   html+='<div class="popup-row"><span class="popup-label">Distancia:</span>'+dist+'</div>';
   html+='</div>';
+  html+='</div>';
+  return html;
+}
+
+function buildStopPopup(parada){
+  var nome=(parada&&parada.nome)?parada.nome:'Parada';
+  var ordem=(parada&&parada.ordem!=null)?('Parada #'+parada.ordem):'';
+  var html='<div class="stop-popup">';
+  html+='<div class="stop-title">'+nome+'</div>';
+  if(ordem)html+='<div class="stop-sub">'+ordem+'</div>';
+  html+='<div class="stop-hint">Toque para detalhes</div>';
   html+='</div>';
   return html;
 }
@@ -563,7 +599,12 @@ window.updateMap=function(data){
         var lat=parseNum(parada.latitude),lng=parseNum(parada.longitude);
         if(lat===null||lng===null)return;
         var m=L.marker([lat,lng],{icon:stopIcon(color),zIndexOffset:200});
-        m.bindPopup('<b>'+parada.nome+'</b>'+(parada.ordem!=null?'<br/>Parada #'+parada.ordem:''));
+        m.bindPopup(buildStopPopup(parada));
+        m.on('click',function(){
+          if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'stop_click',parada:parada}));
+          }
+        });
         m.addTo(stopsLayer);
       });
     }
@@ -700,8 +741,18 @@ window.updateMap=function(data){
           webViewRef.current?.injectJavaScript(`if(map) map.invalidateSize();`);
         }}
         onMessage={(event) => {
-          if (event.nativeEvent.data === "map_ready") {
+          const raw = event.nativeEvent.data;
+          if (raw === "map_ready") {
             setMapReady(true);
+            return;
+          }
+          try {
+            const payload = JSON.parse(raw);
+            if (payload?.type === "stop_click" && payload.parada) {
+              onStopPress?.(payload.parada);
+            }
+          } catch {
+            // ignora mensagens nao JSON
           }
         }}
       />

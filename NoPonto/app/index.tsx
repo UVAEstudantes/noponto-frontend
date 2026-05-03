@@ -2,6 +2,10 @@ import InputBusca from "@/src/components/inputBusca";
 import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer, { PROXIMO_SENTIDO } from "@/src/components/mapaComponents/linhasContainer";
 import LocalButton from "@/src/components/mapaComponents/localButton";
+import ParadaSheet, {
+  ChegadaParadaInfo,
+  LinhaParadaInfo,
+} from "@/src/components/mapaComponents/paradaSheet";
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
 import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
@@ -9,7 +13,7 @@ import { LinhaSelecionadaInfo, useMobilidadeRio } from "@/src/hooks/useMobilidad
 import { useTema } from "@/src/hooks/useTema";
 import { buscarOpcoesPorNome } from "@/src/services/mobilidadeRio";
 import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
-import { ModalApiTransporte, OpcaoBusca } from "@/src/types/transporte";
+import { ModalApiTransporte, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -46,6 +50,11 @@ const Home = () => {
   const mapRef = React.useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
 
+  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
+    null,
+  );
+  const [paradaExpandida, setParadaExpandida] = useState(false);
+
   useEffect(() => {
     async function requestLocationPermissions() {
       const { granted } = await requestForegroundPermissionsAsync();
@@ -55,6 +64,15 @@ const Home = () => {
       }
     }
     requestLocationPermissions();
+  }, []);
+
+  const normalizarNome = useCallback((valor: string) => {
+    return valor
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
   }, []);
 
   useEffect(() => {
@@ -204,6 +222,78 @@ const Home = () => {
     );
   }, []);
 
+  // ─── Paradas selecionadas ────────────────────────────────────────────────
+
+  const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
+    if (!paradaSelecionada) return [];
+    const alvoId = paradaSelecionada.paradaId;
+    const alvoNome = normalizarNome(paradaSelecionada.nome);
+
+    return linhasSelecionadas
+      .map((l) => {
+        const paradas = itinerariosPorId[l.linhaId]?.paradas ?? [];
+        if (paradas.length === 0) return null;
+        const possui = paradas.some(
+          (p) => p.paradaId === alvoId || normalizarNome(p.nome) === alvoNome,
+        );
+        if (!possui) return null;
+        return {
+          linhaId: l.linhaId,
+          codigo: l.linhaCodigo,
+          nomeExibicao: l.nomeExibicao,
+          cor: l.cor,
+          ativa: l.ativa,
+        };
+      })
+      .filter(Boolean) as LinhaParadaInfo[];
+  }, [
+    paradaSelecionada,
+    linhasSelecionadas,
+    itinerariosPorId,
+    normalizarNome,
+  ]);
+
+  const chegadasPorLinha = useMemo<ChegadaParadaInfo[]>(() => {
+    if (!paradaSelecionada) return [];
+    const alvo = normalizarNome(paradaSelecionada.nome);
+
+    return linhasNaParada.map((l) => {
+        const veiculos = getVeiculosPorCodigo(l.codigo);
+        let melhorEta: number | null = null;
+        let melhorDist: number | null = null;
+
+        veiculos.forEach((v) => {
+          const nome = v.proximaParadaNome
+            ? normalizarNome(v.proximaParadaNome)
+            : null;
+          if (!nome || nome !== alvo) return;
+
+          const dist = v.distanciaProximaParadaMetros ?? null;
+          const velocidade = v.velocidadeMedia ?? v.velocidade;
+
+          if (dist != null && velocidade && velocidade > 1) {
+            const eta = Math.round(
+              dist / ((velocidade * 1000) / 3600),
+            );
+            if (melhorEta == null || eta < melhorEta) {
+              melhorEta = eta;
+              melhorDist = dist;
+            }
+          } else if (melhorEta == null) {
+            melhorDist = dist;
+          }
+        });
+
+        return {
+          linhaId: l.linhaId,
+          codigo: l.codigo,
+          cor: l.cor,
+          etaSeg: melhorEta,
+          distanciaMetros: melhorDist,
+        };
+      });
+  }, [paradaSelecionada, linhasNaParada, getVeiculosPorCodigo, normalizarNome]);
+
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
   const dadosParaMapa = useMemo(
@@ -287,6 +377,10 @@ const Home = () => {
           showTraffic={transito}
           darkMode={temaAtual === "escuro"}
           estiloMapa={estiloMapaAtual}
+          onStopPress={(parada) => {
+            setParadaSelecionada(parada);
+            setParadaExpandida(false);
+          }}
         />
       )}
 
@@ -338,6 +432,19 @@ const Home = () => {
         aoToggleParadas={toggleParadas}
         aberto={containerAberto}
         aoToggleAberto={() => setContainerAberto((p) => !p)}
+      />
+
+      <ParadaSheet
+        visivel={!!paradaSelecionada}
+        parada={paradaSelecionada}
+        linhas={linhasNaParada}
+        chegadas={chegadasPorLinha}
+        expandido={paradaExpandida}
+        onToggleExpandir={() => setParadaExpandida((p) => !p)}
+        onFechar={() => {
+          setParadaSelecionada(null);
+          setParadaExpandida(false);
+        }}
       />
     </View>
   );
