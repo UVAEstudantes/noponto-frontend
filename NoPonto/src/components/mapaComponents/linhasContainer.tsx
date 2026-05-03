@@ -1,14 +1,20 @@
 import {
+  ArrowLeftRight,
   Bus,
   ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
+  MapPin,
+  MapPinOff,
+  MoveRight,
   Train,
   TrainFront,
   X,
 } from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
+import { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
+import { ModoSentido } from "@/src/types/transporte";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
@@ -17,240 +23,463 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
-const maxLinhasView = 5;
-
-interface LinhaSelecionada {
-  nome: string;
-  modal: string;
-  cor: string;
-  ativa: boolean;
-}
+const MAX_LINHAS_VIEW = 5;
 
 interface Props {
-  linhasSelecionadas: LinhaSelecionada[];
-  aoRemoverLinha: (nome: string) => void;
-  aoToggleAtiva: (nome: string) => void;
+  linhasSelecionadas: LinhaSelecionadaInfo[];
+  aoRemoverLinha: (linhaId: string) => void;
+  aoToggleAtiva: (linhaId: string) => void;
+  aoToggleSentido: (linhaId: string) => void;
+  aoToggleParadas: (linhaId: string) => void;
   aberto: boolean;
   aoToggleAberto: () => void;
 }
 
-// Função para escurecer uma cor hex
-const escurecerCor = (hex: string, percent: number = 40): string => {
-  const num = parseInt(hex.replace("#", ""), 16);
-  const r = Math.max(0, ((num >> 16) & 0xff) * (1 - percent / 100));
-  const g = Math.max(0, ((num >> 8) & 0xff) * (1 - percent / 100));
-  const b = Math.max(0, (num & 0xff) * (1 - percent / 100));
+// ─── Manipulação de cor ────────────────────────────────────────────────────
+
+function hexToRgb(hex: string) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
   return (
     "#" +
-    ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b))
-      .toString(16)
-      .slice(1)
+    [r, g, b]
+      .map((x) => Math.round(x).toString(16).padStart(2, "0"))
+      .join("")
   );
+}
+
+function misturar(hex: string, fundo: string, alpha: number) {
+  const c = hexToRgb(hex);
+  const f = hexToRgb(fundo);
+  return rgbToHex(
+    c.r * alpha + f.r * (1 - alpha),
+    c.g * alpha + f.g * (1 - alpha),
+    c.b * alpha + f.b * (1 - alpha),
+  );
+}
+
+function escurecer(hex: string, p = 0.35) {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex(r * (1 - p), g * (1 - p), b * (1 - p));
+}
+
+// ─── Constantes exportadas diretamente ────────────────────────────────────
+
+export const PROXIMO_SENTIDO: Record<ModoSentido, ModoSentido> = {
+  ambos: "ida",
+  ida: "volta",
+  volta: "ambos",
 };
 
-// Função para clarear uma cor hex
-const clarearCor = (hex: string, percent: number = 80): string => {
-  const num = parseInt(hex.replace("#", ""), 16);
-  const r = Math.min(
-    255,
-    ((num >> 16) & 0xff) + (255 - ((num >> 16) & 0xff)) * (percent / 100),
-  );
-  const g = Math.min(
-    255,
-    ((num >> 8) & 0xff) + (255 - ((num >> 8) & 0xff)) * (percent / 100),
-  );
-  const b = Math.min(
-    255,
-    (num & 0xff) + (255 - (num & 0xff)) * (percent / 100),
-  );
-  return (
-    "#" +
-    ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b))
-      .toString(16)
-      .slice(1)
-  );
+const ROTULO_SENTIDO: Record<ModoSentido, string> = {
+  ambos: "↔ Ambos",
+  ida: "→ Ida",
+  volta: "← Volta",
 };
 
-const obterIconeModal = (modal: string, cor: string) => {
-  const modalLower = modal.toLowerCase();
-  const corEscura = escurecerCor(cor);
+// ─── Sub-componentes ───────────────────────────────────────────────────────
 
-  switch (modalLower) {
-    case "onibus":
-      return <Bus color={corEscura} size={18} />;
-    case "brt":
-      return <Bus color={corEscura} size={18} />;
+function IconeModal({ modal, cor }: { modal: string; cor: string }) {
+  const c = escurecer(cor, 0.1);
+  switch (modal.toLowerCase()) {
     case "trem":
-      return <Train color={corEscura} size={18} />;
+      return <Train color={c} size={15} />;
     case "metro":
-      return <TrainFront color={corEscura} size={18} />;
+      return <TrainFront color={c} size={15} />;
     default:
-      return null;
+      return <Bus color={c} size={15} />;
   }
-};
+}
 
-const LinhasContainer = ({
+interface LinhaCardProps {
+  linha: LinhaSelecionadaInfo;
+  aoRemover: () => void;
+  aoToggleAtiva: () => void;
+  aoToggleSentido: () => void;
+  aoToggleParadas: () => void;
+}
+
+function LinhaCard({
+  linha,
+  aoRemover,
+  aoToggleAtiva,
+  aoToggleSentido,
+  aoToggleParadas,
+}: LinhaCardProps) {
+  const { cores, temaAtual } = useTema();
+  const fundo = temaAtual === "escuro" ? "#1E1E1E" : "#FFFFFF";
+  const fundoCor = misturar(linha.cor, fundo, 0.1);
+  const bordaCor = misturar(linha.cor, fundo, 0.35);
+  const accentCor = misturar(linha.cor, fundo, 0.2);
+
+  return (
+    <View
+      style={{
+        marginBottom: 12,
+        borderRadius: 16,
+        overflow: "hidden",
+        backgroundColor: linha.ativa ? fundoCor : cores.fundoSecundario,
+        borderWidth: 1.5,
+        borderColor: linha.ativa ? bordaCor : cores.bordaSuave,
+      }}
+    >
+      <View style={{ flexDirection: "row" }}>
+        {/* Barra colorida lateral */}
+        <View
+          style={{
+            width: 4,
+            backgroundColor: linha.ativa ? linha.cor : cores.borda,
+          }}
+        />
+
+        <View style={{ flex: 1, padding: 12 }}>
+          {/* Header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              marginBottom: 10,
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 10,
+              }}
+            >
+              <IconeModal modal={linha.modal} cor={linha.cor} />
+            </View>
+
+            <Text
+              style={{
+                flex: 1,
+                fontWeight: "700",
+                fontSize: 13,
+                lineHeight: 18,
+                color: linha.ativa
+                  ? cores.textoPrimario
+                  : cores.textoSecundario,
+              }}
+              numberOfLines={2}
+            >
+              {linha.nomeExibicao}
+            </Text>
+
+            <Pressable
+              onPress={aoRemover}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                backgroundColor: cores.fundoSecundario,
+                alignItems: "center",
+                justifyContent: "center",
+                marginLeft: 6,
+              }}
+            >
+              <X color={cores.perigo} size={14} />
+            </Pressable>
+          </View>
+
+          {/* Botões de ação */}
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {/* Visibilidade */}
+            <Pressable
+              onPress={aoToggleAtiva}
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                borderRadius: 10,
+                backgroundColor: linha.ativa
+                  ? misturar(linha.cor, fundo, 0.25)
+                  : cores.fundoSecundario,
+                gap: 4,
+              }}
+            >
+              {linha.ativa ? (
+                <Eye color={linha.cor} size={14} />
+              ) : (
+                <EyeOff color={cores.textoSecundario} size={14} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: linha.ativa ? linha.cor : cores.textoSecundario,
+                }}
+              >
+                {linha.ativa ? "Visível" : "Oculto"}
+              </Text>
+            </Pressable>
+
+            {/* Sentido */}
+            <Pressable
+              onPress={aoToggleSentido}
+              style={{
+                flex: 1.4,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                gap: 4,
+              }}
+            >
+              {linha.modoSentido === "ambos" ? (
+                <ArrowLeftRight color={escurecer(linha.cor, 0.1)} size={13} />
+              ) : (
+                <MoveRight
+                  color={escurecer(linha.cor, 0.1)}
+                  size={13}
+                  style={{
+                    transform: [
+                      { scaleX: linha.modoSentido === "volta" ? -1 : 1 },
+                    ],
+                  }}
+                />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: escurecer(linha.cor, 0.1),
+                }}
+              >
+                {ROTULO_SENTIDO[linha.modoSentido]}
+              </Text>
+            </Pressable>
+
+            {/* Paradas */}
+            <Pressable
+              onPress={aoToggleParadas}
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                borderRadius: 10,
+                backgroundColor: linha.mostrarParadas
+                  ? misturar(linha.cor, fundo, 0.25)
+                  : cores.fundoSecundario,
+                gap: 4,
+              }}
+            >
+              {linha.mostrarParadas ? (
+                <MapPin color={linha.cor} size={14} />
+              ) : (
+                <MapPinOff color={cores.textoSecundario} size={14} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: linha.mostrarParadas
+                    ? linha.cor
+                    : cores.textoSecundario,
+                }}
+              >
+                {linha.mostrarParadas ? "Paradas" : "Ocultas"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Container principal ───────────────────────────────────────────────────
+
+function LinhasContainer({
   linhasSelecionadas,
   aoRemoverLinha,
   aoToggleAtiva,
+  aoToggleSentido,
+  aoToggleParadas,
   aberto,
   aoToggleAberto,
-}: Props) => {
+}: Props) {
   const { cores } = useTema();
-  const larguraContainer = 250;
-  const translateX = useSharedValue(-larguraContainer);
+  const largura = 290;
+  const translateX = useSharedValue(-largura);
 
-  const estiloAnimado = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-    };
-  });
+  const estiloContainer = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
-  const estiloAnimadoBotao = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value + larguraContainer - 10 }],
-    };
-  });
+  const estiloBotao = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value + largura - 12 }],
+  }));
 
   React.useEffect(() => {
-    translateX.value = withSpring(aberto ? 0 : -larguraContainer, {
-      damping: 35,
-      stiffness: 120,
+    translateX.value = withSpring(aberto ? 0 : -largura, {
+      damping: 32,
+      stiffness: 110,
     });
   }, [aberto, translateX]);
 
   return (
     <>
-      {/* Botão toggle na lateral - acompanha o container */}
+      {/* Botão toggle */}
       <Animated.View
-        style={[estiloAnimadoBotao]}
-        className="absolute top-[20%] left-0 z-[1]"
+        style={[
+          estiloBotao,
+          { position: "absolute", top: "20%", left: 0, zIndex: 1 },
+        ]}
       >
-        <Pressable onPress={aoToggleAberto}>
+        <Pressable
+          onPress={aoToggleAberto}
+          hitSlop={{ top: 10, bottom: 10, right: 10, left: 0 }}
+        >
           <View
-            className="rounded-r-full w-[50px] h-[60px] shadow-lg items-center justify-center"
-            style={{ backgroundColor: cores.fundoPainel }}
+            style={{
+              borderTopRightRadius: 16,
+              borderBottomRightRadius: 16,
+              width: 44,
+              height: 56,
+              backgroundColor: cores.fundoPainel,
+              borderWidth: 1,
+              borderLeftWidth: 0,
+              borderColor: cores.borda,
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: "#000",
+              shadowOpacity: 0.15,
+              shadowRadius: 6,
+              elevation: 4,
+            }}
           >
             {aberto ? (
               <ChevronLeft
                 color={cores.iconePrimario}
-                size={30}
-                strokeWidth={4}
+                size={24}
+                strokeWidth={2.5}
               />
             ) : (
               <ChevronRight
                 color={cores.iconePrimario}
-                size={30}
-                strokeWidth={4}
+                size={24}
+                strokeWidth={2.5}
               />
             )}
           </View>
         </Pressable>
       </Animated.View>
 
-      {/* Container das linhas */}
+      {/* Container principal */}
       <Animated.View
         style={[
-          estiloAnimado,
+          estiloContainer,
           {
-            width: larguraContainer,
+            position: "absolute",
+            top: "18%",
+            left: 0,
+            width: largura,
+            height: "66%",
             backgroundColor: cores.fundoPainel,
-            borderColor: cores.borda,
+            borderTopRightRadius: 20,
+            borderBottomRightRadius: 20,
             borderWidth: 1,
+            borderLeftWidth: 0,
+            borderColor: cores.borda,
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 12,
+            elevation: 10,
+            zIndex: 10,
+            overflow: "hidden",
           },
         ]}
-        className="absolute top-[20%] left-0 rounded-r-lg h-[60%] shadow-2xl z-10"
       >
-        <View className="flex-1 p-4">
-          {/* Header */}
-          <View className="flex-row justify-between items-center mb-4">
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: cores.bordaSuave,
+          }}
+        >
+          <Text
+            style={{
+              fontWeight: "700",
+              fontSize: 15,
+              color: cores.textoPrimario,
+            }}
+          >
+            Linhas no Mapa
+          </Text>
+          <View
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              borderRadius: 20,
+              backgroundColor: cores.fundoSecundario,
+            }}
+          >
             <Text
-              className="text-lg font-bold"
-              style={{ color: cores.textoPrimario }}
+              style={{
+                fontSize: 12,
+                fontWeight: "600",
+                color: cores.textoSecundario,
+              }}
             >
-              Linhas Selecionadas
-            </Text>
-            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
-              {linhasSelecionadas.length}/{maxLinhasView}
+              {linhasSelecionadas.length}/{MAX_LINHAS_VIEW}
             </Text>
           </View>
-
-          {/* Lista de linhas */}
-          <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-            {linhasSelecionadas.length === 0 ? (
-              <View className="flex-1 items-center justify-center py-8">
-                <Text
-                  className="text-center"
-                  style={{ color: cores.textoSecundario }}
-                >
-                  Nenhuma linha selecionada{"\n"}
-                  Busque e selecione linhas
-                </Text>
-              </View>
-            ) : (
-              linhasSelecionadas.map((linha) => (
-                <View
-                  key={linha.nome}
-                  className="mb-2 p-2 rounded-lg border flex-row items-center"
-                  style={{
-                    borderColor: linha.ativa ? cores.borda : cores.bordaSuave,
-                    backgroundColor: linha.ativa
-                      ? cores.fundoCard
-                      : cores.fundoSecundario,
-                  }}
-                >
-                  {/* Ícone do modal com fundo colorido */}
-                  <View
-                    className="w-8 h-8 rounded-md items-center justify-center mr-2"
-                    style={{ backgroundColor: clarearCor(linha.cor) }}
-                  >
-                    {obterIconeModal(linha.modal, linha.cor)}
-                  </View>
-
-                  {/* Nome da linha */}
-                  <Text
-                    className="font-bold text-sm flex-1"
-                    style={{
-                      color: linha.ativa
-                        ? cores.textoPrimario
-                        : cores.textoSecundario,
-                    }}
-                  >
-                    {linha.nome}
-                  </Text>
-
-                  {/* Botões de ação */}
-                  <View className="flex-row gap-1">
-                    {/* Ativar/Desativar */}
-                    <Pressable
-                      onPress={() => aoToggleAtiva(linha.nome)}
-                      className="p-1.5 rounded-lg"
-                      style={{ backgroundColor: cores.fundoSecundario }}
-                    >
-                      {linha.ativa ? (
-                        <Eye color={cores.iconeSecundario} size={16} />
-                      ) : (
-                        <EyeOff color={cores.textoSecundario} size={16} />
-                      )}
-                    </Pressable>
-
-                    {/* Remover */}
-                    <Pressable
-                      onPress={() => aoRemoverLinha(linha.nome)}
-                      className="p-1.5 rounded-lg"
-                      style={{ backgroundColor: cores.fundoSecundario }}
-                    >
-                      <X color={cores.perigo} size={16} />
-                    </Pressable>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
         </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 12 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {linhasSelecionadas.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <Text
+                style={{
+                  color: cores.textoSecundario,
+                  fontSize: 13,
+                  textAlign: "center",
+                  lineHeight: 20,
+                }}
+              >
+                Nenhuma linha selecionada{"\n"}Busque uma linha no campo acima
+              </Text>
+            </View>
+          ) : (
+            linhasSelecionadas.map((linha) => (
+              <LinhaCard
+                key={linha.linhaId}
+                linha={linha}
+                aoRemover={() => aoRemoverLinha(linha.linhaId)}
+                aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
+                aoToggleSentido={() => aoToggleSentido(linha.linhaId)}
+                aoToggleParadas={() => aoToggleParadas(linha.linhaId)}
+              />
+            ))
+          )}
+        </ScrollView>
       </Animated.View>
     </>
   );
-};
+}
 
 export default LinhasContainer;
