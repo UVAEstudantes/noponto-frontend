@@ -1,13 +1,17 @@
 import { useTema } from "@/src/hooks/useTema";
-import { View, Text } from "react-native";
 import { BusFront, HistoryIcon, Hourglass } from "lucide-react-native";
+import { Text, View } from "react-native";
 
 interface Props {
   intervalo?: string;
 }
 
 export default function Chegada(props: Props) {
-  const { cores } = useTema();
+  const { cores, temaAtual } = useTema();
+  const headerText =
+    temaAtual === "escuro" ? cores.textoPrimario : cores.textoInverso;
+  const headerAccent =
+    temaAtual === "escuro" ? cores.textoDestaque : cores.iconePrimario;
 
   return (
     <View
@@ -23,17 +27,14 @@ export default function Chegada(props: Props) {
         className="p-4 flex-row items-center"
         style={{ backgroundColor: cores.fundoNav }}
       >
-        <HistoryIcon color={cores.iconePrimario} size={20} />
+        <HistoryIcon color={headerAccent} size={20} />
         <Text
           className="font-semibold ml-3 flex-1"
-          style={{ color: cores.textoInverso }}
+          style={{ color: headerText }}
         >
           Chegada Estimada
         </Text>
-        <Text
-          className="font-semibold"
-          style={{ color: cores.iconePrimario }}
-        >
+        <Text className="font-semibold" style={{ color: headerAccent }}>
           Aprox. 5 minutos
         </Text>
       </View>
@@ -50,10 +51,7 @@ export default function Chegada(props: Props) {
         >
           Próxima Viagem
         </Text>
-        <Text
-          className="font-semibold"
-          style={{ color: cores.textoPrimario }}
-        >
+        <Text className="font-semibold" style={{ color: cores.textoPrimario }}>
           14:30
         </Text>
       </View>
@@ -67,10 +65,7 @@ export default function Chegada(props: Props) {
         >
           Intervalo
         </Text>
-        <Text
-          className="font-semibold"
-          style={{ color: cores.textoPrimario }}
-        >
+        <Text className="font-semibold" style={{ color: cores.textoPrimario }}>
           {props.intervalo}
         </Text>
       </View>

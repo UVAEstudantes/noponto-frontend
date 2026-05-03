@@ -1,10 +1,6 @@
-import {
-  Banknote,
-  CircleDollarSign,
-  CreditCard,
-} from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
-import { View, Text } from "react-native";
+import { Banknote, CircleDollarSign, CreditCard } from "lucide-react-native";
+import { Text, View } from "react-native";
 
 interface Props {
   valor?: number;
@@ -15,14 +11,19 @@ interface FormaPagamentoProps {
   label: string;
   cor: string;
   bgCor: string;
+  bordaCor?: string;
   icon: React.ReactNode;
 }
 
-function Tag({ label, cor, bgCor, icon }: FormaPagamentoProps) {
+function Tag({ label, cor, bgCor, bordaCor, icon }: FormaPagamentoProps) {
   return (
     <View
       className="flex-row items-center px-3 py-1 rounded-full mr-2"
-      style={{ backgroundColor: bgCor }}
+      style={{
+        backgroundColor: bgCor,
+        borderWidth: bordaCor ? 1 : 0,
+        borderColor: bordaCor,
+      }}
     >
       {icon}
       <Text className="text-xs font-semibold ml-1.5" style={{ color: cor }}>
@@ -32,14 +33,34 @@ function Tag({ label, cor, bgCor, icon }: FormaPagamentoProps) {
   );
 }
 
+function hexToRgb(hex: string) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return (
+    "#" +
+    [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("")
+  );
+}
+
+function misturar(hex: string, fundo: string, alpha: number) {
+  const c = hexToRgb(hex);
+  const f = hexToRgb(fundo);
+  return rgbToHex(
+    c.r * alpha + f.r * (1 - alpha),
+    c.g * alpha + f.g * (1 - alpha),
+    c.b * alpha + f.b * (1 - alpha),
+  );
+}
+
 const formasDePagamento = {
   onibus: [
     { label: "Dinheiro", cor: "#038B0F", bgCor: "#D5EBD7", icone: "banknote" },
     { label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" },
   ],
-  brt: [
-    { label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" },
-  ],
+  brt: [{ label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" }],
   trem: [
     { label: "RioCard", cor: "#1156EA", bgCor: "#D7E2EF", icone: "card" },
     { label: "Dinheiro", cor: "#038B0F", bgCor: "#D5EBD7", icone: "banknote" },
@@ -53,9 +74,11 @@ const formasDePagamento = {
 };
 
 export default function Tarifas(props: Props) {
-  const { cores } = useTema();
+  const { cores, temaAtual } = useTema();
+  const isDark = temaAtual === "escuro";
 
-  const modalKey = (props.modal?.toLowerCase() ?? "onibus") as keyof typeof formasDePagamento;
+  const modalKey = (props.modal?.toLowerCase() ??
+    "onibus") as keyof typeof formasDePagamento;
   const pagamentos = formasDePagamento[modalKey] ?? formasDePagamento.onibus;
 
   return (
@@ -79,10 +102,7 @@ export default function Tarifas(props: Props) {
         >
           Tarifa
         </Text>
-        <Text
-          className="font-semibold"
-          style={{ color: cores.textoPrimario }}
-        >
+        <Text className="font-semibold" style={{ color: cores.textoPrimario }}>
           R$ {props.valor?.toFixed(2).replace(".", ",") ?? "—"}
         </Text>
       </View>
@@ -94,7 +114,8 @@ export default function Tarifas(props: Props) {
             key={p.label}
             label={p.label}
             cor={p.cor}
-            bgCor={p.bgCor}
+            bgCor={isDark ? misturar(p.bgCor, cores.fundoCard, 0.2) : p.bgCor}
+            bordaCor={isDark ? misturar(p.bgCor, cores.borda, 0.5) : undefined}
             icon={
               p.icone === "banknote" ? (
                 <Banknote color={p.cor} size={14} />

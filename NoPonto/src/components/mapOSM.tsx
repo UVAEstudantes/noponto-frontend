@@ -61,6 +61,14 @@ export interface MapaOSMRef {
   fitToCoordinates: (
     coordinates: { latitude: number; longitude: number }[],
   ) => void;
+  mostrarPoi: (payload: {
+    poi: { lat: number; lng: number; nome?: string };
+    parada?: { lat: number; lng: number; nome?: string } | null;
+    distancia?: number | null;
+    icone?: string;
+    cor?: string;
+  }) => void;
+  limparPoi: () => void;
 }
 
 const classesEstiloMapa = estilosMapaDisponiveis
@@ -122,6 +130,16 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`,
         );
       },
+      mostrarPoi: (payload) => {
+        webViewRef.current?.injectJavaScript(
+          `if(window.mostrarConexaoPoi) window.mostrarConexaoPoi(${JSON.stringify(payload)});`,
+        );
+      },
+      limparPoi: () => {
+        webViewRef.current?.injectJavaScript(
+          `if(window.limparConexaoPoi) window.limparConexaoPoi();`,
+        );
+      },
     }));
 
     const [mapReady, setMapReady] = React.useState(false);
@@ -158,6 +176,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     html,body{height:100%;width:100%;margin:0;padding:0;background:#f0f0f0}
     #map{height:100%;width:100%;position:absolute;top:0;left:0}
@@ -184,19 +203,20 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .stop-core{width:6px;height:6px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;border:2px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.45;animation:stopPulse 2.4s ease-out infinite}
     @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:.45}70%{transform:translate(-50%,-50%) scale(1.8);opacity:0}100%{opacity:0}}
+    @keyframes iconPulse{0%{transform:translate(-50%,-50%) scale(.8);opacity:.5}70%{transform:translate(-50%,-50%) scale(1.9);opacity:0}100%{opacity:0}}
 
     .leaflet-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:8px 10px}
     .popup-card{display:flex;flex-direction:column;gap:6px}
     .popup-header{display:flex;align-items:center;gap:8px}
-    .popup-indicator{width:26px;height:26px;position:relative;flex:0 0 26px}
-    .popup-indicator .pi-dot{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);position:absolute;left:4px;top:4px}
-    .popup-indicator .pi-arrow{position:absolute;left:50%;top:50%;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid rgba(255,255,255,.95);transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-11px);transform-origin:50% 50%}
+    .popup-indicator{width:28px;height:28px;position:relative;flex:0 0 28px;border-radius:10px;background:#fff;border:1.5px solid currentColor;color:var(--c,#2196F3);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+    .popup-indicator:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid currentColor;transform:translate(-50%,-50%);opacity:.45;animation:iconPulse 2.6s ease-out infinite}
+    .popup-indicator svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none}
     .popup-title{font-weight:700;font-size:14px;color:#111}
     .popup-sub{font-size:12px;color:#555}
     .popup-time{font-size:12px;color:#666}
     .popup-main{display:flex;flex-direction:column;gap:2px}
     .popup-toggle{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f3f4f6;color:#1f2937;font-weight:600;font-size:12px;cursor:pointer;user-select:none;align-self:flex-start;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    .popup-toggle .toggle-chevron{width:8px;height:8px;border:2px solid #6b7280;border-left:0;border-top:0;transform:rotate(45deg);transition:transform .2s ease}
+    .popup-toggle .toggle-chevron{width:8px;height:8px;border:2px solid currentColor;border-left:0;border-top:0;transform:rotate(45deg);transition:transform .2s ease}
     .popup-toggle.open .toggle-chevron{transform:rotate(-135deg)}
     .popup-details{max-height:0;opacity:0;overflow:hidden;border-top:1px dashed #e5e7eb;padding-top:0;margin-top:2px;transition:max-height .25s ease,opacity .2s ease,padding-top .2s ease}
     .popup-details.open{max-height:160px;opacity:1;padding-top:8px}
@@ -207,12 +227,27 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .stop-title{font-weight:700;font-size:14px;color:#111}
     .stop-sub{font-size:11px;color:#666;margin-top:2px}
     .stop-hint{font-size:11px;color:#6b7280;margin-top:6px}
+
+    .poi-marker{width:28px;height:28px;border-radius:12px;background:#fff;border:1.5px solid var(--c,#f59e0b);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.25);position:relative}
+    .poi-marker:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid var(--c,#f59e0b);transform:translate(-50%,-50%);opacity:.35;animation:iconPulse 2.4s ease-out infinite}
+    .poi-marker svg{width:16px;height:16px;stroke:var(--c,#f59e0b);stroke-width:2;fill:none}
+    .poi-distance{padding:4px 10px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;display:inline-block;min-width:46px;text-align:center}
+
+    #map.dark-mode .leaflet-popup-content-wrapper{background:#1b1f24;color:#e5e7eb}
+    #map.dark-mode .leaflet-popup-tip{background:#1b1f24}
+    #map.dark-mode .popup-title{color:#f3f4f6}
+    #map.dark-mode .popup-sub,#map.dark-mode .popup-time,#map.dark-mode .popup-row{color:#cbd5e1}
+    #map.dark-mode .popup-label{color:#e5e7eb}
+    #map.dark-mode .popup-toggle{background:#2a2f35;color:#e5e7eb}
+    #map.dark-mode .popup-details{border-top-color:#3b4047}
+    #map.dark-mode .popup-indicator{background:#1b1f24;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-var map,tiles,trafficTiles,userMarker,linesLayer,stopsLayer,vehiclesLayer;
+var map,tiles,trafficTiles,userMarker,linesLayer,stopsLayer,vehiclesLayer,poiLayer;
+var poiMarker=null,poiLine=null,poiDistanceMarker=null;
 var estilos=[${estilosJS}];
 var classesMapa="${classesEstiloMapa}";
 var vehicleMarkers={},animFrames={},vehicleHeadings={};
@@ -420,6 +455,14 @@ function toggleDetails(btn){
   }
 }
 
+function modalIconSvg(modal){
+  var m=(modal||'onibus').toLowerCase();
+  if(m==='trem'||m==='metro'){
+    return '<i data-lucide="train" class="modal-icon"></i>';
+  }
+  return '<i data-lucide="bus" class="modal-icon"></i>';
+}
+
 function buildPopup(linha,p,vid,heading){
   var speed=parseNum(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade);
   var tsRaw=parseNum(p.timestamp);
@@ -448,12 +491,10 @@ function buildPopup(linha,p,vid,heading){
   var speedHtml=speed!==null?Math.round(speed)+' km/h':'-';
   var prox=p.proximaParadaNome?p.proximaParadaNome:'-';
   var dist=p.distanciaProximaParadaMetros!=null?Math.round(p.distanciaProximaParadaMetros)+' m':'-';
+  var iconSvg=modalIconSvg(linha.modal);
   var html='<div class="popup-card" id="'+popupId+'">';
   html+='<div class="popup-header">';
-  html+='<div class="popup-indicator" style="--h:'+headingDeg+'deg">';
-  html+='<div class="pi-dot" style="background:'+corFinal+'"></div>';
-  html+='<div class="pi-arrow"></div>';
-  html+='</div>';
+  html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';
   html+='<div class="popup-main">';
   html+='<div class="popup-title">'+linha.nome+'</div>';
   html+='<div class="popup-sub">Sentido: '+sentidoLabel+'</div>';
@@ -480,6 +521,42 @@ function buildStopPopup(parada){
   html+='<div class="stop-hint">Toque para detalhes</div>';
   html+='</div>';
   return html;
+}
+
+function clearPoi(){
+  if(poiLayer)poiLayer.clearLayers();
+  poiMarker=null;poiLine=null;poiDistanceMarker=null;
+}
+
+function poiIcon(iconName,color){
+  var icon=iconName||'map-pin';
+  var html='<div class="poi-marker" style="--c:'+color+'"><i data-lucide="'+icon+'"></i></div>';
+  return L.divIcon({className:'poi-marker-wrap',html:html,iconSize:[28,28],iconAnchor:[14,14]});
+}
+
+function showPoi(payload){
+  if(!payload||!payload.poi)return;
+  clearPoi();
+  var poi=payload.poi;
+  var parada=payload.parada||null;
+  var color=payload.cor||'#f59e0b';
+  var icon=payload.icone||'map-pin';
+  poiMarker=L.marker([poi.lat,poi.lng],{icon:poiIcon(icon,color),zIndexOffset:650}).addTo(poiLayer);
+
+  if(parada&&parada.lat!=null&&parada.lng!=null){
+    poiLine=L.polyline([[parada.lat,parada.lng],[poi.lat,poi.lng]],{
+      color:color,weight:2,opacity:.9,dashArray:'6,6'
+    }).addTo(poiLayer);
+    if(payload.distancia!=null){
+      var mid=L.latLng((parada.lat+poi.lat)/2,(parada.lng+poi.lng)/2);
+      var html='<div class="poi-distance">'+payload.distancia+' m</div>';
+      poiDistanceMarker=L.marker(mid,{icon:L.divIcon({className:'poi-distance-wrap',html:html,iconSize:[70,24],iconAnchor:[35,12]})}).addTo(poiLayer);
+    }
+  }
+
+  if(window.lucide&&window.lucide.createIcons){
+    window.lucide.createIcons();
+  }
 }
 
 function normEstilo(id){
@@ -515,6 +592,7 @@ window.onload=function(){
   linesLayer=L.layerGroup().addTo(map);
   stopsLayer=L.layerGroup().addTo(map);
   vehiclesLayer=L.layerGroup().addTo(map);
+  poiLayer=L.layerGroup().addTo(map);
 
   userMarker=L.marker([${latInicial},${lngInicial}],{
     icon:L.divIcon({className:'user-container',html:'<div class="user-arrow"></div><div class="user-dot"></div>',iconSize:[20,20],iconAnchor:[10,10]}),
@@ -530,9 +608,16 @@ window.onload=function(){
 
   startDR();
   setInterval(updateTimeAgo,1000);
-  map.on('popupopen',function(){updateTimeAgo()});
+  map.on('popupopen',function(){
+    updateTimeAgo();
+    if(window.lucide&&window.lucide.createIcons){
+      window.lucide.createIcons();
+    }
+  });
 
   if(window.pendingData)window.updateMap(window.pendingData);
+  window.mostrarConexaoPoi=showPoi;
+  window.limparConexaoPoi=clearPoi;
   window.ReactNativeWebView&&window.ReactNativeWebView.postMessage('map_ready');
 };
 

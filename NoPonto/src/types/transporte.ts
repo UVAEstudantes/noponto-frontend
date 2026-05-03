@@ -172,3 +172,14 @@ export interface PoiDto {
   longitude: number;
   distanciaMetros: number;
 }
+
+export interface PoiParadaDto {
+  poiId: string;
+  paradaId: string;
+  nome: string;
+  categoria: string;
+  prioridade: number;
+  latitude: number;
+  longitude: number;
+  distanciaMetros: number;
+}

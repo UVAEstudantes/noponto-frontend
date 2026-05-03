@@ -2,19 +2,16 @@ import { useTema } from "@/src/hooks/useTema";
 import { Parada } from "@/src/types/transporte";
 import { ChevronDown, ChevronUp, X } from "lucide-react-native";
 import React, { useEffect } from "react";
-import {
-  Dimensions,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface LinhaParadaInfo {
   linhaId: string;
@@ -59,9 +56,7 @@ function hexToRgb(hex: string) {
 function rgbToHex(r: number, g: number, b: number) {
   return (
     "#" +
-    [r, g, b]
-      .map((x) => Math.round(x).toString(16).padStart(2, "0"))
-      .join("")
+    [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("")
   );
 }
 
@@ -85,28 +80,39 @@ const ParadaSheet = ({
   onFechar,
 }: Props) => {
   const { cores } = useTema();
+  const insets = useSafeAreaInsets();
   const screenH = Dimensions.get("window").height;
-  const COLLAPSED_H = Math.min(screenH * 0.28, 220);
-  const EXPANDED_H = Math.min(screenH * 0.56, 460);
+  const bottomInset = Math.max(insets.bottom, 8);
+  const COLLAPSED_H = Math.min(screenH * 0.32, 260);
+  const EXPANDED_H = Math.min(screenH * 0.74, 620);
+  const MIN_H = COLLAPSED_H;
+  const MAX_H = EXPANDED_H;
 
   const translateY = useSharedValue(screenH);
   const height = useSharedValue(COLLAPSED_H);
+  const startH = useSharedValue(COLLAPSED_H);
   const overlayOpacity = useSharedValue(0);
   const detailsOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visivel) {
-      height.value = withSpring(expandido ? EXPANDED_H : COLLAPSED_H, {
-        damping: 18,
-        stiffness: 170,
+      height.value = withTiming(expandido ? EXPANDED_H : COLLAPSED_H, {
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
       });
-      translateY.value = withTiming(0, { duration: 220 });
-      overlayOpacity.value = withTiming(expandido ? 1 : 0.5, {
+      translateY.value = withTiming(0, {
         duration: 200,
+        easing: Easing.out(Easing.cubic),
+      });
+      overlayOpacity.value = withTiming(expandido ? 1 : 0.5, {
+        duration: 180,
       });
       detailsOpacity.value = withTiming(expandido ? 1 : 0, { duration: 180 });
     } else {
-      translateY.value = withTiming(screenH, { duration: 220 });
+      translateY.value = withTiming(screenH, {
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
+      });
       overlayOpacity.value = withTiming(0, { duration: 160 });
       detailsOpacity.value = withTiming(0, { duration: 120 });
     }
@@ -134,6 +140,29 @@ const ParadaSheet = ({
   const detailsStyle = useAnimatedStyle(() => ({
     opacity: detailsOpacity.value,
   }));
+
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      startH.value = height.value;
+    })
+    .onUpdate((e) => {
+      const nextH = startH.value - e.translationY;
+      if (nextH >= MIN_H && nextH <= MAX_H) {
+        height.value = nextH;
+      }
+    })
+    .onEnd(() => {
+      const mid = (MIN_H + MAX_H) / 2;
+      const nextExpanded = height.value >= mid;
+      const target = nextExpanded ? MAX_H : MIN_H;
+      height.value = withTiming(target, {
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+      });
+      if (nextExpanded !== expandido) {
+        runOnJS(onToggleExpandir)();
+      }
+    });
 
   const hasLinhas = linhas.length > 0;
   const hasChegadas = chegadas.length > 0;
@@ -175,20 +204,23 @@ const ParadaSheet = ({
             shadowRadius: 10,
             elevation: 12,
             overflow: "hidden",
+            paddingBottom: bottomInset,
           },
           sheetStyle,
         ]}
       >
-        <View style={{ alignItems: "center", paddingTop: 10 }}>
-          <View
-            style={{
-              width: 42,
-              height: 5,
-              borderRadius: 3,
-              backgroundColor: cores.borda,
-            }}
-          />
-        </View>
+        <GestureDetector gesture={panGesture}>
+          <View style={{ alignItems: "center", paddingTop: 10 }}>
+            <View
+              style={{
+                width: 42,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: cores.borda,
+              }}
+            />
+          </View>
+        </GestureDetector>
 
         <View
           style={{

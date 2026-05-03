@@ -1,6 +1,8 @@
 import InputBusca from "@/src/components/inputBusca";
 import Filtro from "@/src/components/mapaComponents/filtro";
-import LinhasContainer, { PROXIMO_SENTIDO } from "@/src/components/mapaComponents/linhasContainer";
+import LinhasContainer, {
+  PROXIMO_SENTIDO,
+} from "@/src/components/mapaComponents/linhasContainer";
 import LocalButton from "@/src/components/mapaComponents/localButton";
 import ParadaSheet, {
   ChegadaParadaInfo,
@@ -9,7 +11,10 @@ import ParadaSheet, {
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
 import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
-import { LinhaSelecionadaInfo, useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
+import {
+  LinhaSelecionadaInfo,
+  useMobilidadeRio,
+} from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import { buscarOpcoesPorNome } from "@/src/services/mobilidadeRio";
 import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
@@ -23,7 +28,7 @@ import {
   watchPositionAsync,
 } from "expo-location";
 import { Search } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
 
 const MAX_LINHAS = 5;
@@ -79,7 +84,11 @@ const Home = () => {
     let subscription: any;
     async function startWatching() {
       subscription = await watchPositionAsync(
-        { accuracy: LocationAccuracy.Highest, timeInterval: 2000, distanceInterval: 5 },
+        {
+          accuracy: LocationAccuracy.Highest,
+          timeInterval: 2000,
+          distanceInterval: 5,
+        },
         (response) => setLocation(response),
       );
     }
@@ -116,7 +125,9 @@ const Home = () => {
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
-  const [linhasSelecionadas, setLinhasSelecionadas] = useState<LinhaSelecionadaInfo[]>([]);
+  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
+    LinhaSelecionadaInfo[]
+  >([]);
 
   useEffect(() => {
     carregarLinhasSalvas().then((salvas) => {
@@ -147,7 +158,10 @@ const Home = () => {
       const modal: ModalApiTransporte = "onibus";
 
       setLinhasSelecionadas((prev) => {
-        if (prev.some((l) => l.linhaId === linha.id) || prev.length >= MAX_LINHAS) {
+        if (
+          prev.some((l) => l.linhaId === linha.id) ||
+          prev.length >= MAX_LINHAS
+        ) {
           return prev;
         }
 
@@ -169,17 +183,23 @@ const Home = () => {
       });
 
       try {
-        const itinerario = await garantirItinerario(linha.id, linhaCodigo, modal);
+        const itinerario = await garantirItinerario(
+          linha.id,
+          linhaCodigo,
+          modal,
+        );
 
         if (
           itinerario &&
           (itinerario.segmentos[0]?.length ?? 0) > 1 &&
           mapRef.current?.fitToCoordinates
         ) {
-          const coordenadas = itinerario.segmentos[0].map(([latitude, longitude]) => ({
-            latitude,
-            longitude,
-          }));
+          const coordenadas = itinerario.segmentos[0].map(
+            ([latitude, longitude]) => ({
+              latitude,
+              longitude,
+            }),
+          );
           setTimeout(() => mapRef.current?.fitToCoordinates(coordenadas), 350);
         }
       } catch (err) {
@@ -193,7 +213,9 @@ const Home = () => {
     (linhaId: string) => {
       const linha = linhasSelecionadas.find((l) => l.linhaId === linhaId);
       if (linha) removerItinerario(linhaId, linha.linhaCodigo);
-      setLinhasSelecionadas((prev) => prev.filter((l) => l.linhaId !== linhaId));
+      setLinhasSelecionadas((prev) =>
+        prev.filter((l) => l.linhaId !== linhaId),
+      );
     },
     [linhasSelecionadas, removerItinerario],
   );
@@ -246,52 +268,45 @@ const Home = () => {
         };
       })
       .filter(Boolean) as LinhaParadaInfo[];
-  }, [
-    paradaSelecionada,
-    linhasSelecionadas,
-    itinerariosPorId,
-    normalizarNome,
-  ]);
+  }, [paradaSelecionada, linhasSelecionadas, itinerariosPorId, normalizarNome]);
 
   const chegadasPorLinha = useMemo<ChegadaParadaInfo[]>(() => {
     if (!paradaSelecionada) return [];
     const alvo = normalizarNome(paradaSelecionada.nome);
 
     return linhasNaParada.map((l) => {
-        const veiculos = getVeiculosPorCodigo(l.codigo);
-        let melhorEta: number | null = null;
-        let melhorDist: number | null = null;
+      const veiculos = getVeiculosPorCodigo(l.codigo);
+      let melhorEta: number | null = null;
+      let melhorDist: number | null = null;
 
-        veiculos.forEach((v) => {
-          const nome = v.proximaParadaNome
-            ? normalizarNome(v.proximaParadaNome)
-            : null;
-          if (!nome || nome !== alvo) return;
+      veiculos.forEach((v) => {
+        const nome = v.proximaParadaNome
+          ? normalizarNome(v.proximaParadaNome)
+          : null;
+        if (!nome || nome !== alvo) return;
 
-          const dist = v.distanciaProximaParadaMetros ?? null;
-          const velocidade = v.velocidadeMedia ?? v.velocidade;
+        const dist = v.distanciaProximaParadaMetros ?? null;
+        const velocidade = v.velocidadeMedia ?? v.velocidade;
 
-          if (dist != null && velocidade && velocidade > 1) {
-            const eta = Math.round(
-              dist / ((velocidade * 1000) / 3600),
-            );
-            if (melhorEta == null || eta < melhorEta) {
-              melhorEta = eta;
-              melhorDist = dist;
-            }
-          } else if (melhorEta == null) {
+        if (dist != null && velocidade && velocidade > 1) {
+          const eta = Math.round(dist / ((velocidade * 1000) / 3600));
+          if (melhorEta == null || eta < melhorEta) {
+            melhorEta = eta;
             melhorDist = dist;
           }
-        });
-
-        return {
-          linhaId: l.linhaId,
-          codigo: l.codigo,
-          cor: l.cor,
-          etaSeg: melhorEta,
-          distanciaMetros: melhorDist,
-        };
+        } else if (melhorEta == null) {
+          melhorDist = dist;
+        }
       });
+
+      return {
+        linhaId: l.linhaId,
+        codigo: l.codigo,
+        cor: l.cor,
+        etaSeg: melhorEta,
+        distanciaMetros: melhorDist,
+      };
+    });
   }, [paradaSelecionada, linhasNaParada, getVeiculosPorCodigo, normalizarNome]);
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
@@ -311,7 +326,10 @@ const Home = () => {
             itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
           }
 
-          const veiculos = getVeiculosPorCodigo(l.linhaCodigo, itinerarioIdFiltro);
+          const veiculos = getVeiculosPorCodigo(
+            l.linhaCodigo,
+            itinerarioIdFiltro,
+          );
 
           // Mapa itinerarioId → índice do segmento para o dead reckoning
           const itinerarioSegmentoMap: Record<string, number> = {};
@@ -331,7 +349,7 @@ const Home = () => {
             paradas: itinerario?.paradas ?? [],
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
-            itinerarioSegmentoMap,  // ← novo
+            itinerarioSegmentoMap, // ← novo
             posicoes: veiculos.map((v) => ({
               id: v.id,
               latitude: v.latitude,
@@ -342,11 +360,12 @@ const Home = () => {
               sentidoNome: l.nomeExibicao,
               timestamp: v.timestamp,
               proximaParadaNome: v.proximaParadaNome ?? null,
-              distanciaProximaParadaMetros: v.distanciaProximaParadaMetros ?? null,
+              distanciaProximaParadaMetros:
+                v.distanciaProximaParadaMetros ?? null,
               status: v.status ?? 0,
-              posicaoNaRota: v.posicaoNaRota ?? null,           // ← novo
+              posicaoNaRota: v.posicaoNaRota ?? null, // ← novo
               comprimentoRotaMetros: v.comprimentoRotaMetros ?? null, // ← novo
-              itinerarioId: v.itinerarioId ?? null,             // ← novo
+              itinerarioId: v.itinerarioId ?? null, // ← novo
             })),
           };
         }),
@@ -368,8 +387,11 @@ const Home = () => {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <View className="flex-1 flex-col" style={{ backgroundColor: cores.fundoApp }}>
-      {(
+    <View
+      className="flex-1 flex-col"
+      style={{ backgroundColor: cores.fundoApp }}
+    >
+      {
         <MapaOSM
           ref={mapRef}
           location={location}
@@ -382,7 +404,7 @@ const Home = () => {
             setParadaExpandida(false);
           }}
         />
-      )}
+      }
 
       {containerAberto && (
         <Pressable

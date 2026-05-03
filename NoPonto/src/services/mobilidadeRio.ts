@@ -9,6 +9,7 @@ import {
   OpcaoBusca,
   Parada,
   PoiDto,
+  PoiParadaDto,
   PosicaoVeiculo,
   SentidoSimples,
   SentidosResponse,
@@ -76,7 +77,10 @@ export async function buscarOpcoesPorNome(
   return linhas.map((linha) => ({
     linha,
     nomeExibicao: linha.codigo
-      ? `${linha.codigo} - ${linha.nome.replace(linha.codigo, "").replace(/^[-\s]+/, "").trim()}`
+      ? `${linha.codigo} - ${linha.nome
+          .replace(linha.codigo, "")
+          .replace(/^[-\s]+/, "")
+          .trim()}`
       : linha.nome,
   }));
 }
@@ -147,6 +151,16 @@ export async function buscarPoisPorItinerario(
   return response.data;
 }
 
+export async function buscarPoisPorParada(
+  paradaId: string,
+): Promise<PoiParadaDto[]> {
+  const response = await api.get<PoiParadaDto[]>(
+    `/pois/por-parada/${paradaId}`,
+  );
+  if (!response.ok || !response.data) return [];
+  return response.data;
+}
+
 // ─── Veículos ───────────────────────────────────────────────────────────────
 
 export async function buscarVeiculosPorLinha(
@@ -210,10 +224,19 @@ export function construirLinhasDisponiveis(
     grupos.set(chave, lista);
   });
 
-  const linhas: LinhaTempoReal[] = Array.from(grupos.entries()).map(([chave]) => {
-    const [modal, nome] = chave.split(":") as [ModalApiTransporte, string];
-    return { id: chave, nome, modal, sentido: "Ida ↔ Volta", intervalo: INTERVALO_PADRAO, tarifa: TARIFA_PADRAO };
-  });
+  const linhas: LinhaTempoReal[] = Array.from(grupos.entries()).map(
+    ([chave]) => {
+      const [modal, nome] = chave.split(":") as [ModalApiTransporte, string];
+      return {
+        id: chave,
+        nome,
+        modal,
+        sentido: "Ida ↔ Volta",
+        intervalo: INTERVALO_PADRAO,
+        tarifa: TARIFA_PADRAO,
+      };
+    },
+  );
 
   return linhas.sort((a, b) => {
     if (a.modal !== b.modal) return a.modal.localeCompare(b.modal);
