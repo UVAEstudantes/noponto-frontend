@@ -249,7 +249,11 @@ function startDR(){
       var avanco=velGraus*dt/s.comprimentoGraus;
       s.posicaoNaRota=Math.min(1,s.posicaoNaRota+avanco);
       var coord=interpolarNaRota(s.lineCoords,s.posicaoNaRota);
-      if(coord&&s.marker)s.marker.setLatLng(L.latLng(coord[0],coord[1]));
+      if(coord&&s.marker){
+        s.marker.setLatLng(L.latLng(coord[0],coord[1]));
+        var h=headingNaRota(s.lineCoords,s.posicaoNaRota);
+        if(typeof h==='number'){vehicleHeadings[k]=h;setHeading(s.marker,h);}
+      }
     });
   },100);
 }
@@ -273,6 +277,15 @@ function interpolarNaRota(coords,pos){
     acc+=segs[j];
   }
   return coords[coords.length-1];
+}
+
+function headingNaRota(coords,pos){
+  if(!coords||coords.length<2||pos===null||pos===undefined)return null;
+  var delta=0.0015;
+  var p1=interpolarNaRota(coords,Math.max(0,pos-delta));
+  var p2=interpolarNaRota(coords,Math.min(1,pos+delta));
+  if(!p1||!p2)return null;
+  return calcHeading({lat:p1[0],lng:p1[1]},{lat:p2[0],lng:p2[1]});
 }
 
 function runInternal(fn){internalMove=true;fn()}
@@ -504,6 +517,11 @@ window.updateMap=function(data){
         if(typeof segIdx==='number'&&segmentos[segIdx]){
           lineCoordsDR=segmentos[segIdx];
         }
+      }
+
+      if(posicaoNaRota!==null&&lineCoordsDR){
+        var hRoute=headingNaRota(lineCoordsDR,posicaoNaRota);
+        if(typeof hRoute==='number')heading=hRoute;
       }
 
       var marker=vehicleMarkers[vKey];
