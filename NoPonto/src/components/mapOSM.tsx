@@ -178,12 +178,25 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
 
     .stop-marker{background:transparent;border:none}
-    .stop-dot{width:9px;height:9px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+    .stop-pin{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;position:relative}
+    .stop-core{width:6px;height:6px;border-radius:50%;background:var(--stop-color,#2196F3)}
+    .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;border:2px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.45;animation:stopPulse 2.4s ease-out infinite}
+    @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:.45}70%{transform:translate(-50%,-50%) scale(1.8);opacity:0}100%{opacity:0}}
 
-    .leaflet-popup-content{font-size:13px;line-height:1.5;min-width:140px}
-    .popup-linha{font-weight:700;font-size:14px;margin-bottom:4px}
+    .leaflet-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:8px 10px}
+    .popup-card{display:flex;flex-direction:column;gap:6px}
+    .popup-header{display:flex;align-items:center;gap:8px}
+    .popup-indicator{width:26px;height:26px;position:relative;flex:0 0 26px}
+    .popup-indicator .pi-dot{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);position:absolute;left:4px;top:4px}
+    .popup-indicator .pi-arrow{position:absolute;left:50%;top:50%;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid rgba(255,255,255,.95);transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-11px);transform-origin:50% 50%}
+    .popup-title{font-weight:700;font-size:14px;color:#111}
+    .popup-sub{font-size:12px;color:#555}
+    .popup-time{font-size:12px;color:#666}
+    .popup-toggle{margin-top:2px;font-size:12px;color:#1f6feb;text-decoration:underline;cursor:pointer;user-select:none;align-self:flex-start}
+    .popup-details{display:none;border-top:1px dashed #e5e7eb;padding-top:8px;margin-top:4px}
+    .popup-details.open{display:block}
     .popup-row{display:flex;gap:6px;color:#555}
-    .popup-label{font-weight:600;color:#333}
+    .popup-label{font-weight:600;color:#333;min-width:86px}
   </style>
 </head>
 <body>
@@ -310,6 +323,10 @@ function calcHeading(from,to){
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
 }
 
+function safeId(v){
+  return String(v).replace(/[^a-zA-Z0-9_-]/g,'_');
+}
+
 function stopAnim(key){if(animFrames[key]){cancelAnimationFrame(animFrames[key]);delete animFrames[key]}}
 
 function animateTo(key,marker,dest,ms){
@@ -338,8 +355,8 @@ function busIcon(color,heading){
 function stopIcon(color){
   return L.divIcon({
     className:'stop-marker',
-    html:'<div class="stop-dot" style="background:'+color+'"></div>',
-    iconSize:[9,9],iconAnchor:[4,4]
+    html:'<div class="stop-pin" style="--stop-color:'+color+'"><div class="stop-core"></div></div>',
+    iconSize:[14,14],iconAnchor:[7,7]
   });
 }
 
@@ -356,17 +373,76 @@ function fmtTs(v){
   var d=new Date(ms);return isNaN(d.getTime())?null:d.toLocaleString('pt-BR');
 }
 
+function formatElapsed(ts){
+  var diff=Math.max(0,Math.floor((Date.now()-ts)/1000));
+  var m=Math.floor(diff/60);
+  var s=diff%60;
+  if(m>0)return m+'m '+(s<10?'0':'')+s+'s';
+  return s+'s';
+}
+
+function updateTimeAgo(){
+  var els=document.querySelectorAll('.ts-ago');
+  for(var i=0;i<els.length;i++){
+    var el=els[i];
+    var ts=Number(el.getAttribute('data-ts'));
+    if(!ts)continue;
+    el.textContent=formatElapsed(ts);
+  }
+}
+
+function toggleDetails(btn){
+  if(!btn)return;
+  var id=btn.getAttribute('data-target');
+  if(!id)return;
+  var el=document.getElementById(id);
+  if(!el)return;
+  var open=el.classList.contains('open');
+  if(open){el.classList.remove('open');btn.textContent='Mais detalhes';}
+  else{el.classList.add('open');btn.textContent='Menos detalhes';}
+}
+
 function buildPopup(linha,p,vid,heading){
   var speed=parseNum(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade);
-  var ts=fmtTs(p.timestamp);
-  var dir=typeof heading==='number'?Math.round(heading)+'°':null;
-  var html='<div class="popup-linha">'+linha.nome+'</div>';
-  html+='<div class="popup-row"><span class="popup-label">Veículo:</span>'+vid+'</div>';
-  if(speed!==null)html+='<div class="popup-row"><span class="popup-label">Velocidade:</span>'+Math.round(speed)+' km/h</div>';
-  if(dir)html+='<div class="popup-row"><span class="popup-label">Direção:</span>'+dir+'</div>';
-  if(ts)html+='<div class="popup-row"><span class="popup-label">Atualizado:</span>'+ts+'</div>';
-  if(p.proximaParadaNome)html+='<div class="popup-row"><span class="popup-label">Próx. parada:</span>'+p.proximaParadaNome+'</div>';
-  if(linha.modal)html+='<div class="popup-row"><span class="popup-label">Modal:</span>'+linha.modal+'</div>';
+  var tsRaw=parseNum(p.timestamp);
+  if(tsRaw&&tsRaw<1e12)tsRaw*=1000;
+  var tsMs=tsRaw||null;
+  var sentido=p.sentidoNome||null;
+  if(sentido&&linha&&linha.nome&&sentido===linha.nome)sentido=null;
+  if(!sentido&&linha&&linha.modoSentido){
+    if(linha.modoSentido==='ida')sentido='Ida';
+    else if(linha.modoSentido==='volta')sentido='Volta';
+    else if(linha.modoSentido==='ambos')sentido='Ida/Volta';
+  }
+  var sentidoLabel=sentido||'-';
+  var color=linha.cor||null;
+  var corFinal=color||'#2196F3';
+  var headingDeg=typeof heading==='number'?heading:0;
+  var popupId='popup_'+safeId(linha.nome+'_'+vid);
+  var detailsId=popupId+'_details';
+  var tempoHtml=tsMs?('<span class="ts-ago" data-ts="'+tsMs+'">'+formatElapsed(tsMs)+'</span>'):'-';
+  var speedHtml=speed!==null?Math.round(speed)+' km/h':'-';
+  var prox=p.proximaParadaNome?p.proximaParadaNome:'-';
+  var dist=p.distanciaProximaParadaMetros!=null?Math.round(p.distanciaProximaParadaMetros)+' m':'-';
+  var html='<div class="popup-card" id="'+popupId+'">';
+  html+='<div class="popup-header">';
+  html+='<div class="popup-indicator" style="--h:'+headingDeg+'deg">';
+  html+='<div class="pi-dot" style="background:'+corFinal+'"></div>';
+  html+='<div class="pi-arrow"></div>';
+  html+='</div>';
+  html+='<div class="popup-main">';
+  html+='<div class="popup-title">'+linha.nome+'</div>';
+  html+='<div class="popup-sub">Sentido: '+sentidoLabel+'</div>';
+  html+='<div class="popup-time">Atualizado ha '+tempoHtml+'</div>';
+  html+='</div>';
+  html+='</div>';
+  html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">Mais detalhes</div>';
+  html+='<div class="popup-details" id="'+detailsId+'">';
+  html+='<div class="popup-row"><span class="popup-label">Vel. media:</span>'+speedHtml+'</div>';
+  html+='<div class="popup-row"><span class="popup-label">Prox. parada:</span>'+prox+'</div>';
+  html+='<div class="popup-row"><span class="popup-label">Distancia:</span>'+dist+'</div>';
+  html+='</div>';
+  html+='</div>';
   return html;
 }
 
@@ -417,6 +493,8 @@ window.onload=function(){
   map.on('zoomend',function(){internalMove=false});
 
   startDR();
+  setInterval(updateTimeAgo,1000);
+  map.on('popupopen',function(){updateTimeAgo()});
 
   if(window.pendingData)window.updateMap(window.pendingData);
   window.ReactNativeWebView&&window.ReactNativeWebView.postMessage('map_ready');
