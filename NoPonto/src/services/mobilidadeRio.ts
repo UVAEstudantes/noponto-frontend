@@ -1,219 +1,340 @@
 import {
-  CoordenadaMapa,
-  ItinerarioLinha,
-  LinhaTempoReal,
-  ModalApiTransporte,
-  VeiculoTempoReal,
+    CoordenadaMapa,
+    ItinerarioLinha,
+    ItinerarioMapaDto,
+    ItinerarioPorLinhaMapaDto,
+    LinhaDetalhesDto,
+    LinhaSimplesDto,
+    LinhasResponse,
+    LinhaTempoReal,
+    ModalApiTransporte,
+    OpcaoBusca,
+    Parada,
+    PoiDto,
+    PoiParadaDto,
+    PosicaoVeiculo,
+    ProximoVeiculoParadaDto,
+    SentidoSimples,
+    SentidosResponse,
+    VeiculosLinhaDto,
+    VeiculoTempoReal,
 } from "@/src/types/transporte";
+import { api } from "./api";
 
-const URL_GPS_BRT = "https://dados.mobilidade.rio/gps/brt";
-const URL_GPS_SPPO = "https://dados.mobilidade.rio/gps/sppo";
-const URL_ITINERARIO_SPPO =
-  "https://pgeo3.rio.rj.gov.br/arcgis/rest/services/Hosted/Itiner%C3%A1rios_da_rede_de_transporte_p%C3%BAblico_por_%C3%B4nibus_(SPPO)/FeatureServer/1/query";
-
-type BrtApiVeiculo = {
-  codigo?: string;
-  placa?: string;
-  linha?: string;
-  latitude?: number;
-  longitude?: number;
-  dataHora?: number;
-  velocidade?: number;
-  sentido?: string;
-  trajeto?: string;
-  direcao?: number | string;
-};
-
-type BrtApiResposta = {
-  veiculos?: BrtApiVeiculo[];
-};
-
-type SppoApiVeiculo = {
-  ordem?: string;
-  latitude?: string;
-  longitude?: string;
-  datahora?: string;
-  velocidade?: string;
-  linha?: string;
-  datahoraenvio?: string;
-  datahoraservidor?: string;
-};
-
-type ArcGisFeature = {
-  geometry?: {
-    type?: string;
-    coordinates?: [number, number][];
-  };
-  properties?: {
-    servico?: string;
-    direcao?: string;
-    destino?: string;
-  };
-};
-
-type ArcGisGeoJson = {
-  features?: ArcGisFeature[];
-};
+const TARIFA_PADRAO = 4.7;
+const INTERVALO_PADRAO = "~20 min";
 
 const FORMATADOR_NUMERICO = new Intl.Collator("pt-BR", {
   numeric: true,
   sensitivity: "base",
 });
 
-const CHAVE_INTERVALO = "Atualizacao ~20s";
-const TARIFA_PADRAO = 4.7;
+// ─── /linhas ───────────────────────────────────────────────────────────────
 
-function normalizarNumero(valor: unknown): number | null {
-  if (typeof valor === "number") {
-    return Number.isFinite(valor) ? valor : null;
-  }
-
-  if (typeof valor === "string") {
-    const normalizado = valor.replace(",", ".").trim();
-    if (!normalizado) {
-      return null;
-    }
-
-    const numero = Number(normalizado);
-    return Number.isFinite(numero) ? numero : null;
-  }
-
-  return null;
+export async function buscarLinhasDto(
+  nome?: string,
+  page: number = 1,
+  pageSize: number = 50,
+): Promise<LinhaSimplesDto[]> {
+  const response = await api.get<LinhasResponse>("/linhas", {
+    params: { nome: nome || "", page, pageSize },
+  });
+  if (!response.ok || !response.data) return [];
+  return response.data.itens;
 }
 
-function normalizarLinhaSppo(linha: string | undefined): string | null {
-  if (!linha) {
-    return null;
-  }
-
-  const valor = linha.trim().toUpperCase();
-  if (!valor) {
-    return null;
-  }
-
-  if (
-    valor === "GARAGEM" ||
-    valor === "CIRCULAR GARAGEM" ||
-    valor === "SEM SERVICO"
-  ) {
-    return null;
-  }
-
-  if (!/[0-9]/.test(valor)) {
-    return null;
-  }
-
-  return valor;
+export async function buscarDetalhesLinha(
+  linhaId: string,
+): Promise<LinhaDetalhesDto | null> {
+  const response = await api.get<LinhaDetalhesDto>(
+    `/linhas/${linhaId}/detalhes`,
+  );
+  if (!response.ok || !response.data) return null;
+  return response.data;
 }
 
-function normalizarLinhaBrt(linha: string | undefined): string | null {
-  if (!linha) {
-    return null;
-  }
+// ─── /sentidos ─────────────────────────────────────────────────────────────
 
-  const valor = linha.trim().toUpperCase();
-  if (!valor || valor === "0") {
-    return null;
-  }
-
-  return valor;
+export async function buscarSentidosPorLinha(
+  linhaId: string,
+): Promise<SentidoSimples[]> {
+  const response = await api.get<SentidosResponse>("/sentidos", {
+    params: { linhaId, page: 1, pageSize: 10 },
+  });
+  if (!response.ok || !response.data) return [];
+  return response.data.itens;
 }
 
-function formatarDataSppo(data: Date): string {
-  const ano = data.getFullYear();
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  const dia = String(data.getDate()).padStart(2, "0");
-  const hora = String(data.getHours()).padStart(2, "0");
-  const minuto = String(data.getMinutes()).padStart(2, "0");
-  const segundo = String(data.getSeconds()).padStart(2, "0");
+// ─── /itinerarios ──────────────────────────────────────────────────────────
 
-  return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}`;
+export async function buscarMapaPorLinha(
+  linhaId: string,
+  incluirParadas: boolean = false,
+): Promise<ItinerarioPorLinhaMapaDto | null> {
+  const response = await api.get<ItinerarioPorLinhaMapaDto>(
+    `/itinerarios/por-linha/${linhaId}/mapa`,
+    { params: { incluirParadas } },
+  );
+  if (!response.ok || !response.data) return null;
+  return response.data;
 }
 
-function normalizarSentido(sentido: string | undefined): string {
-  if (!sentido) {
-    return "";
-  }
-
-  const valor = sentido.trim().toLowerCase();
-  if (valor === "ida") {
-    return "ida";
-  }
-  if (valor === "volta") {
-    return "volta";
-  }
-
-  return "";
+export async function buscarMapaPorItinerario(
+  itinerarioId: string,
+  incluirParadas: boolean = false,
+): Promise<ItinerarioMapaDto | null> {
+  const response = await api.get<ItinerarioMapaDto>(
+    `/itinerarios/itinerario/${itinerarioId}/mapa`,
+    { params: { incluirParadas } },
+  );
+  if (!response.ok || !response.data) return null;
+  return response.data;
 }
 
-function normalizarDestino(destino: string | undefined): string | undefined {
-  if (!destino) {
-    return undefined;
-  }
+// ─── Busca de opções para o input ──────────────────────────────────────────
 
-  const valor = destino.trim();
-  return valor || undefined;
+export async function buscarOpcoesPorNome(
+  nome: string,
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<OpcaoBusca[]> {
+  if (!nome.trim()) return [];
+  const linhas = await buscarLinhasDto(nome, page, pageSize);
+  return linhas.map((linha) => ({
+    linha,
+    nomeExibicao: linha.codigo
+      ? `${linha.codigo} - ${linha.nome
+          .replace(linha.codigo, "")
+          .replace(/^[-\s]+/, "")
+          .trim()}`
+      : linha.nome,
+  }));
 }
 
-function listaServicosPossiveis(linhaOriginal: string): string[] {
-  const linha = linhaOriginal.trim().toUpperCase().replace(/\s+/g, "");
-  const resultados = new Set<string>([linha]);
+// ─── Itinerário mesclado (ida + volta) ─────────────────────────────────────
 
-  const matchComPrefixo = linha.match(/^(SN|SV|SP|LECD)(\d+)$/);
-  const apenasNumero = linha.match(/^(\d+)$/);
+export async function buscarItinerarioLinhaMesclado(
+  linhaId: string,
+  linhaCodigo: string,
+  modal: ModalApiTransporte,
+  incluirParadas: boolean = false,
+): Promise<ItinerarioLinha | null> {
+  const montarPorLinha = async (): Promise<ItinerarioLinha | null> => {
+    const mapaLinha = await buscarMapaPorLinha(linhaId, incluirParadas);
+    if (!mapaLinha || !mapaLinha.itinerarios?.length) return null;
 
-  if (matchComPrefixo) {
-    const numero = matchComPrefixo[2];
-    resultados.add(numero);
-    resultados.add(`SN${numero}`);
-    resultados.add(`SV${numero}`);
-    resultados.add(`SP${numero}`);
-    resultados.add(`LECD${numero}`);
+    const segmentos: CoordenadaMapa[][] = [];
+    const todasParadas: Parada[] = [];
+    const paradasPorItinerario: Record<string, Parada[]> = {};
+    let itinerarioIdIda: string | undefined;
+    let itinerarioIdVolta: string | undefined;
+
+    mapaLinha.itinerarios.forEach((it) => {
+      const coordenadas: CoordenadaMapa[] = (it.geometria ?? [])
+        .sort((a, b) => a.ordem - b.ordem)
+        .map((g) => [g.latitude, g.longitude]);
+      if (coordenadas.length === 0) return;
+
+      const isIda =
+        it.sentidoNome?.toUpperCase().includes("IDA") || segmentos.length === 0;
+
+      if (isIda) {
+        segmentos[0] = coordenadas;
+        itinerarioIdIda = it.itinerarioId;
+      } else {
+        segmentos[1] = coordenadas;
+        itinerarioIdVolta = it.itinerarioId;
+      }
+
+      if (incluirParadas) {
+        if (it.itinerarioId) {
+          paradasPorItinerario[it.itinerarioId] = it.paradas ?? [];
+        }
+        it.paradas?.forEach((parada) => {
+          if (!todasParadas.some((p) => p.paradaId === parada.paradaId)) {
+            todasParadas.push(parada);
+          }
+        });
+      }
+    });
+
+    const filtrados = segmentos.filter(Boolean);
+    if (filtrados.length === 0) return null;
+
+    return {
+      linha: linhaCodigo,
+      modal,
+      segmentos: filtrados,
+      paradas: incluirParadas ? todasParadas : undefined,
+      paradasPorItinerario: incluirParadas ? paradasPorItinerario : undefined,
+      itinerarioIdIda,
+      itinerarioIdVolta,
+      incluiParadas: incluirParadas,
+    };
+  };
+
+  const detalhes = await buscarDetalhesLinha(linhaId);
+  if (!detalhes?.sentidos?.length) {
+    return montarPorLinha();
   }
 
-  if (apenasNumero) {
-    const numero = apenasNumero[1];
-    resultados.add(`SN${numero}`);
-    resultados.add(`SV${numero}`);
-    resultados.add(`SP${numero}`);
-    resultados.add(`LECD${numero}`);
-  }
+  let itinerarioIdIda: string | undefined;
+  let itinerarioIdVolta: string | undefined;
 
-  return Array.from(resultados).filter(Boolean);
-}
-
-function ordenarLinhas(a: LinhaTempoReal, b: LinhaTempoReal) {
-  if (a.modal !== b.modal) {
-    return a.modal.localeCompare(b.modal);
-  }
-
-  return FORMATADOR_NUMERICO.compare(a.nome, b.nome);
-}
-
-function construirSentidoLinha(veiculos: VeiculoTempoReal[]): string {
-  const sentidos = new Set<string>();
-
-  veiculos.forEach((veiculo) => {
-    const sentido = normalizarSentido(veiculo.sentido);
-    if (sentido) {
-      sentidos.add(sentido);
-    }
+  detalhes.sentidos.forEach((sentido) => {
+    const tipo = tipoSentidoPorNome(sentido.nome);
+    const itId = sentido.itinerarios?.[0]?.itinerarioId;
+    if (!itId) return;
+    if (tipo === "ida" && !itinerarioIdIda) itinerarioIdIda = itId;
+    if (tipo === "volta" && !itinerarioIdVolta) itinerarioIdVolta = itId;
   });
 
-  if (sentidos.has("ida") && sentidos.has("volta")) {
-    return "Ida ↔ Volta";
+  if (!itinerarioIdIda && !itinerarioIdVolta) {
+    const lista = detalhes.sentidos.reduce(
+      (acc, s) => acc.concat(s.itinerarios ?? []),
+      [] as { itinerarioId: string }[],
+    );
+    itinerarioIdIda = lista[0]?.itinerarioId;
+    itinerarioIdVolta = lista[1]?.itinerarioId;
   }
 
-  if (sentidos.has("ida")) {
-    return "Ida ↔ Volta";
+  const [mapaIda, mapaVolta] = await Promise.all([
+    itinerarioIdIda
+      ? buscarMapaPorItinerario(itinerarioIdIda, incluirParadas)
+      : Promise.resolve(null),
+    itinerarioIdVolta
+      ? buscarMapaPorItinerario(itinerarioIdVolta, incluirParadas)
+      : Promise.resolve(null),
+  ]);
+
+  const segmentos: CoordenadaMapa[][] = [];
+  const todasParadas: Parada[] = [];
+  const paradasPorItinerario: Record<string, Parada[]> = {};
+
+  const adicionarMapa = (
+    mapa: ItinerarioMapaDto | null,
+    idx: number,
+    itinerarioId?: string,
+  ) => {
+    if (!mapa) return;
+    const coordenadas: CoordenadaMapa[] = (mapa.geometria ?? [])
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((g) => [g.latitude, g.longitude]);
+    if (coordenadas.length === 0) return;
+    segmentos[idx] = coordenadas;
+
+    if (incluirParadas) {
+      if (itinerarioId) {
+        paradasPorItinerario[itinerarioId] = mapa.paradas ?? [];
+      }
+      mapa.paradas?.forEach((parada) => {
+        if (!todasParadas.some((p) => p.paradaId === parada.paradaId)) {
+          todasParadas.push(parada);
+        }
+      });
+    }
+  };
+
+  adicionarMapa(mapaIda, 0, itinerarioIdIda);
+  adicionarMapa(mapaVolta, 1, itinerarioIdVolta);
+
+  const filtrados = segmentos.filter(Boolean);
+  if (filtrados.length === 0) {
+    return montarPorLinha();
   }
 
-  if (sentidos.has("volta")) {
-    return "Ida ↔ Volta";
-  }
-
-  return "Ida ↔ Volta";
+  return {
+    linha: linhaCodigo,
+    modal,
+    segmentos: filtrados,
+    paradas: incluirParadas ? todasParadas : undefined,
+    paradasPorItinerario: incluirParadas ? paradasPorItinerario : undefined,
+    itinerarioIdIda,
+    itinerarioIdVolta,
+    incluiParadas: incluirParadas,
+  };
 }
+
+// ─── POIs ───────────────────────────────────────────────────────────────────
+
+export async function buscarPoisPorItinerario(
+  itinerarioId: string,
+  sort: string = "prioridade",
+): Promise<PoiDto[]> {
+  const response = await api.get<PoiDto[]>(
+    `/pois/por-itinerario/${itinerarioId}`,
+    { params: { sort } },
+  );
+  if (!response.ok || !response.data) return [];
+  return response.data;
+}
+
+export async function buscarPoisPorParada(
+  paradaId: string,
+): Promise<PoiParadaDto[]> {
+  const response = await api.get<PoiParadaDto[]>(
+    `/pois/por-parada/${paradaId}`,
+  );
+  if (!response.ok || !response.data) return [];
+  return response.data;
+}
+
+// ─── /paradas ─────────────────────────────────────────────────────────────
+
+export async function buscarProximosVeiculosParada(
+  paradaId: string,
+): Promise<ProximoVeiculoParadaDto[]> {
+  const response = await api.get<ProximoVeiculoParadaDto[]>(
+    `/paradas/${paradaId}/proximos-veiculos`,
+  );
+  if (!response.ok || !response.data) return [];
+  return response.data;
+}
+
+// ─── Veículos ───────────────────────────────────────────────────────────────
+
+export async function buscarVeiculosPorLinha(
+  codigoLinha: string,
+): Promise<VeiculoTempoReal[]> {
+  const response = await api.get<VeiculosLinhaDto>(
+    `/veiculos/linha/${codigoLinha}`,
+  );
+  if (!response.ok || !response.data) return [];
+  return response.data.posicoes.map(converterPosicao);
+}
+
+function converterPosicao(v: PosicaoVeiculo): VeiculoTempoReal {
+  return {
+    id: v.ordem,
+    modal: "onibus",
+    linha: v.codigoLinha.trim().toUpperCase(),
+    latitude: v.latitude,
+    longitude: v.longitude,
+    timestamp: new Date(v.timestampGps).getTime(),
+    velocidade: v.velocidade,
+    direcao: calcularDirecao(v),
+  };
+}
+
+function calcularDirecao(v: PosicaoVeiculo): number | null {
+  if (v.latitudeAnterior == null || v.longitudeAnterior == null) return null;
+  if (
+    Math.abs(v.latitude - v.latitudeAnterior) < 1e-5 &&
+    Math.abs(v.longitude - v.longitudeAnterior) < 1e-5
+  )
+    return null;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLon = toRad(v.longitude - v.longitudeAnterior);
+  const y = Math.sin(dLon) * Math.cos(toRad(v.latitude));
+  const x =
+    Math.cos(toRad(v.latitudeAnterior)) * Math.sin(toRad(v.latitude)) -
+    Math.sin(toRad(v.latitudeAnterior)) *
+      Math.cos(toRad(v.latitude)) *
+      Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 export function chaveLinhaModal(
   linha: string,
@@ -222,237 +343,45 @@ export function chaveLinhaModal(
   return `${modal}:${linha.trim().toUpperCase()}`;
 }
 
-export async function buscarVeiculosBrt(): Promise<VeiculoTempoReal[]> {
-  const resposta = await fetch(URL_GPS_BRT);
-  if (!resposta.ok) {
-    throw new Error("Nao foi possivel carregar os veiculos do BRT.");
-  }
-
-  const dados = (await resposta.json()) as BrtApiResposta;
-  const veiculos = Array.isArray(dados.veiculos) ? dados.veiculos : [];
-
-  const listaNormalizada: VeiculoTempoReal[] = [];
-
-  veiculos.forEach((item) => {
-    const linha = normalizarLinhaBrt(item.linha);
-    const latitude = normalizarNumero(item.latitude);
-    const longitude = normalizarNumero(item.longitude);
-
-    if (!linha || latitude === null || longitude === null) {
-      return;
-    }
-
-    const direcao = normalizarNumero(item.direcao);
-    const velocidade = normalizarNumero(item.velocidade) ?? 0;
-    const timestamp = normalizarNumero(item.dataHora) ?? Date.now();
-
-    listaNormalizada.push({
-      id: item.codigo?.trim() || item.placa?.trim() || `brt-${linha}-${timestamp}`,
-      modal: "brt",
-      linha,
-      latitude,
-      longitude,
-      velocidade,
-      timestamp,
-      direcao,
-      sentido: normalizarSentido(item.sentido),
-      trajeto: item.trajeto?.trim() || undefined,
-    });
-  });
-
-  return listaNormalizada;
-}
-
-export async function buscarVeiculosSppo(
-  intervaloMinutos = 2,
-): Promise<VeiculoTempoReal[]> {
-  const fim = new Date();
-  const inicio = new Date(fim.getTime() - intervaloMinutos * 60_000);
-
-  const params = new URLSearchParams({
-    dataInicial: formatarDataSppo(inicio),
-    dataFinal: formatarDataSppo(fim),
-  });
-
-  const resposta = await fetch(`${URL_GPS_SPPO}?${params.toString()}`);
-  if (!resposta.ok) {
-    throw new Error("Nao foi possivel carregar os veiculos de onibus.");
-  }
-
-  const dados = (await resposta.json()) as SppoApiVeiculo[];
-  const registros = Array.isArray(dados) ? dados : [];
-
-  const maisRecentePorVeiculo = new Map<string, VeiculoTempoReal>();
-
-  registros.forEach((item) => {
-    const linha = normalizarLinhaSppo(item.linha);
-    const latitude = normalizarNumero(item.latitude);
-    const longitude = normalizarNumero(item.longitude);
-
-    if (!linha || latitude === null || longitude === null) {
-      return;
-    }
-
-    const idVeiculo = item.ordem?.trim();
-    if (!idVeiculo) {
-      return;
-    }
-
-    const timestamp =
-      normalizarNumero(item.datahoraenvio) ??
-      normalizarNumero(item.datahoraservidor) ??
-      normalizarNumero(item.datahora) ??
-      Date.now();
-
-    const velocidade = normalizarNumero(item.velocidade) ?? 0;
-
-    const chave = `onibus:${idVeiculo}`;
-    const atual = maisRecentePorVeiculo.get(chave);
-
-    if (!atual || timestamp >= atual.timestamp) {
-      maisRecentePorVeiculo.set(chave, {
-        id: idVeiculo,
-        modal: "onibus",
-        linha,
-        latitude,
-        longitude,
-        velocidade,
-        timestamp,
-        direcao: null,
-      });
-    }
-  });
-
-  return Array.from(maisRecentePorVeiculo.values());
-}
-
-export async function buscarVeiculosTempoReal(): Promise<VeiculoTempoReal[]> {
-  const [onibus, brt] = await Promise.all([
-    buscarVeiculosSppo(),
-    buscarVeiculosBrt(),
-  ]);
-
-  return [...onibus, ...brt];
-}
-
 export function construirLinhasDisponiveis(
   veiculos: VeiculoTempoReal[],
 ): LinhaTempoReal[] {
   const grupos = new Map<string, VeiculoTempoReal[]>();
-
-  veiculos.forEach((veiculo) => {
-    const chave = chaveLinhaModal(veiculo.linha, veiculo.modal);
-    const listaAtual = grupos.get(chave) ?? [];
-    listaAtual.push(veiculo);
-    grupos.set(chave, listaAtual);
+  veiculos.forEach((v) => {
+    const chave = chaveLinhaModal(v.linha, v.modal);
+    const lista = grupos.get(chave) ?? [];
+    lista.push(v);
+    grupos.set(chave, lista);
   });
 
   const linhas: LinhaTempoReal[] = Array.from(grupos.entries()).map(
-    ([chave, lista]) => {
+    ([chave]) => {
       const [modal, nome] = chave.split(":") as [ModalApiTransporte, string];
       return {
         id: chave,
         nome,
         modal,
-        sentido: construirSentidoLinha(lista),
-        intervalo: CHAVE_INTERVALO,
+        sentido: "Ida ↔ Volta",
+        intervalo: INTERVALO_PADRAO,
         tarifa: TARIFA_PADRAO,
       };
     },
   );
 
-  return linhas.sort(ordenarLinhas);
+  return linhas.sort((a, b) => {
+    if (a.modal !== b.modal) return a.modal.localeCompare(b.modal);
+    return FORMATADOR_NUMERICO.compare(a.nome, b.nome);
+  });
 }
 
-export async function buscarItinerarioLinha(
-  linha: string,
-  modal: ModalApiTransporte,
-): Promise<ItinerarioLinha | null> {
-  const servicos = listaServicosPossiveis(linha);
-  const where = servicos.map((servico) => `servico='${servico}'`).join(" OR ");
+export async function buscarVeiculosTempoReal(): Promise<VeiculoTempoReal[]> {
+  return [];
+}
 
-  const params = new URLSearchParams({
-    outFields: "servico,direcao,destino,consorcio,tipo_dia",
-    where,
-    f: "geojson",
-  });
-
-  const resposta = await fetch(`${URL_ITINERARIO_SPPO}?${params.toString()}`);
-  if (!resposta.ok) {
-    return null;
-  }
-
-  const dados = (await resposta.json()) as ArcGisGeoJson;
-  const features = Array.isArray(dados.features) ? dados.features : [];
-
-  const melhorTrechoPorDirecao = new Map<string, CoordenadaMapa[]>();
-  const destinoPorDirecao = new Map<string, string>();
-
-  features.forEach((feature) => {
-    if (feature.geometry?.type !== "LineString") {
-      return;
-    }
-
-    const coordenadas = Array.isArray(feature.geometry.coordinates)
-      ? feature.geometry.coordinates
-      : [];
-
-    const trecho: CoordenadaMapa[] = coordenadas
-      .map((ponto) => {
-        const longitude = normalizarNumero(ponto[0]);
-        const latitude = normalizarNumero(ponto[1]);
-
-        if (latitude === null || longitude === null) {
-          return null;
-        }
-
-        return [latitude, longitude] as CoordenadaMapa;
-      })
-      .filter((ponto): ponto is CoordenadaMapa => Boolean(ponto));
-
-    if (trecho.length < 2) {
-      return;
-    }
-
-    const direcao = feature.properties?.direcao === "1" ? "1" : "0";
-    const atual = melhorTrechoPorDirecao.get(direcao);
-
-    if (!atual || trecho.length > atual.length) {
-      melhorTrechoPorDirecao.set(direcao, trecho);
-
-      const destino = normalizarDestino(feature.properties?.destino);
-      if (destino) {
-        destinoPorDirecao.set(direcao, destino);
-      }
-      return;
-    }
-
-    if (!destinoPorDirecao.has(direcao)) {
-      const destino = normalizarDestino(feature.properties?.destino);
-      if (destino) {
-        destinoPorDirecao.set(direcao, destino);
-      }
-    }
-  });
-
-  const ida = melhorTrechoPorDirecao.get("0");
-  const volta = melhorTrechoPorDirecao.get("1");
-
-  const segmentos = [ida, volta].filter(
-    (segmento): segmento is CoordenadaMapa[] => Boolean(segmento?.length),
-  );
-
-  if (segmentos.length === 0) {
-    return null;
-  }
-
-  return {
-    linha: linha.trim().toUpperCase(),
-    modal,
-    segmentos,
-    ida,
-    volta,
-    destinoIda: destinoPorDirecao.get("0"),
-    destinoVolta: destinoPorDirecao.get("1"),
-  };
+function tipoSentidoPorNome(nome?: string | null): "ida" | "volta" | null {
+  if (!nome) return null;
+  const n = nome.toLowerCase();
+  if (n.includes("ida") || n.includes("(1)")) return "ida";
+  if (n.includes("volta") || n.includes("(0)")) return "volta";
+  return null;
 }

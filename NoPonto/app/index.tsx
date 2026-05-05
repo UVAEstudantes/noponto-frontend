@@ -1,14 +1,27 @@
 import InputBusca from "@/src/components/inputBusca";
-import { useTema } from "@/src/hooks/useTema";
 import Filtro from "@/src/components/mapaComponents/filtro";
-import LinhasContainer from "@/src/components/mapaComponents/linhasContainer";
+import LinhasContainer, {
+  PROXIMO_SENTIDO,
+} from "@/src/components/mapaComponents/linhasContainer";
 import LocalButton from "@/src/components/mapaComponents/localButton";
+import ParadaSheet, {
+  ChegadaParadaInfo,
+  LinhaParadaInfo,
+} from "@/src/components/mapaComponents/paradaSheet";
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
 import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
 import ResultadoBusca from "@/src/components/resultadoBusca";
-import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
-import { chaveLinhaModal } from "@/src/services/mobilidadeRio";
-import { LinhaTempoReal, ModalApiTransporte } from "@/src/types/transporte";
+import {
+  LinhaSelecionadaInfo,
+  useMobilidadeRio,
+} from "@/src/hooks/useMobilidadeRio";
+import { useTema } from "@/src/hooks/useTema";
+import {
+  buscarOpcoesPorNome,
+  buscarProximosVeiculosParada,
+} from "@/src/services/mobilidadeRio";
+import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
+import { ModalApiTransporte, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -20,40 +33,19 @@ import {
 import { Search } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
-import { salvarLinhas, carregarLinhasSalvas } from "@/src/services/storage";
 
-const MaxLinhasView = 5;
-
-type LinhaSelecionada = {
-  nome: string;
-  modal: string;
-  cor: string;
-  ativa: boolean;
-};
-
-function normalizarModalApi(modal: string): ModalApiTransporte | null {
-  const valor = modal.trim().toLowerCase();
-
-  if (valor === "onibus") {
-    return "onibus";
-  }
-
-  if (valor === "brt") {
-    return "brt";
-  }
-
-  return null;
-}
+const MAX_LINHAS = 5;
 
 const Home = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
   const {
-    linhasDisponiveis,
-    itinerariosPorLinha,
-    garantirItinerarioLinha,
-    getVeiculosLinha,
-    getSentidoLinha,
+    itinerariosPorId,
+    garantirItinerario,
+    removerItinerario,
+    getVeiculosPorCodigo,
   } = useMobilidadeRio();
+
+  // ─── Filtros ──────────────────────────────────────────────────────────────
 
   const [transito, setTransito] = React.useState(false);
   const [onibus, setOnibus] = React.useState(true);
@@ -61,245 +53,414 @@ const Home = () => {
   const [trem, setTrem] = React.useState(false);
   const [metro, setMetro] = React.useState(false);
 
-  function clickTransito() {
-    setTransito((prev) => !prev);
-  }
+  // ─── Localização ──────────────────────────────────────────────────────────
 
   const mapRef = React.useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
 
-  async function requestLocationPermissions() {
-    const { granted } = await requestForegroundPermissionsAsync();
-
-    if (granted) {
-      const location = await getCurrentPositionAsync();
-      setLocation(location);
-    }
-  }
+  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
+    null,
+  );
+  const [paradaExpandida, setParadaExpandida] = useState(false);
 
   useEffect(() => {
+    async function requestLocationPermissions() {
+      const { granted } = await requestForegroundPermissionsAsync();
+      if (granted) {
+        const loc = await getCurrentPositionAsync();
+        setLocation(loc);
+      }
+    }
     requestLocationPermissions();
+  }, []);
+
+  const normalizarNome = useCallback((valor: string) => {
+    return valor
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }, []);
+
+  const normalizarCodigo = useCallback((valor: string) => {
+    return valor.trim().toUpperCase();
   }, []);
 
   useEffect(() => {
     let subscription: any;
-
     async function startWatching() {
       subscription = await watchPositionAsync(
         {
           accuracy: LocationAccuracy.Highest,
-          timeInterval: 2000, // Atualiza a cada 2 segundos
-          distanceInterval: 5, // Ou a cada 5 metros
+          timeInterval: 2000,
+          distanceInterval: 5,
         },
-        (response) => {
-          setLocation(response); // Isso disparará o re-render e atualizará o MapaOSM
-        },
+        (response) => setLocation(response),
       );
     }
-
     startWatching();
-    return () => subscription?.remove(); // Limpa ao fechar
+    return () => subscription?.remove();
   }, []);
 
-  const [data, setData] = useState<LinhaTempoReal[]>([]);
+  // ─── Busca ────────────────────────────────────────────────────────────────
+
+  const [opcoesBusca, setOpcoesBusca] = useState<OpcaoBusca[]>([]);
   const [busca, setBusca] = useState("");
-  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
-    LinhaSelecionada[]
-  >([]);
   const [containerAberto, setContainerAberto] = useState(false);
 
-  const buscaAtiva = busca !== "" && data.length > 0;
+  const buscaAtiva = busca !== "" && opcoesBusca.length > 0;
 
-  const buscarLinhas = useCallback(
-    (textoBusca: string) => {
-      setBusca(textoBusca);
-      setContainerAberto(false);
-
-      const modaisSelecionados: string[] = [];
-      if (onibus) modaisSelecionados.push("onibus");
-      if (brt) modaisSelecionados.push("brt");
-      if (trem) modaisSelecionados.push("trem");
-      if (metro) modaisSelecionados.push("metro");
-
-      const termo = textoBusca.trim().toLowerCase();
-      const usarStartsWith = termo.length <= 1;
-
-      const filtradas = linhasDisponiveis.filter((linha) => {
-        const modalMatch = modaisSelecionados.includes(
-          linha.modal.toLowerCase(),
-        );
-        if (!modalMatch) {
-          return false;
-        }
-
-        if (!termo) {
-          return true;
-        }
-
-        return usarStartsWith
-          ? linha.nome.toLowerCase().startsWith(termo)
-          : linha.nome.toLowerCase().includes(termo);
-      });
-
-      setData(filtradas);
-
-      filtradas.slice(0, 10).forEach((linha) => {
-        void garantirItinerarioLinha(linha.nome, linha.modal);
-      });
-    },
-    [linhasDisponiveis, onibus, brt, trem, metro, garantirItinerarioLinha],
-  );
-
-  const listaSelecionada = async (linha: LinhaTempoReal) => {
-    setData([]);
-    Keyboard.dismiss();
-
-    setLinhasSelecionadas((anterior) => {
-      const jaExiste = anterior.some((item) => item.nome === linha.nome);
-
-      if (jaExiste || anterior.length >= MaxLinhasView) {
-        return anterior;
-      }
-
-      const novaCor = gerarCorAleatoria(anterior.map((item) => item.cor));
-
-      return [
-        ...anterior,
-        {
-          nome: linha.nome,
-          modal: linha.modal,
-          cor: novaCor,
-          ativa: true,
-        },
-      ];
-    });
-
-    const modal = normalizarModalApi(linha.modal);
-    if (modal) {
-      const itinerario = await garantirItinerarioLinha(linha.nome, modal);
-      const primeiroSegmento = itinerario?.segmentos?.[0] ?? [];
-
-      if (primeiroSegmento.length > 1 && mapRef.current?.fitToCoordinates) {
-        const coordenadas = primeiroSegmento.map(([latitude, longitude]) => ({
-          latitude,
-          longitude,
-        }));
-
-        setTimeout(() => {
-          mapRef.current?.fitToCoordinates(coordenadas);
-        }, 350);
-      }
+  useEffect(() => {
+    if (!busca.trim()) {
+      setOpcoesBusca([]);
+      return;
     }
 
-    setBusca("");
-  };
+    const id = setTimeout(async () => {
+      try {
+        const opcoes = await buscarOpcoesPorNome(busca, 1, 20);
+        setOpcoesBusca(opcoes);
+      } catch (err) {
+        console.error("Erro ao buscar opções:", err);
+        setOpcoesBusca([]);
+      }
+    }, 600);
 
-  const removerLinha = (nome: string) => {
-    setLinhasSelecionadas((anterior) =>
-      anterior.filter((linha) => linha.nome !== nome),
+    return () => clearTimeout(id);
+  }, [busca]);
+
+  // ─── Linhas selecionadas ──────────────────────────────────────────────────
+
+  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
+    LinhaSelecionadaInfo[]
+  >([]);
+
+  useEffect(() => {
+    carregarLinhasSalvas().then((salvas) => {
+      if (Array.isArray(salvas) && salvas.length > 0) {
+        setLinhasSelecionadas(salvas);
+      }
+    });
+  }, []);
+
+  const obterParadasLinha = useCallback(
+    (linha: LinhaSelecionadaInfo) => {
+      const itinerario = itinerariosPorId[linha.linhaId];
+      if (!itinerario) return [] as Parada[];
+
+      if (linha.modoSentido === "ambos") {
+        return itinerario.paradas ?? [];
+      }
+
+      const itId =
+        linha.modoSentido === "ida"
+          ? itinerario.itinerarioIdIda
+          : itinerario.itinerarioIdVolta;
+
+      if (itId && itinerario.paradasPorItinerario?.[itId]) {
+        return itinerario.paradasPorItinerario[itId];
+      }
+
+      return itinerario.paradas ?? [];
+    },
+    [itinerariosPorId],
+  );
+
+  useEffect(() => {
+    salvarLinhas(linhasSelecionadas);
+  }, [linhasSelecionadas]);
+
+  useEffect(() => {
+    linhasSelecionadas.forEach((l) => {
+      garantirItinerario(l.linhaId, l.linhaCodigo, l.modal, l.mostrarParadas);
+    });
+  }, [linhasSelecionadas, garantirItinerario]);
+
+  const selecionarOpcao = useCallback(
+    async (opcao: OpcaoBusca) => {
+      setOpcoesBusca([]);
+      setBusca("");
+      Keyboard.dismiss();
+
+      const { linha, nomeExibicao } = opcao;
+      const linhaCodigo = linha.codigo || linha.nome;
+      const modal: ModalApiTransporte = "onibus";
+
+      setLinhasSelecionadas((prev) => {
+        if (
+          prev.some((l) => l.linhaId === linha.id) ||
+          prev.length >= MAX_LINHAS
+        ) {
+          return prev;
+        }
+
+        const cor = gerarCorAleatoria(prev.map((l) => l.cor));
+
+        return [
+          ...prev,
+          {
+            linhaId: linha.id,
+            linhaCodigo,
+            nomeExibicao,
+            modal,
+            cor,
+            ativa: true,
+            modoSentido: "ambos",
+            mostrarParadas: false,
+          },
+        ];
+      });
+
+      try {
+        const itinerario = await garantirItinerario(
+          linha.id,
+          linhaCodigo,
+          modal,
+          false,
+        );
+
+        if (
+          itinerario &&
+          (itinerario.segmentos[0]?.length ?? 0) > 1 &&
+          mapRef.current?.fitToCoordinates
+        ) {
+          const coordenadas = itinerario.segmentos[0].map(
+            ([latitude, longitude]) => ({
+              latitude,
+              longitude,
+            }),
+          );
+          setTimeout(() => mapRef.current?.fitToCoordinates(coordenadas), 350);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar itinerário após seleção:", err);
+      }
+    },
+    [garantirItinerario],
+  );
+
+  const removerLinha = useCallback(
+    (linhaId: string) => {
+      const linha = linhasSelecionadas.find((l) => l.linhaId === linhaId);
+      if (linha) removerItinerario(linhaId, linha.linhaCodigo);
+      setLinhasSelecionadas((prev) =>
+        prev.filter((l) => l.linhaId !== linhaId),
+      );
+    },
+    [linhasSelecionadas, removerItinerario],
+  );
+
+  const toggleAtiva = useCallback((linhaId: string) => {
+    setLinhasSelecionadas((prev) =>
+      prev.map((l) => (l.linhaId === linhaId ? { ...l, ativa: !l.ativa } : l)),
     );
-  };
+  }, []);
 
-  const toggleAtiva = (nome: string) => {
-    setLinhasSelecionadas((anterior) =>
-      anterior.map((linha) =>
-        linha.nome === nome ? { ...linha, ativa: !linha.ativa } : linha,
+  const toggleSentido = useCallback((linhaId: string) => {
+    setLinhasSelecionadas((prev) =>
+      prev.map((l) =>
+        l.linhaId === linhaId
+          ? { ...l, modoSentido: PROXIMO_SENTIDO[l.modoSentido] }
+          : l,
       ),
     );
-  };
+  }, []);
+
+  const toggleParadas = useCallback((linhaId: string) => {
+    setLinhasSelecionadas((prev) =>
+      prev.map((l) =>
+        l.linhaId === linhaId ? { ...l, mostrarParadas: !l.mostrarParadas } : l,
+      ),
+    );
+  }, []);
+
+  // ─── Paradas selecionadas ────────────────────────────────────────────────
+
+  const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
+    if (!paradaSelecionada) return [];
+    const alvoId = paradaSelecionada.paradaId;
+    const alvoNome = normalizarNome(paradaSelecionada.nome);
+
+    return linhasSelecionadas
+      .map((l) => {
+        const paradas = obterParadasLinha(l);
+        if (paradas.length === 0) return null;
+        const possui = paradas.some(
+          (p) => p.paradaId === alvoId || normalizarNome(p.nome) === alvoNome,
+        );
+        if (!possui) return null;
+        return {
+          linhaId: l.linhaId,
+          codigo: l.linhaCodigo,
+          nomeExibicao: l.nomeExibicao,
+          cor: l.cor,
+          ativa: l.ativa,
+        };
+      })
+      .filter(Boolean) as LinhaParadaInfo[];
+  }, [
+    paradaSelecionada,
+    linhasSelecionadas,
+    normalizarNome,
+    obterParadasLinha,
+  ]);
+
+  const [chegadasParada, setChegadasParada] = useState<ChegadaParadaInfo[]>([]);
+  const [carregandoChegadas, setCarregandoChegadas] = useState<boolean>(false);
+  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<
+    number | null
+  >(null);
+
+  const atualizarChegadas = useCallback(async () => {
+    if (!paradaSelecionada || linhasNaParada.length === 0) {
+      setChegadasParada([]);
+      setAtualizadoChegadasEm(null);
+      return;
+    }
+
+    setCarregandoChegadas(true);
+    try {
+      const lista = await buscarProximosVeiculosParada(
+        paradaSelecionada.paradaId,
+      );
+      const mapaLinhas = new Map(
+        linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]),
+      );
+
+      const filtrados = lista
+        .filter((v) => mapaLinhas.has(normalizarCodigo(v.codigoLinha)))
+        .map((v) => {
+          const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
+          return {
+            id: `${v.ordem}-${v.itinerarioId ?? v.codigoLinha}`,
+            linhaId: info?.linhaId,
+            codigo: normalizarCodigo(v.codigoLinha),
+            cor: info?.cor ?? "#94a3b8",
+            etaSeg: v.etaParadaSegundos ?? null,
+            distanciaMetros: v.distanciaParadaMetros ?? null,
+            horarioPrevistoLocal: v.horarioChegadaPrevistoLocal ?? null,
+            confianca: v.etaConfianca ?? null,
+            status: v.status ?? null,
+            proximaParadaNome: v.proximaParadaNome ?? null,
+          } as ChegadaParadaInfo;
+        })
+        .sort((a, b) => {
+          const ea = a.etaSeg ?? Number.POSITIVE_INFINITY;
+          const eb = b.etaSeg ?? Number.POSITIVE_INFINITY;
+          return ea - eb;
+        });
+
+      setChegadasParada(filtrados);
+      setAtualizadoChegadasEm(Date.now());
+    } catch (err) {
+      console.error("Erro ao buscar chegadas:", err);
+      setChegadasParada([]);
+    } finally {
+      setCarregandoChegadas(false);
+    }
+  }, [paradaSelecionada, linhasNaParada, normalizarCodigo]);
+
+  useEffect(() => {
+    if (!paradaSelecionada) {
+      setChegadasParada([]);
+      setAtualizadoChegadasEm(null);
+      return;
+    }
+    atualizarChegadas();
+  }, [paradaSelecionada, linhasNaParada, atualizarChegadas]);
+
+  useEffect(() => {
+    if (paradaExpandida) {
+      atualizarChegadas();
+    }
+  }, [paradaExpandida, atualizarChegadas]);
+
+  // ─── Dados para o mapa ────────────────────────────────────────────────────
 
   const dadosParaMapa = useMemo(
     () =>
       linhasSelecionadas
-        .filter((linha) => linha.ativa)
-        .map((linha) => {
-          const modal = normalizarModalApi(linha.modal);
-          if (!modal) {
-            return null;
+        .filter((l) => l.ativa)
+        .map((l) => {
+          const itinerario = itinerariosPorId[l.linhaId];
+          const segmentos = itinerario?.segmentos ?? [];
+
+          let itinerarioIdFiltro: string | null = null;
+          if (l.modoSentido === "ida") {
+            itinerarioIdFiltro = itinerario?.itinerarioIdIda ?? null;
+          } else if (l.modoSentido === "volta") {
+            itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
           }
 
-          const chave = chaveLinhaModal(linha.nome, modal);
-          const itinerario = itinerariosPorLinha[chave];
-          const segmentos = itinerario?.segmentos ?? [];
-          const sentidoNomeLinha = getSentidoLinha(linha.nome, modal);
+          const veiculos = getVeiculosPorCodigo(
+            l.linhaCodigo,
+            itinerarioIdFiltro,
+          );
+
+          const paradas = obterParadasLinha(l);
+
+          // Mapa itinerarioId → índice do segmento para o dead reckoning
+          const itinerarioSegmentoMap: Record<string, number> = {};
+          if (itinerario?.itinerarioIdIda) {
+            itinerarioSegmentoMap[itinerario.itinerarioIdIda] = 0;
+          }
+          if (itinerario?.itinerarioIdVolta) {
+            itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
+          }
 
           return {
-            nome: linha.nome,
-            cor: linha.cor,
-            modal,
+            nome: l.nomeExibicao,
+            cor: l.cor,
+            modal: l.modal,
             segmentos,
             coordenadas: segmentos[0] ?? [],
-            posicoes: getVeiculosLinha(linha.nome, modal).map((veiculo) => ({
-              id: veiculo.id,
-              latitude: veiculo.latitude,
-              longitude: veiculo.longitude,
-              direcao: veiculo.direcao,
-              velocidade: veiculo.velocidade,
-              sentido: veiculo.sentido,
-              sentidoNome: sentidoNomeLinha,
-              trajeto: veiculo.trajeto,
-              timestamp: veiculo.timestamp,
+            paradas,
+            mostrarParadas: l.mostrarParadas,
+            modoSentido: l.modoSentido,
+            itinerarioSegmentoMap, // ← novo
+            posicoes: veiculos.map((v) => ({
+              id: v.id,
+              latitude: v.latitude,
+              longitude: v.longitude,
+              direcao: v.direcao,
+              velocidade: v.velocidade,
+              velocidadeMedia: v.velocidadeMedia ?? null,
+              sentidoNome: l.nomeExibicao,
+              timestamp: v.timestamp,
+              proximaParadaNome: v.proximaParadaNome ?? null,
+              distanciaProximaParadaMetros:
+                v.distanciaProximaParadaMetros ?? null,
+              status: v.status ?? 0,
+              posicaoNaRota: v.posicaoNaRota ?? null, // ← novo
+              comprimentoRotaMetros: v.comprimentoRotaMetros ?? null, // ← novo
+              itinerarioId: v.itinerarioId ?? null, // ← novo
             })),
           };
-        })
-        .filter((linha): linha is NonNullable<typeof linha> => Boolean(linha)),
-    [
-      linhasSelecionadas,
-      itinerariosPorLinha,
-      getVeiculosLinha,
-      getSentidoLinha,
-    ],
+        }),
+    [linhasSelecionadas, itinerariosPorId, getVeiculosPorCodigo],
   );
 
-  const dadosBuscaComDestino = useMemo(
+  const dadosBuscaFormatados = useMemo(
     () =>
-      data.map((linha) => ({
-        ...linha,
-        sentido: getSentidoLinha(linha.nome, linha.modal),
+      opcoesBusca.map((opcao) => ({
+        id: opcao.linha.id,
+        nome: opcao.nomeExibicao,
+        sentido: opcao.linha.nome,
+        modal: "onibus" as ModalApiTransporte,
+        _opcao: opcao,
       })),
-    [data, getSentidoLinha],
+    [opcoesBusca],
   );
 
-  useEffect(() => {
-    const carregar = async () => {
-      const linhas = await carregarLinhasSalvas();
-      if (Array.isArray(linhas) && linhas.length > 0) {
-        setLinhasSelecionadas(linhas);
-      }
-    };
-    void carregar();
-  }, []);
-
-  useEffect(() => {
-    void salvarLinhas(linhasSelecionadas);
-  }, [linhasSelecionadas]);
-
-  useEffect(() => {
-    if (!busca.trim()) {
-      setData([]);
-      return;
-    }
-
-    buscarLinhas(busca);
-  }, [linhasDisponiveis, onibus, brt, trem, metro, busca, buscarLinhas]);
-
-  useEffect(() => {
-    linhasSelecionadas.forEach((linha) => {
-      const modal = normalizarModalApi(linha.modal);
-      if (!modal) {
-        return;
-      }
-
-      void garantirItinerarioLinha(linha.nome, modal);
-    });
-  }, [linhasSelecionadas, garantirItinerarioLinha]);
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <View
       className="flex-1 flex-col"
       style={{ backgroundColor: cores.fundoApp }}
     >
-      {location && (
+      {
         <MapaOSM
           ref={mapRef}
           location={location}
@@ -307,10 +468,13 @@ const Home = () => {
           showTraffic={transito}
           darkMode={temaAtual === "escuro"}
           estiloMapa={estiloMapaAtual}
+          onStopPress={(parada) => {
+            setParadaSelecionada(parada);
+            setParadaExpandida(false);
+          }}
         />
-      )}
+      }
 
-      {/* Pressable para fechar container quando clicar fora */}
       {containerAberto && (
         <Pressable
           onPress={() => setContainerAberto(false)}
@@ -323,13 +487,13 @@ const Home = () => {
         icon={Search}
         className="absolute top-[4rem] !w-3/4 right-[5rem]"
         value={busca}
-        onChangeText={buscarLinhas}
+        onChangeText={setBusca}
       />
 
       {buscaAtiva && (
         <ResultadoBusca
-          data={dadosBuscaComDestino}
-          listaSelecionada={listaSelecionada}
+          data={dadosBuscaFormatados}
+          listaSelecionada={(item) => selecionarOpcao(item._opcao)}
           className="absolute top-[8rem] !w-3/4 right-[5rem] shadow-lg rounded-2xl z-20"
           maxHeight={400}
         />
@@ -337,7 +501,7 @@ const Home = () => {
 
       <Filtro
         transito={transito}
-        clickTransito={clickTransito}
+        clickTransito={() => setTransito((p) => !p)}
         onibus={onibus}
         setOnibus={setOnibus}
         brt={brt}
@@ -355,8 +519,26 @@ const Home = () => {
         linhasSelecionadas={linhasSelecionadas}
         aoRemoverLinha={removerLinha}
         aoToggleAtiva={toggleAtiva}
+        aoToggleSentido={toggleSentido}
+        aoToggleParadas={toggleParadas}
         aberto={containerAberto}
-        aoToggleAberto={() => setContainerAberto(!containerAberto)}
+        aoToggleAberto={() => setContainerAberto((p) => !p)}
+      />
+
+      <ParadaSheet
+        visivel={!!paradaSelecionada}
+        parada={paradaSelecionada}
+        linhas={linhasNaParada}
+        chegadas={chegadasParada}
+        carregandoChegadas={carregandoChegadas}
+        atualizadoEm={atualizadoChegadasEm}
+        onAtualizar={atualizarChegadas}
+        expandido={paradaExpandida}
+        onToggleExpandir={() => setParadaExpandida((p) => !p)}
+        onFechar={() => {
+          setParadaSelecionada(null);
+          setParadaExpandida(false);
+        }}
       />
     </View>
   );
