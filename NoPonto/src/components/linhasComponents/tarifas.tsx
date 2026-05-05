@@ -76,6 +76,8 @@ const formasDePagamento = {
 export default function Tarifas(props: Props) {
   const { cores, temaAtual } = useTema();
   const isDark = temaAtual === "escuro";
+  const valorDisponivel =
+    typeof props.valor === "number" && Number.isFinite(props.valor);
 
   const modalKey = (props.modal?.toLowerCase() ??
     "onibus") as keyof typeof formasDePagamento;
@@ -103,9 +105,17 @@ export default function Tarifas(props: Props) {
           Tarifa
         </Text>
         <Text className="font-semibold" style={{ color: cores.textoPrimario }}>
-          R$ {props.valor?.toFixed(2).replace(".", ",") ?? "—"}
+          R$ {valorDisponivel ? props.valor!.toFixed(2).replace(".", ",") : "—"}
         </Text>
       </View>
+
+      {!valorDisponivel && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 12, color: cores.textoSecundario }}>
+            Ainda nao sabemos o valor dessa linha.
+          </Text>
+        </View>
+      )}
 
       {/* Formas de pagamento */}
       <View className="p-4 flex-row flex-wrap">

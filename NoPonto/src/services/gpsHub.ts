@@ -5,6 +5,7 @@ import * as signalR from "@microsoft/signalr";
 const HUB_URL = config.GPS_HUB_URL;
 
 let connection: signalR.HubConnection | null = null;
+const subscribers = new Set<(veiculos: VeiculoTempoReal[]) => void>();
 
 /**
  * Estrutura completa do payload SignalR (PosicaoVeiculoDto) — atualizada.
@@ -41,7 +42,11 @@ function converterPosicao(raw: PosicaoVeiculoRaw): VeiculoTempoReal {
   let direcao: number | null = raw.bearing ?? null;
 
   // Fallback: calcula a partir das posições anterior/atual
-  if (direcao === null && raw.latitudeAnterior != null && raw.longitudeAnterior != null) {
+  if (
+    direcao === null &&
+    raw.latitudeAnterior != null &&
+    raw.longitudeAnterior != null
+  ) {
     const lat1 = raw.latitudeAnterior;
     const lon1 = raw.longitudeAnterior;
     const lat2 = raw.latitude;
@@ -81,6 +86,8 @@ function converterPosicao(raw: PosicaoVeiculoRaw): VeiculoTempoReal {
 export function iniciarGpsHub(
   onUpdate: (veiculos: VeiculoTempoReal[]) => void,
 ): signalR.HubConnection {
+  subscribers.add(onUpdate);
+
   if (connection) return connection;
 
   connection = new signalR.HubConnectionBuilder()
@@ -89,9 +96,11 @@ export function iniciarGpsHub(
     .build();
 
   connection.on("PosicaoAtualizada", (payload: PosicaoVeiculoRaw[]) => {
-    const veiculos = Array.isArray(payload) ? payload.map(converterPosicao) : [];
+    const veiculos = Array.isArray(payload)
+      ? payload.map(converterPosicao)
+      : [];
     console.log("🚍 realtime recebido:", veiculos.length);
-    onUpdate(veiculos);
+    subscribers.forEach((fn) => fn(veiculos));
   });
 
   connection.onreconnecting(() => console.log("🔄 reconectando SignalR..."));
@@ -99,6 +108,12 @@ export function iniciarGpsHub(
   connection.onclose(() => console.log("❌ conexão encerrada"));
 
   return connection;
+}
+
+export function removerGpsHubListener(
+  onUpdate: (veiculos: VeiculoTempoReal[]) => void,
+): void {
+  subscribers.delete(onUpdate);
 }
 
 export async function conectarGpsHub(): Promise<void> {

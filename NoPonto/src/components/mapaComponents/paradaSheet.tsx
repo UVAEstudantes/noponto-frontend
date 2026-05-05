@@ -22,11 +22,16 @@ export interface LinhaParadaInfo {
 }
 
 export interface ChegadaParadaInfo {
-  linhaId: string;
+  id: string;
+  linhaId?: string;
   codigo: string;
   cor: string;
   etaSeg: number | null;
   distanciaMetros: number | null;
+  horarioPrevistoLocal?: string | null;
+  confianca?: string | null;
+  status?: number | null;
+  proximaParadaNome?: string | null;
 }
 
 interface Props {
@@ -34,6 +39,9 @@ interface Props {
   parada: Parada | null;
   linhas: LinhaParadaInfo[];
   chegadas: ChegadaParadaInfo[];
+  carregandoChegadas?: boolean;
+  atualizadoEm?: number | null;
+  onAtualizar?: () => void;
   expandido: boolean;
   onToggleExpandir: () => void;
   onFechar: () => void;
@@ -46,6 +54,24 @@ function formatEta(segundos: number | null): string {
   const sec = total % 60;
   if (min > 0) return `${min}m ${sec < 10 ? "0" : ""}${sec}s`;
   return `${sec}s`;
+}
+
+function formatAtualizacao(ts: number | null | undefined): string | null {
+  if (!ts) return null;
+  const diff = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  return `Atualizado ha ${formatEta(diff)}`;
+}
+
+function formatStatus(status?: number | null): string | null {
+  if (status == null || status === 0) return null;
+  if (status === 1) return "Sem sinal";
+  if (status === 2) return "Inativo";
+  return "Indefinido";
+}
+
+function formatConfianca(valor?: string | null): string | null {
+  if (!valor) return null;
+  return valor.charAt(0).toUpperCase() + valor.slice(1);
 }
 
 function hexToRgb(hex: string) {
@@ -75,6 +101,9 @@ const ParadaSheet = ({
   parada,
   linhas,
   chegadas,
+  carregandoChegadas,
+  atualizadoEm,
+  onAtualizar,
   expandido,
   onToggleExpandir,
   onFechar,
@@ -166,6 +195,8 @@ const ParadaSheet = ({
 
   const hasLinhas = linhas.length > 0;
   const hasChegadas = chegadas.length > 0;
+  const atualizadoLabel = formatAtualizacao(atualizadoEm);
+  const proximo = hasChegadas ? chegadas[0] : null;
 
   return (
     <>
@@ -351,6 +382,20 @@ const ParadaSheet = ({
           )}
         </Pressable>
 
+        {!expandido && proximo && (
+          <Text
+            style={{
+              paddingHorizontal: 16,
+              marginTop: 6,
+              fontSize: 12,
+              color: cores.textoSecundario,
+            }}
+          >
+            Proximo: {proximo.codigo} ·{" "}
+            {proximo.horarioPrevistoLocal ?? formatEta(proximo.etaSeg)}
+          </Text>
+        )}
+
         {expandido && (
           <Animated.View
             style={[
@@ -362,77 +407,176 @@ const ParadaSheet = ({
               detailsStyle,
             ]}
           >
-            <Text
+            <View
               style={{
-                fontSize: 13,
-                fontWeight: "700",
-                color: cores.textoPrimario,
-                marginBottom: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 6,
+                gap: 8,
               }}
             >
-              Proximos veiculos (linhas assinadas)
-            </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: cores.textoPrimario,
+                  flex: 1,
+                }}
+              >
+                Proximos veiculos (linhas assinadas)
+              </Text>
+              {onAtualizar && (
+                <Pressable
+                  onPress={onAtualizar}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 10,
+                    backgroundColor: cores.fundoSecundario,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color: cores.textoPrimario,
+                    }}
+                  >
+                    Atualizar
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            {carregandoChegadas ? (
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: cores.textoSecundario,
+                  marginBottom: 8,
+                }}
+              >
+                Atualizando previsoes...
+              </Text>
+            ) : atualizadoLabel ? (
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: cores.textoSecundario,
+                  marginBottom: 8,
+                }}
+              >
+                {atualizadoLabel}
+              </Text>
+            ) : null}
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {hasChegadas ? (
-                chegadas.map((c) => (
-                  <View
-                    key={c.linhaId}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderRadius: 12,
-                      backgroundColor: cores.fundoCard,
-                      borderWidth: 1,
-                      borderColor: cores.bordaSuave,
-                      marginBottom: 8,
-                    }}
-                  >
+                chegadas.map((c) => {
+                  const statusLabel = formatStatus(c.status);
+                  const confiancaLabel = formatConfianca(c.confianca);
+                  const horarioLabel =
+                    c.horarioPrevistoLocal ?? formatEta(c.etaSeg);
+                  const etaLabel = c.horarioPrevistoLocal
+                    ? formatEta(c.etaSeg)
+                    : null;
+
+                  return (
                     <View
+                      key={c.id}
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
-                        backgroundColor: c.cor,
-                        marginRight: 10,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: 13,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        borderRadius: 12,
+                        backgroundColor: cores.fundoCard,
+                        borderWidth: 1,
+                        borderColor: cores.bordaSuave,
+                        marginBottom: 8,
                       }}
                     >
-                      {c.codigo}
-                    </Text>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text
+                      <View
                         style={{
-                          fontSize: 12,
-                          fontWeight: "700",
-                          color: cores.textoPrimario,
+                          width: 10,
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: c.cor,
+                          marginRight: 10,
                         }}
-                      >
-                        {formatEta(c.etaSeg)}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: cores.textoSecundario,
-                          marginTop: 2,
-                        }}
-                      >
-                        {c.distanciaMetros != null
-                          ? `${Math.round(c.distanciaMetros)} m`
-                          : ""}
-                      </Text>
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: cores.textoPrimario,
+                          }}
+                        >
+                          {c.codigo}
+                        </Text>
+                        <View
+                          style={{ flexDirection: "row", gap: 8, marginTop: 2 }}
+                        >
+                          {statusLabel && (
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                color: cores.perigo,
+                                fontWeight: "700",
+                              }}
+                            >
+                              {statusLabel}
+                            </Text>
+                          )}
+                          {confiancaLabel && (
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                color: cores.textoSecundario,
+                              }}
+                            >
+                              Confianca {confiancaLabel}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "700",
+                            color: cores.textoPrimario,
+                          }}
+                        >
+                          {horarioLabel}
+                        </Text>
+                        {etaLabel && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: cores.textoSecundario,
+                              marginTop: 2,
+                            }}
+                          >
+                            {etaLabel}
+                          </Text>
+                        )}
+                        {c.distanciaMetros != null && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: cores.textoSecundario,
+                              marginTop: 2,
+                            }}
+                          >
+                            {Math.round(c.distanciaMetros)} m
+                          </Text>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               ) : (
                 <Text
                   style={{

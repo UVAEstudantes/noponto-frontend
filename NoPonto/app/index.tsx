@@ -16,7 +16,10 @@ import {
   useMobilidadeRio,
 } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
-import { buscarOpcoesPorNome } from "@/src/services/mobilidadeRio";
+import {
+  buscarOpcoesPorNome,
+  buscarProximosVeiculosParada,
+} from "@/src/services/mobilidadeRio";
 import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
 import { ModalApiTransporte, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
@@ -80,6 +83,10 @@ const Home = () => {
       .trim();
   }, []);
 
+  const normalizarCodigo = useCallback((valor: string) => {
+    return valor.trim().toUpperCase();
+  }, []);
+
   useEffect(() => {
     let subscription: any;
     async function startWatching() {
@@ -137,13 +144,36 @@ const Home = () => {
     });
   }, []);
 
+  const obterParadasLinha = useCallback(
+    (linha: LinhaSelecionadaInfo) => {
+      const itinerario = itinerariosPorId[linha.linhaId];
+      if (!itinerario) return [] as Parada[];
+
+      if (linha.modoSentido === "ambos") {
+        return itinerario.paradas ?? [];
+      }
+
+      const itId =
+        linha.modoSentido === "ida"
+          ? itinerario.itinerarioIdIda
+          : itinerario.itinerarioIdVolta;
+
+      if (itId && itinerario.paradasPorItinerario?.[itId]) {
+        return itinerario.paradasPorItinerario[itId];
+      }
+
+      return itinerario.paradas ?? [];
+    },
+    [itinerariosPorId],
+  );
+
   useEffect(() => {
     salvarLinhas(linhasSelecionadas);
   }, [linhasSelecionadas]);
 
   useEffect(() => {
     linhasSelecionadas.forEach((l) => {
-      garantirItinerario(l.linhaId, l.linhaCodigo, l.modal);
+      garantirItinerario(l.linhaId, l.linhaCodigo, l.modal, l.mostrarParadas);
     });
   }, [linhasSelecionadas, garantirItinerario]);
 
@@ -187,6 +217,7 @@ const Home = () => {
           linha.id,
           linhaCodigo,
           modal,
+          false,
         );
 
         if (
@@ -253,7 +284,7 @@ const Home = () => {
 
     return linhasSelecionadas
       .map((l) => {
-        const paradas = itinerariosPorId[l.linhaId]?.paradas ?? [];
+        const paradas = obterParadasLinha(l);
         if (paradas.length === 0) return null;
         const possui = paradas.some(
           (p) => p.paradaId === alvoId || normalizarNome(p.nome) === alvoNome,
@@ -268,46 +299,82 @@ const Home = () => {
         };
       })
       .filter(Boolean) as LinhaParadaInfo[];
-  }, [paradaSelecionada, linhasSelecionadas, itinerariosPorId, normalizarNome]);
+  }, [
+    paradaSelecionada,
+    linhasSelecionadas,
+    normalizarNome,
+    obterParadasLinha,
+  ]);
 
-  const chegadasPorLinha = useMemo<ChegadaParadaInfo[]>(() => {
-    if (!paradaSelecionada) return [];
-    const alvo = normalizarNome(paradaSelecionada.nome);
+  const [chegadasParada, setChegadasParada] = useState<ChegadaParadaInfo[]>([]);
+  const [carregandoChegadas, setCarregandoChegadas] = useState<boolean>(false);
+  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<
+    number | null
+  >(null);
 
-    return linhasNaParada.map((l) => {
-      const veiculos = getVeiculosPorCodigo(l.codigo);
-      let melhorEta: number | null = null;
-      let melhorDist: number | null = null;
+  const atualizarChegadas = useCallback(async () => {
+    if (!paradaSelecionada || linhasNaParada.length === 0) {
+      setChegadasParada([]);
+      setAtualizadoChegadasEm(null);
+      return;
+    }
 
-      veiculos.forEach((v) => {
-        const nome = v.proximaParadaNome
-          ? normalizarNome(v.proximaParadaNome)
-          : null;
-        if (!nome || nome !== alvo) return;
+    setCarregandoChegadas(true);
+    try {
+      const lista = await buscarProximosVeiculosParada(
+        paradaSelecionada.paradaId,
+      );
+      const mapaLinhas = new Map(
+        linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]),
+      );
 
-        const dist = v.distanciaProximaParadaMetros ?? null;
-        const velocidade = v.velocidadeMedia ?? v.velocidade;
+      const filtrados = lista
+        .filter((v) => mapaLinhas.has(normalizarCodigo(v.codigoLinha)))
+        .map((v) => {
+          const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
+          return {
+            id: `${v.ordem}-${v.itinerarioId ?? v.codigoLinha}`,
+            linhaId: info?.linhaId,
+            codigo: normalizarCodigo(v.codigoLinha),
+            cor: info?.cor ?? "#94a3b8",
+            etaSeg: v.etaParadaSegundos ?? null,
+            distanciaMetros: v.distanciaParadaMetros ?? null,
+            horarioPrevistoLocal: v.horarioChegadaPrevistoLocal ?? null,
+            confianca: v.etaConfianca ?? null,
+            status: v.status ?? null,
+            proximaParadaNome: v.proximaParadaNome ?? null,
+          } as ChegadaParadaInfo;
+        })
+        .sort((a, b) => {
+          const ea = a.etaSeg ?? Number.POSITIVE_INFINITY;
+          const eb = b.etaSeg ?? Number.POSITIVE_INFINITY;
+          return ea - eb;
+        });
 
-        if (dist != null && velocidade && velocidade > 1) {
-          const eta = Math.round(dist / ((velocidade * 1000) / 3600));
-          if (melhorEta == null || eta < melhorEta) {
-            melhorEta = eta;
-            melhorDist = dist;
-          }
-        } else if (melhorEta == null) {
-          melhorDist = dist;
-        }
-      });
+      setChegadasParada(filtrados);
+      setAtualizadoChegadasEm(Date.now());
+    } catch (err) {
+      console.error("Erro ao buscar chegadas:", err);
+      setChegadasParada([]);
+    } finally {
+      setCarregandoChegadas(false);
+    }
+  }, [paradaSelecionada, linhasNaParada, normalizarCodigo]);
 
-      return {
-        linhaId: l.linhaId,
-        codigo: l.codigo,
-        cor: l.cor,
-        etaSeg: melhorEta,
-        distanciaMetros: melhorDist,
-      };
-    });
-  }, [paradaSelecionada, linhasNaParada, getVeiculosPorCodigo, normalizarNome]);
+  useEffect(() => {
+    if (!paradaSelecionada) {
+      setChegadasParada([]);
+      setAtualizadoChegadasEm(null);
+      return;
+    }
+    atualizarChegadas();
+  }, [paradaSelecionada, linhasNaParada, atualizarChegadas]);
+
+  useEffect(() => {
+    if (paradaExpandida) {
+      atualizarChegadas();
+    }
+  }, [paradaExpandida, atualizarChegadas]);
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
@@ -331,6 +398,8 @@ const Home = () => {
             itinerarioIdFiltro,
           );
 
+          const paradas = obterParadasLinha(l);
+
           // Mapa itinerarioId → índice do segmento para o dead reckoning
           const itinerarioSegmentoMap: Record<string, number> = {};
           if (itinerario?.itinerarioIdIda) {
@@ -346,7 +415,7 @@ const Home = () => {
             modal: l.modal,
             segmentos,
             coordenadas: segmentos[0] ?? [],
-            paradas: itinerario?.paradas ?? [],
+            paradas,
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
             itinerarioSegmentoMap, // ← novo
@@ -460,7 +529,10 @@ const Home = () => {
         visivel={!!paradaSelecionada}
         parada={paradaSelecionada}
         linhas={linhasNaParada}
-        chegadas={chegadasPorLinha}
+        chegadas={chegadasParada}
+        carregandoChegadas={carregandoChegadas}
+        atualizadoEm={atualizadoChegadasEm}
+        onAtualizar={atualizarChegadas}
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {

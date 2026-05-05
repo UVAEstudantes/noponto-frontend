@@ -13,7 +13,7 @@ import React, {
 } from "react";
 import { WebView } from "react-native-webview";
 
-// Atualiza a interface LinhaParaMostrar para incluir mapeamento itinerarioId → segmento
+// Atualiza a interface LinhaParaMostrar para incluir mapeamento itinerarioId -> segmento
 export interface LinhaParaMostrar {
   nome: string;
   cor?: string;
@@ -24,7 +24,7 @@ export interface LinhaParaMostrar {
   mostrarParadas?: boolean;
   modoSentido?: string;
   /**
-   * Mapeamento de itinerarioId → índice do segmento.
+   * Mapeamento de itinerarioId -> índice do segmento.
    * Permite o dead reckoning usar o segmento correto para cada veículo.
    * ex: { "uuid-ida": 0, "uuid-volta": 1 }
    */

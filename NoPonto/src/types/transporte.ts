@@ -48,12 +48,15 @@ export interface ItinerarioLinha {
    */
   segmentos: CoordenadaMapa[][];
   paradas?: Parada[];
+  paradasPorItinerario?: Record<string, Parada[]>;
   sentidoIdIda?: string;
   sentidoIdVolta?: string;
   /** itinerarioId do backend para o sentido IDA */
   itinerarioIdIda?: string;
   /** itinerarioId do backend para o sentido VOLTA */
   itinerarioIdVolta?: string;
+  /** Indica se as paradas vieram no payload */
+  incluiParadas?: boolean;
 }
 
 // ===== Backend API Response Types =====
@@ -84,6 +87,33 @@ export interface SentidoSimples {
 
 export interface SentidosResponse extends PaginatedResponse<SentidoSimples> {}
 
+export interface TarifaAtualDto {
+  tarifa: number;
+  validoDe: string;
+  validoAte: string;
+  fonte?: string | null;
+}
+
+export interface ItinerarioDetalheDto {
+  itinerarioId: string;
+  distanciaMetros?: number | null;
+  quantidadeParadas?: number | null;
+}
+
+export interface SentidoDetalheDto {
+  sentidoId: string;
+  nome: string;
+  itinerarios: ItinerarioDetalheDto[];
+}
+
+export interface LinhaDetalhesDto {
+  linhaId: string;
+  linhaNome: string;
+  codigo: string;
+  tarifaAtual?: TarifaAtualDto | null;
+  sentidos: SentidoDetalheDto[];
+}
+
 export interface ItinerarioPorLinhaDto {
   id: string;
   linhaId: string;
@@ -110,7 +140,7 @@ export interface ItinerarioMapaDto {
   linhaNome: string;
   sentidoNome: string;
   geometria: GeometriaItem[];
-  paradas: Parada[];
+  paradas?: Parada[];
 }
 
 /**
@@ -137,6 +167,24 @@ export interface ParadaProximaDto {
   latitude: number;
   longitude: number;
   distanciaMetros: number;
+}
+
+export interface ProximoVeiculoParadaDto {
+  ordem: string;
+  codigoLinha: string;
+  status: number;
+  itinerarioId: string;
+  latitude: number;
+  longitude: number;
+  timestampGps: string;
+  proximaParadaNome: string;
+  distanciaProximaParadaMetros: number;
+  etaProximaParadaSegundos: number;
+  etaConfianca: string;
+  distanciaParadaMetros: number;
+  etaParadaSegundos: number;
+  horarioChegadaPrevisto: string;
+  horarioChegadaPrevistoLocal: string;
 }
 
 export interface PosicaoVeiculo {

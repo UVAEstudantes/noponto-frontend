@@ -8,12 +8,14 @@ import Select from "@/src/components/select";
 import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import {
+  buscarDetalhesLinha,
   buscarOpcoesPorNome,
   buscarPoisPorItinerario,
   buscarPoisPorParada,
   buscarSentidosPorLinha,
 } from "@/src/services/mobilidadeRio";
 import {
+  LinhaDetalhesDto,
   ModalApiTransporte,
   OpcaoBusca,
   Parada,
@@ -519,6 +521,9 @@ const Linhas = () => {
   const [linhaSelecionada, setLinhaSelecionada] = useState<OpcaoBusca | null>(
     null,
   );
+  const [detalhesLinha, setDetalhesLinha] = useState<LinhaDetalhesDto | null>(
+    null,
+  );
 
   const itinerario = linhaSelecionada
     ? (itinerariosPorId[linhaSelecionada.linha.id] ?? null)
@@ -561,8 +566,16 @@ const Linhas = () => {
     async (poi: PoiDto) => {
       setPoiSelecionado(poi);
 
+      const tipo = tipoSentidoPorNome(sentidoSelecionado);
+      const itId =
+        tipo === "volta"
+          ? itinerario?.itinerarioIdVolta
+          : itinerario?.itinerarioIdIda;
+      const paradasRef = itId
+        ? itinerario?.paradasPorItinerario?.[itId]
+        : itinerario?.paradas;
       const parada =
-        itinerario?.paradas?.find((p) => p.paradaId === poi.paradaId) ?? null;
+        paradasRef?.find((p) => p.paradaId === poi.paradaId) ?? null;
       setParadaPoi(parada ?? null);
 
       let distancia = poi.distanciaMetros;
@@ -612,7 +625,7 @@ const Linhas = () => {
         }
       }
     },
-    [itinerario],
+    [itinerario, sentidoSelecionado],
   );
 
   // ─── Selecionar linha ─────────────────────────────────────────────────────
@@ -628,22 +641,26 @@ const Linhas = () => {
       setSentidos([]);
       setPois([]);
       setPoiSelecionado(null);
+      setDetalhesLinha(null);
       Keyboard.dismiss();
 
       const m = normalizarModal(modal);
       if (!m) return;
 
       // Busca itinerário e sentidos em paralelo
-      const [_, sentidosRes] = await Promise.all([
+      const [_, sentidosRes, detalhesRes] = await Promise.all([
         garantirItinerario(
           opcao.linha.id,
           opcao.linha.codigo || opcao.linha.nome,
           m,
+          true,
         ),
         buscarSentidosPorLinha(opcao.linha.id),
+        buscarDetalhesLinha(opcao.linha.id),
       ]);
 
       setSentidos(sentidosRes);
+      setDetalhesLinha(detalhesRes);
     },
     [modal, garantirItinerario],
   );
@@ -705,6 +722,16 @@ const Linhas = () => {
     return itinerario.segmentos;
   }, [itinerario, tipoSentido]);
 
+  const paradasSentido = useMemo(() => {
+    if (!itinerario) return [] as Parada[];
+    if (!itinerarioIdFiltro) return itinerario.paradas ?? [];
+    return (
+      itinerario.paradasPorItinerario?.[itinerarioIdFiltro] ??
+      itinerario.paradas ??
+      []
+    );
+  }, [itinerario, itinerarioIdFiltro]);
+
   const veiculos = useMemo<VeiculoTempoReal[]>(() => {
     if (!linhaSelecionada || !modalAtual || !tipoSentido) return [];
     const codigo = linhaSelecionada.linha.codigo || linhaSelecionada.linha.nome;
@@ -735,7 +762,7 @@ const Linhas = () => {
         modal: modalAtual,
         segmentos: segmentosTrajeto,
         coordenadas: segmentosTrajeto[0] ?? [],
-        paradas: itinerario?.paradas ?? [],
+        paradas: paradasSentido,
         mostrarParadas: true,
         modoSentido: tipoSentido === "ida" ? "ida" : "volta",
         itinerarioSegmentoMap, // ← novo
@@ -795,6 +822,7 @@ const Linhas = () => {
     setPois([]);
     setPoiSelecionado(null);
     setParadaPoi(null);
+    setDetalhesLinha(null);
     mapRef.current?.limparPoi();
   }, [modal]);
 
@@ -989,6 +1017,7 @@ const Linhas = () => {
                       setSentidos([]);
                       setPois([]);
                       setPoiSelecionado(null);
+                      setDetalhesLinha(null);
                     }
                   }}
                 />
@@ -1054,7 +1083,7 @@ const Linhas = () => {
 
                   <Chegada intervalo="~20 min" />
                   <Tarifas
-                    valor={4.7}
+                    valor={detalhesLinha?.tarifaAtual?.tarifa}
                     modal={modal?.toLowerCase() ?? "onibus"}
                   />
 

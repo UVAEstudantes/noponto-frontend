@@ -1,22 +1,23 @@
 import {
-  buscarItinerarioLinhaMesclado,
-  buscarVeiculosTempoReal,
-  construirLinhasDisponiveis,
-} from "@/src/services/mobilidadeRio";
-import {
-  cancelarLinha,
-  conectarGpsHub,
-  iniciarGpsHub,
-  inscreverLinha,
+    cancelarLinha,
+    conectarGpsHub,
+    iniciarGpsHub,
+    inscreverLinha,
+    removerGpsHubListener,
 } from "@/src/services/gpsHub";
+import {
+    buscarItinerarioLinhaMesclado,
+    buscarVeiculosTempoReal,
+    construirLinhasDisponiveis,
+} from "@/src/services/mobilidadeRio";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  ItinerarioLinha,
-  LinhaTempoReal,
-  ModalApiTransporte,
-  ModoSentido,
-  VeiculoTempoReal,
+    ItinerarioLinha,
+    LinhaTempoReal,
+    ModalApiTransporte,
+    ModoSentido,
+    VeiculoTempoReal,
 } from "@/src/types/transporte";
 
 const INTERVALO_ATUALIZACAO_MS = 60_000;
@@ -37,7 +38,9 @@ export interface LinhaSelecionadaInfo {
 
 export function useMobilidadeRio() {
   const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
-  const [linhasDisponiveis, setLinhasDisponiveis] = useState<LinhaTempoReal[]>([]);
+  const [linhasDisponiveis, setLinhasDisponiveis] = useState<LinhaTempoReal[]>(
+    [],
+  );
 
   /** Cache de itinerários: linhaId → ItinerarioLinha | null */
   const [itinerariosPorId, setItinerariosPorId] = useState<
@@ -65,31 +68,36 @@ export function useMobilidadeRio() {
 
   // ─── SignalR ──────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    iniciarGpsHub((listaVeiculos) => {
-      if (!montadoRef.current) return;
-      if (!Array.isArray(listaVeiculos)) return;
+  const handleRealtime = useCallback((listaVeiculos: VeiculoTempoReal[]) => {
+    if (!montadoRef.current) return;
+    if (!Array.isArray(listaVeiculos)) return;
 
-      setVeiculos((prev) => {
-        if (listaVeiculos.length === 0) return prev;
-        const codigoAtualizado = listaVeiculos[0].linha;
-        const semEssaLinha = prev.filter((v) => v.linha !== codigoAtualizado);
-        return [...semEssaLinha, ...listaVeiculos];
-      });
-
-      setLinhasDisponiveis((prev) => {
-        const novos = construirLinhasDisponiveis(listaVeiculos);
-        const codigosNovos = new Set(novos.map((l) => l.nome));
-        const semEssas = prev.filter((l) => !codigosNovos.has(l.nome));
-        return [...semEssas, ...novos];
-      });
-
-      setErro(null);
-      setCarregando(false);
+    setVeiculos((prev) => {
+      if (listaVeiculos.length === 0) return prev;
+      const codigoAtualizado = listaVeiculos[0].linha;
+      const semEssaLinha = prev.filter((v) => v.linha !== codigoAtualizado);
+      return [...semEssaLinha, ...listaVeiculos];
     });
 
-    conectarGpsHub();
+    setLinhasDisponiveis((prev) => {
+      const novos = construirLinhasDisponiveis(listaVeiculos);
+      const codigosNovos = new Set(novos.map((l) => l.nome));
+      const semEssas = prev.filter((l) => !codigosNovos.has(l.nome));
+      return [...semEssas, ...novos];
+    });
+
+    setErro(null);
+    setCarregando(false);
   }, []);
+
+  useEffect(() => {
+    iniciarGpsHub(handleRealtime);
+    conectarGpsHub();
+
+    return () => {
+      removerGpsHubListener(handleRealtime);
+    };
+  }, [handleRealtime]);
 
   // ─── HTTP Fallback ────────────────────────────────────────────────────────
 
@@ -124,20 +132,37 @@ export function useMobilidadeRio() {
       linhaId: string,
       linhaCodigo: string,
       modal: ModalApiTransporte,
+      incluirParadas: boolean = false,
     ): Promise<ItinerarioLinha | null> => {
-      if (linhaId in itinerariosRef.current) {
-        return itinerariosRef.current[linhaId];
+      const existente = itinerariosRef.current[linhaId];
+      if (existente && (!incluirParadas || existente.incluiParadas)) {
+        return existente;
       }
 
       if (emAndamentoRef.current[linhaId]) {
-        return emAndamentoRef.current[linhaId]!;
+        const resultado = await emAndamentoRef.current[linhaId]!;
+        const atualizado = itinerariosRef.current[linhaId];
+        if (atualizado && (!incluirParadas || atualizado.incluiParadas)) {
+          return atualizado;
+        }
+        if (resultado && (!incluirParadas || resultado.incluiParadas)) {
+          return resultado;
+        }
       }
 
-      const promessa = buscarItinerarioLinhaMesclado(linhaId, linhaCodigo, modal)
+      const promessa = buscarItinerarioLinhaMesclado(
+        linhaId,
+        linhaCodigo,
+        modal,
+        incluirParadas,
+      )
         .then((itinerario) => {
           if (!montadoRef.current) return itinerario;
 
-          setItinerariosPorId((prev) => ({ ...prev, [linhaId]: itinerario }));
+          setItinerariosPorId((prev) => {
+            if (!itinerario && prev[linhaId]) return prev;
+            return { ...prev, [linhaId]: itinerario };
+          });
 
           if (itinerario) {
             inscreverLinha(linhaCodigo).catch(console.error);
@@ -196,7 +221,10 @@ export function useMobilidadeRio() {
     [veiculos],
   );
 
-  const linhasOrdenadas = useMemo(() => linhasDisponiveis ?? [], [linhasDisponiveis]);
+  const linhasOrdenadas = useMemo(
+    () => linhasDisponiveis ?? [],
+    [linhasDisponiveis],
+  );
 
   return {
     carregando,
