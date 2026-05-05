@@ -71,19 +71,11 @@ export interface MapaOSMRef {
   limparPoi: () => void;
 }
 
-const classesEstiloMapa = estilosMapaDisponiveis
-  .map((e) => `estilo-${e.id}`)
-  .join(" ");
-
-const filtrosCSS = estilosMapaDisponiveis
-  .map(
-    (e) => `
-  #map.light-mode.estilo-${e.id} .leaflet-tile { filter: ${e.filtroLight}; }
-  #map.dark-mode.estilo-${e.id}  .leaflet-tile { filter: ${e.filtroDark}; }`,
-  )
-  .join("\n");
-
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
+
+const filtrosMapaJS = estilosMapaDisponiveis
+  .map((e) => `"${e.id}":{light:"${e.filtroLight}",dark:"${e.filtroDark}"}`)
+  .join(",");
 
 const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   (
@@ -174,14 +166,16 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet"/>
+  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     html,body{height:100%;width:100%;margin:0;padding:0;background:#f0f0f0}
     #map{height:100%;width:100%;position:absolute;top:0;left:0}
-    .leaflet-tile{transition:filter .25s ease}
-    ${filtrosCSS}
+    .maplibregl-canvas{outline:none}
+    .maplibregl-marker{cursor:pointer}
+    .maplibregl-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:0;padding:8px 10px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.2);background:#fff;color:#111}
+    .maplibregl-popup-close-button{display:none}
 
     .user-container{display:flex;align-items:center;justify-content:center}
     .user-dot{width:12px;height:12px;background:#4FC3F7;border:2.5px solid white;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.4);z-index:2}
@@ -205,7 +199,6 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:.45}70%{transform:translate(-50%,-50%) scale(1.8);opacity:0}100%{opacity:0}}
     @keyframes iconPulse{0%{transform:translate(-50%,-50%) scale(.8);opacity:.5}70%{transform:translate(-50%,-50%) scale(1.9);opacity:0}100%{opacity:0}}
 
-    .leaflet-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:8px 10px}
     .popup-card{display:flex;flex-direction:column;gap:6px}
     .popup-header{display:flex;align-items:center;gap:8px}
     .popup-indicator{width:28px;height:28px;position:relative;flex:0 0 28px;border-radius:10px;background:#fff;border:1.5px solid currentColor;color:var(--c,#2196F3);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
@@ -233,8 +226,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .poi-marker svg{width:16px;height:16px;stroke:var(--c,#f59e0b);stroke-width:2;fill:none}
     .poi-distance{padding:4px 10px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;display:inline-block;min-width:46px;text-align:center}
 
-    #map.dark-mode .leaflet-popup-content-wrapper{background:#1b1f24;color:#e5e7eb}
-    #map.dark-mode .leaflet-popup-tip{background:#1b1f24}
+    #map.dark-mode .maplibregl-popup-content{background:#1b1f24;color:#e5e7eb}
+    #map.dark-mode .maplibregl-popup-tip{border-top-color:#1b1f24}
     #map.dark-mode .popup-title{color:#f3f4f6}
     #map.dark-mode .popup-sub,#map.dark-mode .popup-time,#map.dark-mode .popup-row{color:#cbd5e1}
     #map.dark-mode .popup-label{color:#e5e7eb}
@@ -246,20 +239,23 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 <body>
 <div id="map"></div>
 <script>
-var map,tiles,trafficTiles,userMarker,linesLayer,stopsLayer,vehiclesLayer,poiLayer;
-var poiMarker=null,poiLine=null,poiDistanceMarker=null;
+var map,userMarker;
+var linesSourceId='lines-source',linesSolidLayerId='lines-solid',linesDashLayerId='lines-dash';
+var trafficSourceId='traffic-source',trafficLayerId='traffic-layer';
+var poiLineSourceId='poi-line-source',poiLineLayerId='poi-line-layer';
+var stopMarkers=[],poiMarker=null,poiDistanceMarker=null;
 var estilos=[${estilosJS}];
-var classesMapa="${classesEstiloMapa}";
-var vehicleMarkers={},animFrames={},vehicleHeadings={};
+var filtrosMapa={${filtrosMapaJS}};
+var currentStyleId='${ESTILO_MAPA_PADRAO}';
+var isDark=false;
+var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={};
 var autoFollow=true,internalMove=false;
-
-// ── Dead reckoning ────────────────────────────────────────────────────────────
-// drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
-var drState={};
+var mapReady=false;
 var drInterval=null;
 var lastDrLog=0;
 
-// Comprimento da rota em graus (mesmo sistema que interpolarNaRota usa)
+// ── Dead reckoning ────────────────────────────────────────────────────────────
+// drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
 function comprimentoRotaGraus(coords){
   if(!coords||coords.length<2)return 0;
   var total=0;
@@ -308,7 +304,7 @@ function startDR(){
       s.posicaoNaRota=Math.min(1,s.posicaoNaRota+avanco);
       var coord=interpolarNaRota(s.lineCoords,s.posicaoNaRota);
       if(coord&&s.marker){
-        s.marker.setLatLng(L.latLng(coord[0],coord[1]));
+        s.marker.setLngLat([coord[1],coord[0]]);
         var h=headingNaRota(s.lineCoords,s.posicaoNaRota);
         if(typeof h==='number'){vehicleHeadings[k]=h;setHeading(s.marker,h);}
       }
@@ -376,33 +372,50 @@ function stopAnim(key){if(animFrames[key]){cancelAnimationFrame(animFrames[key])
 
 function animateTo(key,marker,dest,ms){
   stopAnim(key);
-  var start=marker.getLatLng();
-  if(start.distanceTo(dest)<0.5){marker.setLatLng(dest);return}
+  var start=marker.getLngLat();
+  var dx=start.lng-dest.lng,dy=start.lat-dest.lat;
+  if(Math.sqrt(dx*dx+dy*dy)<0.000005){marker.setLngLat([dest.lng,dest.lat]);return}
   var t0=performance.now();
   function step(ts){
     var p=Math.min((ts-t0)/ms,1);
-    marker.setLatLng([start.lat+(dest.lat-start.lat)*p,start.lng+(dest.lng-start.lng)*p]);
+    var lat=start.lat+(dest.lat-start.lat)*p;
+    var lng=start.lng+(dest.lng-start.lng)*p;
+    marker.setLngLat([lng,lat]);
     if(p<1)animFrames[key]=requestAnimationFrame(step);else delete animFrames[key];
   }
   animFrames[key]=requestAnimationFrame(step);
 }
 
 function busIcon(color,heading){
-  return L.divIcon({
-    className:'bus-marker',
-    html:'<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-         '<div class="bus-blob" style="background:'+color+'"></div>'+
-         '<div class="bus-arrow"></div></div>',
-    iconSize:[26,26],iconAnchor:[13,13]
-  });
+  var el=document.createElement('div');
+  el.className='bus-marker';
+  el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
+               '<div class="bus-blob" style="background:'+color+'"></div>'+
+               '<div class="bus-arrow"></div></div>';
+  return el;
 }
 
 function stopIcon(color){
-  return L.divIcon({
-    className:'stop-marker',
-    html:'<div class="stop-pin" style="--stop-color:'+color+'"><div class="stop-core"></div></div>',
-    iconSize:[14,14],iconAnchor:[7,7]
-  });
+  var el=document.createElement('div');
+  el.className='stop-marker';
+  el.innerHTML='<div class="stop-pin" style="--stop-color:'+color+'"><div class="stop-core"></div></div>';
+  return el;
+}
+
+function poiIcon(iconName,color){
+  var icon=iconName||'map-pin';
+  var el=document.createElement('div');
+  el.className='poi-marker';
+  el.style.setProperty('--c',color);
+  el.innerHTML='<i data-lucide="'+icon+'"></i>';
+  return el;
+}
+
+function userIcon(){
+  var el=document.createElement('div');
+  el.className='user-container';
+  el.innerHTML='<div class="user-arrow"></div><div class="user-dot"></div>';
+  return el;
 }
 
 function setHeading(marker,heading){
@@ -523,34 +536,88 @@ function buildStopPopup(parada){
   return html;
 }
 
-function clearPoi(){
-  if(poiLayer)poiLayer.clearLayers();
-  poiMarker=null;poiLine=null;poiDistanceMarker=null;
+function emptyGeo(){
+  return{type:'FeatureCollection',features:[]};
 }
 
-function poiIcon(iconName,color){
-  var icon=iconName||'map-pin';
-  var html='<div class="poi-marker" style="--c:'+color+'"><i data-lucide="'+icon+'"></i></div>';
-  return L.divIcon({className:'poi-marker-wrap',html:html,iconSize:[28,28],iconAnchor:[14,14]});
+function ensureLayers(){
+  if(!map)return;
+  if(!map.getSource(trafficSourceId)){
+    map.addSource(trafficSourceId,{type:'raster',tiles:['https://mt0.google.com/vt?lyrs=traffic&x={x}&y={y}&z={z}'],tileSize:256});
+    map.addLayer({id:trafficLayerId,type:'raster',source:trafficSourceId,paint:{'raster-opacity':0.9},layout:{'visibility':'none'}});
+  }
+  if(!map.getSource(linesSourceId)){
+    map.addSource(linesSourceId,{type:'geojson',data:emptyGeo()});
+    map.addLayer({id:linesSolidLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],0],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.65}});
+    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.85,'line-dasharray':[8,5]}});
+  }
+  if(!map.getSource(poiLineSourceId)){
+    map.addSource(poiLineSourceId,{type:'geojson',data:emptyGeo()});
+    map.addLayer({id:poiLineLayerId,type:'line',source:poiLineSourceId,paint:{'line-color':['get','color'],'line-width':2,'line-opacity':0.9,'line-dasharray':[6,6]}});
+  }
+}
+
+function setLinesData(features){
+  var src=map&&map.getSource(linesSourceId);
+  if(src&&src.setData){
+    src.setData({type:'FeatureCollection',features:features});
+  }
+}
+
+function setPoiLine(coords,color){
+  var src=map&&map.getSource(poiLineSourceId);
+  if(!src||!src.setData)return;
+  if(!coords||coords.length<2){
+    src.setData(emptyGeo());
+    return;
+  }
+  src.setData({
+    type:'FeatureCollection',
+    features:[{type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{color:color}}]
+  });
+}
+
+function clearStops(){
+  for(var i=0;i<stopMarkers.length;i++){
+    stopMarkers[i].remove();
+  }
+  stopMarkers=[];
+}
+
+function clearVehicles(){
+  Object.keys(vehicleMarkers).forEach(function(k){
+    stopAnim(k);
+    vehicleMarkers[k].remove();
+    if(vehiclePopups[k])vehiclePopups[k].remove();
+    delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];delete vehiclePopups[k];
+  });
+}
+
+function clearPoi(){
+  if(poiMarker){poiMarker.remove();poiMarker=null;}
+  if(poiDistanceMarker){poiDistanceMarker.remove();poiDistanceMarker=null;}
+  setPoiLine(null,null);
 }
 
 function showPoi(payload){
-  if(!payload||!payload.poi)return;
+  if(!payload||!payload.poi||!map)return;
   clearPoi();
   var poi=payload.poi;
   var parada=payload.parada||null;
   var color=payload.cor||'#f59e0b';
   var icon=payload.icone||'map-pin';
-  poiMarker=L.marker([poi.lat,poi.lng],{icon:poiIcon(icon,color),zIndexOffset:650}).addTo(poiLayer);
+  var el=poiIcon(icon,color);
+  poiMarker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([poi.lng,poi.lat]).addTo(map);
 
   if(parada&&parada.lat!=null&&parada.lng!=null){
-    poiLine=L.polyline([[parada.lat,parada.lng],[poi.lat,poi.lng]],{
-      color:color,weight:2,opacity:.9,dashArray:'6,6'
-    }).addTo(poiLayer);
+    setPoiLine([[parada.lng,parada.lat],[poi.lng,poi.lat]],color);
     if(payload.distancia!=null){
-      var mid=L.latLng((parada.lat+poi.lat)/2,(parada.lng+poi.lng)/2);
-      var html='<div class="poi-distance">'+payload.distancia+' m</div>';
-      poiDistanceMarker=L.marker(mid,{icon:L.divIcon({className:'poi-distance-wrap',html:html,iconSize:[70,24],iconAnchor:[35,12]})}).addTo(poiLayer);
+      var midLng=(parada.lng+poi.lng)/2;
+      var midLat=(parada.lat+poi.lat)/2;
+      var distEl=document.createElement('div');
+      distEl.className='poi-distance';
+      distEl.textContent=payload.distancia+' m';
+      poiDistanceMarker=new maplibregl.Marker({element:distEl,anchor:'center'}).setLngLat([midLng,midLat]).addTo(map);
     }
   }
 
@@ -562,86 +629,114 @@ function showPoi(payload){
 function normEstilo(id){
   return(typeof id==='string'&&estilos.indexOf(id)>=0)?id:'${ESTILO_MAPA_PADRAO}';
 }
-function setMapStyle(id){
-  var el=document.getElementById('map');if(!el)return;
-  classesMapa.split(' ').forEach(function(c){if(c)el.classList.remove(c)});
-  el.classList.add('estilo-'+normEstilo(id));
+
+function applyMapFilter(){
+  if(!map)return;
+  var conf=filtrosMapa[currentStyleId]||{light:'none',dark:'none'};
+  var filtro=isDark?conf.dark:conf.light;
+  map.getCanvas().style.filter=filtro||'none';
 }
+
+function setMapStyle(id){
+  currentStyleId=normEstilo(id);
+  applyMapFilter();
+}
+
 function setDark(dark){
   var el=document.getElementById('map');if(!el)return;
-  if(dark){el.classList.add('dark-mode');el.classList.remove('light-mode');document.body.style.background='#1a1a1a'}
+  isDark=!!dark;
+  if(isDark){el.classList.add('dark-mode');el.classList.remove('light-mode');document.body.style.background='#1a1a1a'}
   else{el.classList.remove('dark-mode');el.classList.add('light-mode');document.body.style.background='#f0f0f0'}
+  applyMapFilter();
 }
+
 function setTraffic(show){
-  if(!map)return;
-  if(show){
-    if(!trafficTiles)trafficTiles=L.tileLayer('https://mt0.google.com/vt?lyrs=traffic&x={x}&y={y}&z={z}',{maxZoom:20,opacity:.9});
-    if(!map.hasLayer(trafficTiles))trafficTiles.addTo(map);
-  }else if(trafficTiles&&map.hasLayer(trafficTiles)){map.removeLayer(trafficTiles)}
+  if(!map||!map.getLayer(trafficLayerId))return;
+  map.setLayoutProperty(trafficLayerId,'visibility',show?'visible':'none');
 }
-function clearVehicles(){
-  Object.keys(vehicleMarkers).forEach(function(k){
-    stopAnim(k);vehiclesLayer.removeLayer(vehicleMarkers[k]);
-    delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];
-  });
+
+function setLineOpacity(dark){
+  if(map&&map.getLayer(linesSolidLayerId)){
+    map.setPaintProperty(linesSolidLayerId,'line-opacity',dark?0.85:0.65);
+  }
+  if(map&&map.getLayer(linesDashLayerId)){
+    map.setPaintProperty(linesDashLayerId,'line-opacity',dark?0.85:0.65);
+  }
+}
+
+function boundsFromCoords(coords){
+  var minLat=90,minLng=180,maxLat=-90,maxLng=-180;
+  for(var i=0;i<coords.length;i++){
+    var lat=parseNum(coords[i].latitude),lng=parseNum(coords[i].longitude);
+    if(lat===null||lng===null)continue;
+    if(lat<minLat)minLat=lat;
+    if(lng<minLng)minLng=lng;
+    if(lat>maxLat)maxLat=lat;
+    if(lng>maxLng)maxLng=lng;
+  }
+  if(minLat===90||minLng===180||maxLat===-90||maxLng===-180)return null;
+  return[[minLng,minLat],[maxLng,maxLat]];
 }
 
 window.onload=function(){
-  map=L.map('map',{zoomControl:false,attributionControl:false}).setView([${latInicial},${lngInicial}],15);
-  tiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
-  linesLayer=L.layerGroup().addTo(map);
-  stopsLayer=L.layerGroup().addTo(map);
-  vehiclesLayer=L.layerGroup().addTo(map);
-  poiLayer=L.layerGroup().addTo(map);
-
-  userMarker=L.marker([${latInicial},${lngInicial}],{
-    icon:L.divIcon({className:'user-container',html:'<div class="user-arrow"></div><div class="user-dot"></div>',iconSize:[20,20],iconAnchor:[10,10]}),
-    zIndexOffset:1000
-  }).addTo(map);
-
-  setMapStyle('${ESTILO_MAPA_PADRAO}');setDark(false);
-
-  map.on('movestart',function(){if(!internalMove)autoFollow=false});
-  map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
-  map.on('moveend',function(){internalMove=false});
-  map.on('zoomend',function(){internalMove=false});
-
-  startDR();
-  setInterval(updateTimeAgo,1000);
-  map.on('popupopen',function(){
-    updateTimeAgo();
-    if(window.lucide&&window.lucide.createIcons){
-      window.lucide.createIcons();
-    }
+  map=new maplibregl.Map({
+    container:'map',
+    style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+    center:[${lngInicial},${latInicial}],
+    zoom:15,
+    attributionControl:false
   });
 
-  if(window.pendingData)window.updateMap(window.pendingData);
-  window.mostrarConexaoPoi=showPoi;
-  window.limparConexaoPoi=clearPoi;
-  window.ReactNativeWebView&&window.ReactNativeWebView.postMessage('map_ready');
+  map.on('load',function(){
+    mapReady=true;
+    map.getCanvas().style.transition='filter .25s ease';
+    ensureLayers();
+    userMarker=new maplibregl.Marker({element:userIcon(),anchor:'center'}).setLngLat([${lngInicial},${latInicial}]).addTo(map);
+    setMapStyle('${ESTILO_MAPA_PADRAO}');
+    setDark(false);
+
+    map.on('movestart',function(){if(!internalMove)autoFollow=false});
+    map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
+    map.on('moveend',function(){internalMove=false});
+    map.on('zoomend',function(){internalMove=false});
+
+    startDR();
+    setInterval(updateTimeAgo,1000);
+
+    if(window.pendingData)window.updateMap(window.pendingData);
+    window.mostrarConexaoPoi=showPoi;
+    window.limparConexaoPoi=clearPoi;
+    if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
+      window.ReactNativeWebView.postMessage('map_ready');
+    }
+  });
 };
 
 window.centerOnUser=function(){
+  if(!map||!userMarker)return;
   autoFollow=true;
-  runInternal(function(){map.flyTo(userMarker.getLatLng(),17)});
+  var pos=userMarker.getLngLat();
+  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17})});
 };
 
 window.fitToCoordinates=function(coords){
-  if(!coords||!coords.length)return;
+  if(!coords||!coords.length||!map)return;
   autoFollow=false;
-  var bounds=L.latLngBounds(coords.map(function(c){return[c.latitude,c.longitude]}));
-  runInternal(function(){map.fitBounds(bounds,{padding:[50,50],animate:true,duration:.8})});
+  var bounds=boundsFromCoords(coords);
+  if(!bounds)return;
+  runInternal(function(){map.fitBounds(bounds,{padding:50,duration:800})});
 };
 
 window.updateMap=function(data){
-  if(!map||!linesLayer||!stopsLayer||!vehiclesLayer){window.pendingData=data;return}
+  if(!map||!mapReady){window.pendingData=data;return}
 
   setMapStyle(data.estiloMapa);
   setDark(Boolean(data.darkMode));
   setTraffic(Boolean(data.showTraffic));
+  setLineOpacity(Boolean(data.darkMode));
 
-  var pos=L.latLng(data.userLocation[0],data.userLocation[1]);
-  userMarker.setLatLng(pos);
+  var pos={lat:data.userLocation[0],lng:data.userLocation[1]};
+  if(userMarker)userMarker.setLngLat([pos.lng,pos.lat]);
 
   var arrow=document.querySelector('.user-arrow');
   if(arrow){
@@ -649,12 +744,17 @@ window.updateMap=function(data){
     else arrow.style.display='none';
   }
 
-  if(autoFollow)runInternal(function(){map.panTo(pos,{animate:false})});
+  if(autoFollow)runInternal(function(){map.jumpTo({center:[pos.lng,pos.lat]})});
 
-  linesLayer.clearLayers();
-  stopsLayer.clearLayers();
+  clearStops();
 
-  if(!Array.isArray(data.linhas)||data.linhas.length===0){clearVehicles();return}
+  var lineFeatures=[];
+
+  if(!Array.isArray(data.linhas)||data.linhas.length===0){
+    setLinesData(lineFeatures);
+    clearVehicles();
+    return;
+  }
 
   var visibleKeys={};
 
@@ -676,21 +776,29 @@ window.updateMap=function(data){
 
     segmentos.forEach(function(seg,idx){
       if(!Array.isArray(seg)||seg.length<2)return;
-      L.polyline(seg,{color:color,weight:idx===1?3:4,opacity:data.darkMode?0.85:0.65,dashArray:idx===1?'8,5':null}).addTo(linesLayer);
+      var coords=seg.map(function(c){return[c[1],c[0]]});
+      lineFeatures.push({
+        type:'Feature',
+        geometry:{type:'LineString',coordinates:coords},
+        properties:{color:color,dash:idx===1?1:0,width:idx===1?3:4}
+      });
     });
 
     if(linha.mostrarParadas&&Array.isArray(linha.paradas)){
       linha.paradas.forEach(function(parada){
         var lat=parseNum(parada.latitude),lng=parseNum(parada.longitude);
         if(lat===null||lng===null)return;
-        var m=L.marker([lat,lng],{icon:stopIcon(color),zIndexOffset:200});
-        m.bindPopup(buildStopPopup(parada));
-        m.on('click',function(){
+        var el=stopIcon(color);
+        var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([lng,lat]);
+        var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(parada));
+        marker.setPopup(popup);
+        el.addEventListener('click',function(){
           if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
             window.ReactNativeWebView.postMessage(JSON.stringify({type:'stop_click',parada:parada}));
           }
         });
-        m.addTo(stopsLayer);
+        marker.addTo(map);
+        stopMarkers.push(marker);
       });
     }
 
@@ -706,7 +814,7 @@ window.updateMap=function(data){
       var vKey=(linha.modal||'m')+':'+linha.nome+':'+vid;
       visibleKeys[vKey]=true;
 
-      var dest=L.latLng(lat,lng);
+      var dest={lat:lat,lng:lng};
       var heading=normHeading(p.direcao);
       var prevHeading=vehicleHeadings[vKey];
 
@@ -729,17 +837,21 @@ window.updateMap=function(data){
       }
 
       var marker=vehicleMarkers[vKey];
+      var popup=vehiclePopups[vKey];
 
       if(!marker){
         var posInicial=dest;
         if(posicaoNaRota!==null&&lineCoordsDR){
           var c=interpolarNaRota(lineCoordsDR,posicaoNaRota);
-          if(c)posInicial=L.latLng(c[0],c[1]);
+          if(c)posInicial={lat:c[0],lng:c[1]};
         }
-        marker=L.marker(posInicial,{icon:busIcon(color,heading||0),zIndexOffset:500});
-        marker.bindPopup(buildPopup(linha,p,vid,heading));
-        marker.addTo(vehiclesLayer);
+        var el=busIcon(color,heading||0);
+        marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
+        popup=new maplibregl.Popup({offset:18,closeButton:false}).setHTML(buildPopup(linha,p,vid,heading));
+        marker.setPopup(popup);
+        marker.addTo(map);
         vehicleMarkers[vKey]=marker;
+        vehiclePopups[vKey]=popup;
         if(typeof heading==='number')vehicleHeadings[vKey]=heading;
         drState[vKey]={
           marker:marker,
@@ -753,8 +865,8 @@ window.updateMap=function(data){
       }
 
       // Atualiza heading
-      var prevLatLng=marker.getLatLng();
-      if(heading===null)heading=calcHeading(prevLatLng,dest);
+      var prevPos=marker.getLngLat();
+      if(heading===null)heading=calcHeading({lat:prevPos.lat,lng:prevPos.lng},dest);
       if(heading===null&&typeof prevHeading==='number')heading=prevHeading;
       if(typeof heading==='number'){vehicleHeadings[vKey]=heading;setHeading(marker,heading);}
 
@@ -783,7 +895,7 @@ window.updateMap=function(data){
       if(posicaoNaRota!==null&&lineCoordsDR){
         var coordDR=interpolarNaRota(lineCoordsDR,posicaoNaRota);
         if(coordDR){
-          var target=L.latLng(coordDR[0],coordDR[1]);
+          var target={lat:coordDR[0],lng:coordDR[1]};
           var syncMs=700;
           dr.syncingUntil=Date.now()+syncMs;
           animateTo(vKey,marker,target,syncMs);
@@ -796,17 +908,27 @@ window.updateMap=function(data){
         animateTo(vKey,marker,dest,1600);
       }
 
-      marker.setPopupContent(buildPopup(linha,p,vid,heading));
+      if(popup){
+        popup.setHTML(buildPopup(linha,p,vid,heading));
+      }
     });
   });
+
+  setLinesData(lineFeatures);
 
   // Remove veículos que não vieram neste update
   Object.keys(vehicleMarkers).forEach(function(k){
     if(!visibleKeys[k]){
-      stopAnim(k);vehiclesLayer.removeLayer(vehicleMarkers[k]);
-      delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];
+      stopAnim(k);
+      vehicleMarkers[k].remove();
+      if(vehiclePopups[k])vehiclePopups[k].remove();
+      delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];delete vehiclePopups[k];
     }
   });
+
+  if(window.lucide&&window.lucide.createIcons){
+    window.lucide.createIcons();
+  }
 };
 </script>
 </body>
@@ -823,7 +945,7 @@ window.updateMap=function(data){
         javaScriptEnabled={true}
         domStorageEnabled={true}
         onLoadEnd={() => {
-          webViewRef.current?.injectJavaScript(`if(map) map.invalidateSize();`);
+          webViewRef.current?.injectJavaScript(`if(map) map.resize();`);
         }}
         onMessage={(event) => {
           const raw = event.nativeEvent.data;
