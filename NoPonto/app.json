@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NoPonto",
+    "name": "No Ponto",
     "slug": "NoPonto",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,8 @@
         "foregroundImage": "./assets/images/icon.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.guilhermedesales.nononto"
     },
     "web": {
       "output": "static",
@@ -44,6 +45,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ab3db7e8-2478-49d6-a339-e639dcce1a34"
+      }
     }
   }
 }
