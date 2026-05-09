@@ -55,6 +55,8 @@ export interface ItinerarioLinha {
   itinerarioIdIda?: string;
   /** itinerarioId do backend para o sentido VOLTA */
   itinerarioIdVolta?: string;
+  /** Nome do sentido para cada itinerarioId */
+  itinerarioSentidoMap?: Record<string, string>;
   /** Indica se as paradas vieram no payload */
   incluiParadas?: boolean;
 }

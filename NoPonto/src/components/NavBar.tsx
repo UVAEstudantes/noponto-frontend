@@ -1,16 +1,16 @@
-import { Link, usePathname } from "expo-router";
 import { useTema } from "@/src/hooks/useTema";
-import React, { useEffect, useState } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Link, usePathname } from "expo-router";
 import {
   Bus,
+  LucideIcon,
   MapPinned,
   PanelRightClose,
   PanelRightOpen,
   Settings,
   Star,
-  LucideIcon,
 } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -19,6 +19,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type TabRoute = "/favoritos" | "/linhas" | "/" | "/configuracao";
 
@@ -47,6 +48,7 @@ export default function NavBar() {
   const pathname = usePathname();
   const { cores } = useTema();
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [collapsed, setCollapsed] = useState(false);
 
   const openProgress = useSharedValue(1);
@@ -58,6 +60,7 @@ export default function NavBar() {
   const toggleSize = 46;
   const horizontalPadding = 8;
   const openRight = Math.max((screenWidth - expandedWidth) / 2, 16);
+  const bottomOffset = Math.max(insets.bottom + 8, 24);
 
   const tabsAreaWidth = Math.max(
     expandedWidth - toggleSize - horizontalPadding * 3,
@@ -116,8 +119,11 @@ export default function NavBar() {
 
   return (
     <Animated.View
-      className="absolute bottom-6 overflow-hidden bg-customBlack shadow-sm"
-      style={[containerAnimatedStyle, { backgroundColor: cores.fundoNav }]}
+      className="absolute overflow-hidden bg-customBlack shadow-sm"
+      style={[
+        containerAnimatedStyle,
+        { backgroundColor: cores.fundoNav, bottom: bottomOffset },
+      ]}
     >
       <Animated.View
         className="h-full flex-row items-center pl-2"

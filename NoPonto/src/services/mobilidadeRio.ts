@@ -126,6 +126,7 @@ export async function buscarItinerarioLinhaMesclado(
     const segmentos: CoordenadaMapa[][] = [];
     const todasParadas: Parada[] = [];
     const paradasPorItinerario: Record<string, Parada[]> = {};
+    const itinerarioSentidoMap: Record<string, string> = {};
     let itinerarioIdIda: string | undefined;
     let itinerarioIdVolta: string | undefined;
 
@@ -137,6 +138,10 @@ export async function buscarItinerarioLinhaMesclado(
 
       const isIda =
         it.sentidoNome?.toUpperCase().includes("IDA") || segmentos.length === 0;
+
+      if (it.itinerarioId && it.sentidoNome) {
+        itinerarioSentidoMap[it.itinerarioId] = it.sentidoNome;
+      }
 
       if (isIda) {
         segmentos[0] = coordenadas;
@@ -167,6 +172,10 @@ export async function buscarItinerarioLinhaMesclado(
       segmentos: filtrados,
       paradas: incluirParadas ? todasParadas : undefined,
       paradasPorItinerario: incluirParadas ? paradasPorItinerario : undefined,
+      itinerarioSentidoMap:
+        Object.keys(itinerarioSentidoMap).length > 0
+          ? itinerarioSentidoMap
+          : undefined,
       itinerarioIdIda,
       itinerarioIdVolta,
       incluiParadas: incluirParadas,
@@ -210,6 +219,7 @@ export async function buscarItinerarioLinhaMesclado(
   const segmentos: CoordenadaMapa[][] = [];
   const todasParadas: Parada[] = [];
   const paradasPorItinerario: Record<string, Parada[]> = {};
+  const itinerarioSentidoMap: Record<string, string> = {};
 
   const adicionarMapa = (
     mapa: ItinerarioMapaDto | null,
@@ -222,6 +232,10 @@ export async function buscarItinerarioLinhaMesclado(
       .map((g) => [g.latitude, g.longitude]);
     if (coordenadas.length === 0) return;
     segmentos[idx] = coordenadas;
+
+    if (itinerarioId && mapa.sentidoNome) {
+      itinerarioSentidoMap[itinerarioId] = mapa.sentidoNome;
+    }
 
     if (incluirParadas) {
       if (itinerarioId) {
@@ -249,6 +263,10 @@ export async function buscarItinerarioLinhaMesclado(
     segmentos: filtrados,
     paradas: incluirParadas ? todasParadas : undefined,
     paradasPorItinerario: incluirParadas ? paradasPorItinerario : undefined,
+    itinerarioSentidoMap:
+      Object.keys(itinerarioSentidoMap).length > 0
+        ? itinerarioSentidoMap
+        : undefined,
     itinerarioIdIda,
     itinerarioIdVolta,
     incluiParadas: incluirParadas,

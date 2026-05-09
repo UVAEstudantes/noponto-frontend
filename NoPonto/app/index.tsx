@@ -337,6 +337,10 @@ const Home = () => {
             linhaId: info?.linhaId,
             codigo: normalizarCodigo(v.codigoLinha),
             cor: info?.cor ?? "#94a3b8",
+            ordem: v.ordem,
+            latitude: v.latitude,
+            longitude: v.longitude,
+            itinerarioId: v.itinerarioId ?? null,
             etaSeg: v.etaParadaSegundos ?? null,
             distanciaMetros: v.distanciaParadaMetros ?? null,
             horarioPrevistoLocal: v.horarioChegadaPrevistoLocal ?? null,
@@ -376,6 +380,16 @@ const Home = () => {
     }
   }, [paradaExpandida, atualizarChegadas]);
 
+  const focarVeiculoNaParada = useCallback((chegada: ChegadaParadaInfo) => {
+    if (!chegada) return;
+    mapRef.current?.focarVeiculo({
+      ordem: chegada.ordem,
+      latitude: chegada.latitude ?? undefined,
+      longitude: chegada.longitude ?? undefined,
+      zoom: 17,
+    });
+  }, []);
+
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
   const dadosParaMapa = useMemo(
@@ -409,6 +423,8 @@ const Home = () => {
             itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
           }
 
+          const itinerarioSentidoMap = itinerario?.itinerarioSentidoMap ?? {};
+
           return {
             nome: l.nomeExibicao,
             cor: l.cor,
@@ -419,14 +435,22 @@ const Home = () => {
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
             itinerarioSegmentoMap, // ← novo
+            itinerarioSentidoMap:
+              Object.keys(itinerarioSentidoMap).length > 0
+                ? itinerarioSentidoMap
+                : undefined,
             posicoes: veiculos.map((v) => ({
               id: v.id,
+              ordem: v.id,
               latitude: v.latitude,
               longitude: v.longitude,
               direcao: v.direcao,
               velocidade: v.velocidade,
               velocidadeMedia: v.velocidadeMedia ?? null,
-              sentidoNome: l.nomeExibicao,
+              sentidoNome:
+                v.itinerarioId && itinerarioSentidoMap[v.itinerarioId]
+                  ? itinerarioSentidoMap[v.itinerarioId]
+                  : undefined,
               timestamp: v.timestamp,
               proximaParadaNome: v.proximaParadaNome ?? null,
               distanciaProximaParadaMetros:
@@ -533,6 +557,7 @@ const Home = () => {
         carregandoChegadas={carregandoChegadas}
         atualizadoEm={atualizadoChegadasEm}
         onAtualizar={atualizarChegadas}
+        onFocarVeiculo={focarVeiculoNaParada}
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {
