@@ -34,7 +34,7 @@ import { Search } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
 
-const MAX_LINHAS = 5;
+const MAX_LINHAS = 10;
 
 const Home = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
@@ -275,6 +275,12 @@ const Home = () => {
     );
   }, []);
 
+  const atualizarCorLinha = useCallback((linhaId: string, cor: string) => {
+    setLinhasSelecionadas((prev) =>
+      prev.map((l) => (l.linhaId === linhaId ? { ...l, cor } : l)),
+    );
+  }, []);
+
   // ─── Paradas selecionadas ────────────────────────────────────────────────
 
   const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
@@ -389,6 +395,24 @@ const Home = () => {
       zoom: 17,
     });
   }, []);
+
+  const sentidosPorLinha = useMemo(() => {
+    const mapa: Record<string, { ida?: string; volta?: string }> = {};
+    Object.keys(itinerariosPorId).forEach((linhaId) => {
+      const itinerario = itinerariosPorId[linhaId];
+      if (!itinerario || !itinerario.itinerarioSentidoMap) return;
+      const ida = itinerario.itinerarioIdIda
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]
+        : undefined;
+      const volta = itinerario.itinerarioIdVolta
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta]
+        : undefined;
+      if (ida || volta) {
+        mapa[linhaId] = { ida, volta };
+      }
+    });
+    return mapa;
+  }, [itinerariosPorId]);
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
@@ -545,6 +569,8 @@ const Home = () => {
         aoToggleAtiva={toggleAtiva}
         aoToggleSentido={toggleSentido}
         aoToggleParadas={toggleParadas}
+        aoAtualizarCor={atualizarCorLinha}
+        sentidosPorLinha={sentidosPorLinha}
         aberto={containerAberto}
         aoToggleAberto={() => setContainerAberto((p) => !p)}
       />

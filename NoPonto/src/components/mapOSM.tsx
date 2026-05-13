@@ -1121,6 +1121,12 @@ window.updateMap=function(data){
         return;
       }
 
+      var markerEl=marker.getElement();
+      if(markerEl){
+        var blob=markerEl.querySelector('.bus-blob');
+        if(blob)blob.style.background=color;
+      }
+
       // Atualiza heading
       var prevPos=marker.getLngLat();
       if(heading===null)heading=calcHeading({lat:prevPos.lat,lng:prevPos.lng},dest);
