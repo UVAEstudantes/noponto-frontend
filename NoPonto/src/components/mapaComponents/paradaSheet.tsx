@@ -26,6 +26,7 @@ export interface ChegadaParadaInfo {
   linhaId?: string;
   codigo: string;
   cor: string;
+  assinada?: boolean;
   ordem?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -418,7 +419,7 @@ const ParadaSheet = ({
                   flex: 1,
                 }}
               >
-                Proximos veiculos (linhas assinadas)
+                Proximos veiculos (assinadas em destaque)
               </Text>
               {onAtualizar && (
                 <Pressable
@@ -478,6 +479,17 @@ const ParadaSheet = ({
                   const etaLabel = c.horarioPrevistoLocal
                     ? formatEta(c.etaSeg)
                     : null;
+                  const isAssinada = c.assinada !== false;
+                  const itemOpacity = isAssinada ? 1 : 0.55;
+                  const fundoCard = isAssinada
+                    ? cores.fundoCard
+                    : cores.fundoSecundario;
+                  const textoPrimario = isAssinada
+                    ? cores.textoPrimario
+                    : cores.textoSecundario;
+                  const indicadorCor = isAssinada
+                    ? c.cor
+                    : misturar(c.cor, cores.fundoCard, 0.25);
 
                   return (
                     <Pressable
@@ -490,10 +502,11 @@ const ParadaSheet = ({
                         paddingVertical: 10,
                         paddingHorizontal: 12,
                         borderRadius: 12,
-                        backgroundColor: cores.fundoCard,
+                        backgroundColor: fundoCard,
                         borderWidth: 1,
                         borderColor: cores.bordaSuave,
                         marginBottom: 8,
+                        opacity: itemOpacity,
                       }}
                     >
                       <View
@@ -501,7 +514,7 @@ const ParadaSheet = ({
                           width: 10,
                           height: 10,
                           borderRadius: 5,
-                          backgroundColor: c.cor,
+                          backgroundColor: indicadorCor,
                           marginRight: 10,
                         }}
                       />
@@ -510,7 +523,7 @@ const ParadaSheet = ({
                           style={{
                             fontSize: 13,
                             fontWeight: "700",
-                            color: cores.textoPrimario,
+                            color: textoPrimario,
                           }}
                         >
                           {c.codigo}
@@ -557,7 +570,7 @@ const ParadaSheet = ({
                           style={{
                             fontSize: 13,
                             fontWeight: "700",
-                            color: cores.textoPrimario,
+                            color: textoPrimario,
                           }}
                         >
                           {horarioLabel}
@@ -596,7 +609,7 @@ const ParadaSheet = ({
                     marginTop: 4,
                   }}
                 >
-                  Sem previsão para as linhas assinadas.
+                  Sem previsao para esta parada.
                 </Text>
               )}
             </ScrollView>

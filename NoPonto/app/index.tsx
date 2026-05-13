@@ -313,7 +313,7 @@ const Home = () => {
   >(null);
 
   const atualizarChegadas = useCallback(async () => {
-    if (!paradaSelecionada || linhasNaParada.length === 0) {
+    if (!paradaSelecionada) {
       setChegadasParada([]);
       setAtualizadoChegadasEm(null);
       return;
@@ -329,7 +329,6 @@ const Home = () => {
       );
 
       const filtrados = lista
-        .filter((v) => mapaLinhas.has(normalizarCodigo(v.codigoLinha)))
         .map((v) => {
           const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
           return {
@@ -337,6 +336,7 @@ const Home = () => {
             linhaId: info?.linhaId,
             codigo: normalizarCodigo(v.codigoLinha),
             cor: info?.cor ?? "#94a3b8",
+            assinada: Boolean(info),
             ordem: v.ordem,
             latitude: v.latitude,
             longitude: v.longitude,
@@ -412,7 +412,7 @@ const Home = () => {
             itinerarioIdFiltro,
           );
 
-          const paradas = obterParadasLinha(l);
+          const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
 
           // Mapa itinerarioId → índice do segmento para o dead reckoning
           const itinerarioSegmentoMap: Record<string, number> = {};
