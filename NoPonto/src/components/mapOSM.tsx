@@ -162,6 +162,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           ? [location.coords.latitude, location.coords.longitude]
           : null,
         heading: location?.coords?.heading ?? null,
+        accuracy: location?.coords?.accuracy ?? null,
         linhas: linhasParaMostrar,
         darkMode,
         showTraffic,
@@ -181,6 +182,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       const data = {
         userLocation: [location.coords.latitude, location.coords.longitude],
         heading: location.coords.heading ?? null,
+        accuracy: location.coords.accuracy ?? null,
       };
 
       webViewRef.current?.injectJavaScript(
@@ -295,6 +297,7 @@ var autoFollow=true,internalMove=false;
 var mapReady=false;
 var drInterval=null;
 var lastDrLog=0;
+var userLastUpdate=0;
 
 // ── Dead reckoning ────────────────────────────────────────────────────────────
 // drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
@@ -404,6 +407,14 @@ function calcHeading(from,to){
   var y=Math.sin(dLon)*Math.cos(lat2);
   var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+function distanceMeters(a,b){
+  var r=111320;
+  var avgLat=(a.lat+b.lat)*0.5*Math.PI/180;
+  var dx=(a.lng-b.lng)*Math.cos(avgLat);
+  var dy=(a.lat-b.lat);
+  return Math.sqrt(dx*dx+dy*dy)*r;
 }
 
 function safeId(v){
@@ -722,13 +733,26 @@ function updateUser(data){
   if(lat===null||lng===null)return;
   var pos={lat:lat,lng:lng};
   var cur=userMarker.getLngLat();
-  var dx=cur.lng-pos.lng,dy=cur.lat-pos.lat;
-  var dist=Math.sqrt(dx*dx+dy*dy);
-  if(dist>0.002){
+  var distM=distanceMeters({lat:cur.lat,lng:cur.lng},pos);
+  var accuracy=parseNum(data.accuracy);
+  var now=Date.now();
+  var dt=userLastUpdate?now-userLastUpdate:0;
+  userLastUpdate=now;
+  var followMs=450;
+  if(distM>1500){
     stopAnim('user');
     userMarker.setLngLat([pos.lng,pos.lat]);
   }else{
-    animateTo('user',userMarker,pos,700);
+    var minMs=250,maxMs=1200;
+    var animMs=300+distM*8;
+    if(dt>0)animMs=Math.max(animMs,dt*0.7);
+    if(accuracy!==null){
+      if(accuracy>40)animMs*=1.25;
+      else if(accuracy<15)animMs*=0.85;
+    }
+    animMs=Math.max(minMs,Math.min(maxMs,Math.round(animMs)));
+    animateTo('user',userMarker,pos,animMs);
+    followMs=Math.min(700,animMs);
   }
 
   var arrow=document.querySelector('.user-arrow');
@@ -738,7 +762,7 @@ function updateUser(data){
     else arrow.style.display='none';
   }
 
-  if(autoFollow)runInternal(function(){map.easeTo({center:[pos.lng,pos.lat],duration:450})});
+  if(autoFollow)runInternal(function(){map.easeTo({center:[pos.lng,pos.lat],duration:followMs})});
 }
 
 function focusOnVehicle(payload){
@@ -982,30 +1006,35 @@ window.updateMap=function(data){
         dr.comprimentoGraus=null;
       }
 
-      // Sincroniza posição na rota com o servidor
-      // O loop de DR continua avançando a partir daqui
-      if(posicaoNaRota!==null){
-        dr.posicaoNaRota=posicaoNaRota;
+      // Sincroniza posicao na rota sem recuar o marcador
+      var hasPosicao=posicaoNaRota!==null;
+      var acceptedPosicao=false;
+      if(hasPosicao){
+        var drPos=(typeof dr.posicaoNaRota==='number')?dr.posicaoNaRota:null;
+        var allowRewind=drPos!==null&&posicaoNaRota<drPos-0.15;
+        if(drPos===null||posicaoNaRota>=drPos||allowRewind){
+          acceptedPosicao=true;
+          dr.posicaoNaRota=posicaoNaRota;
+        }
       }else{
         dr.posicaoNaRota=null;
       }
       if(comprimentoMetros!==null)dr.comprimentoMetros=comprimentoMetros;
       if(velocidade!==null)dr.velocidade=velocidade;
 
-      // Reposiciona o marcador na rota interpolada (sincronização com servidor)
-      if(posicaoNaRota!==null&&lineCoordsDR){
-        var coordDR=interpolarNaRota(lineCoordsDR,posicaoNaRota);
-        if(coordDR){
-          var target={lat:coordDR[0],lng:coordDR[1]};
-          var syncMs=700;
-          dr.syncingUntil=Date.now()+syncMs;
-          animateTo(vKey,marker,target,syncMs);
-        }else{
-          // Fallback: sem coord válida, usa animação linear simples
-          animateTo(vKey,marker,dest,1600);
+      // Reposiciona o marcador na rota interpolada (sincronizacao com servidor)
+      if(acceptedPosicao){
+        var syncMs=700;
+        var target=null;
+        if(lineCoordsDR){
+          var coordDR=interpolarNaRota(lineCoordsDR,dr.posicaoNaRota);
+          if(coordDR)target={lat:coordDR[0],lng:coordDR[1]};
         }
-      }else{
-        // Fallback: sem posicaoNaRota, usa animação linear simples
+        if(!target)target=dest;
+        dr.syncingUntil=Date.now()+syncMs;
+        animateTo(vKey,marker,target,syncMs);
+      }else if(!hasPosicao){
+        // Fallback: sem posicaoNaRota, usa animacao linear simples
         animateTo(vKey,marker,dest,1600);
       }
 
