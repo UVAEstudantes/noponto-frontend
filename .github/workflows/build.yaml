@@ -16,6 +16,10 @@ jobs:
     name: 🏗️ Build APK
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./NoPonto
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,11 +44,11 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build APK Android
-        run: eas build --platform android --profile preview --non-interactive --clean-cache
+        run: eas build --platform android --profile preview --non-interactive --clear-cache
 
       - name: Resumo
         run: |
           echo "## 📱 NoPonto Mobile Build" >> $GITHUB_STEP_SUMMARY
-          echo "**Perfil:** preview (APK)**" >> $GITHUB_STEP_SUMMARY
+          echo "**Perfil:** preview (APK)" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Build:** \`#${{ github.run_number }}\`" >> $GITHUB_STEP_SUMMARY
