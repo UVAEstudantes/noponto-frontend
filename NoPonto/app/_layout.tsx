@@ -1,24 +1,56 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import NavBar from "@/src/components/NavBar";
+import { ProvedorTema } from "@/src/context/ProvedorTema";
+import { useTema } from "@/src/hooks/useTema";
+import { StatusBar } from "expo-status-bar";
+import { Stack } from "expo-router";
+import React from "react";
+import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { Provider as PaperProvider } from "react-native-paper";
+import "../global.css";
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+const ConteudoLayout = () => {
+  const { temaAtual, cores, carregandoTema } = useTema();
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  if (carregandoTema) {
+    return <View style={{ flex: 1, backgroundColor: cores.fundoApp }} />;
+  }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    <>
+      <StatusBar style={temaAtual === "escuro" ? "light" : "dark"} />
+
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: "fade_from_bottom",
+          animationDuration: 280,
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+          contentStyle: { backgroundColor: cores.fundoApp },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="favoritos" />
+        <Stack.Screen name="linhas" />
+        <Stack.Screen name="configuracao" />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+
+      <NavBar />
+    </>
   );
-}
+};
+
+const _layout = () => {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ProvedorTema>
+        <PaperProvider>
+          <ConteudoLayout />
+        </PaperProvider>
+      </ProvedorTema>
+    </GestureHandlerRootView>
+  );
+};
+
+export default _layout;
