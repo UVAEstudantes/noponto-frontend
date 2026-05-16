@@ -26,6 +26,11 @@ export interface ChegadaParadaInfo {
   linhaId?: string;
   codigo: string;
   cor: string;
+  assinada?: boolean;
+  ordem?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  itinerarioId?: string | null;
   etaSeg: number | null;
   distanciaMetros: number | null;
   horarioPrevistoLocal?: string | null;
@@ -42,6 +47,7 @@ interface Props {
   carregandoChegadas?: boolean;
   atualizadoEm?: number | null;
   onAtualizar?: () => void;
+  onFocarVeiculo?: (chegada: ChegadaParadaInfo) => void;
   expandido: boolean;
   onToggleExpandir: () => void;
   onFechar: () => void;
@@ -104,6 +110,7 @@ const ParadaSheet = ({
   carregandoChegadas,
   atualizadoEm,
   onAtualizar,
+  onFocarVeiculo,
   expandido,
   onToggleExpandir,
   onFechar,
@@ -112,6 +119,7 @@ const ParadaSheet = ({
   const insets = useSafeAreaInsets();
   const screenH = Dimensions.get("window").height;
   const bottomInset = Math.max(insets.bottom, 8);
+  const navSpacer = bottomInset + 88;
   const COLLAPSED_H = Math.min(screenH * 0.32, 260);
   const EXPANDED_H = Math.min(screenH * 0.74, 620);
   const MIN_H = COLLAPSED_H;
@@ -171,6 +179,7 @@ const ParadaSheet = ({
   }));
 
   const panGesture = Gesture.Pan()
+    .activeOffsetY([-10, 10])
     .onStart(() => {
       startH.value = height.value;
     })
@@ -196,7 +205,6 @@ const ParadaSheet = ({
   const hasLinhas = linhas.length > 0;
   const hasChegadas = chegadas.length > 0;
   const atualizadoLabel = formatAtualizacao(atualizadoEm);
-  const proximo = hasChegadas ? chegadas[0] : null;
 
   return (
     <>
@@ -241,160 +249,148 @@ const ParadaSheet = ({
         ]}
       >
         <GestureDetector gesture={panGesture}>
-          <View style={{ alignItems: "center", paddingTop: 10 }}>
+          <View>
+            <View style={{ alignItems: "center", paddingTop: 10 }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 5,
+                  borderRadius: 3,
+                  backgroundColor: cores.borda,
+                }}
+              />
+            </View>
+
             <View
               style={{
-                width: 42,
-                height: 5,
-                borderRadius: 3,
-                backgroundColor: cores.borda,
+                paddingHorizontal: 16,
+                paddingTop: 10,
+                paddingBottom: 6,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
               }}
-            />
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: "700",
+                    color: cores.textoPrimario,
+                  }}
+                  numberOfLines={2}
+                >
+                  {parada?.nome ?? "Parada"}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: cores.textoSecundario,
+                    marginTop: 2,
+                  }}
+                >
+                  {parada?.ordem != null ? `Parada #${parada.ordem}` : ""}
+                </Text>
+              </View>
+              <Pressable
+                onPress={onFechar}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: cores.fundoSecundario,
+                }}
+              >
+                <X size={16} color={cores.textoSecundario} />
+              </Pressable>
+            </View>
+
+            <View style={{ paddingTop: 4 }}>
+              {hasLinhas ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingBottom: 8,
+                    gap: 8,
+                  }}
+                >
+                  {linhas.map((l) => {
+                    const fundo = misturar(l.cor, cores.fundoCard, 0.12);
+                    const borda = misturar(l.cor, cores.fundoCard, 0.35);
+                    return (
+                      <View
+                        key={l.linhaId}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: fundo,
+                          borderWidth: 1,
+                          borderColor: borda,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "700",
+                            color: l.cor,
+                          }}
+                        >
+                          {l.codigo}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <Text
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingBottom: 8,
+                    fontSize: 12,
+                    color: cores.textoSecundario,
+                  }}
+                >
+                  Nenhuma linha assinada nesta parada.
+                </Text>
+              )}
+            </View>
+
+            <Pressable
+              onPress={onToggleExpandir}
+              style={{
+                marginHorizontal: 16,
+                marginTop: 2,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 12,
+                backgroundColor: cores.fundoSecundario,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: "700",
+                  color: cores.textoPrimario,
+                }}
+              >
+                {expandido ? "Ocultar detalhes" : "Ver proximos veiculos"}
+              </Text>
+              {expandido ? (
+                <ChevronDown size={16} color={cores.textoPrimario} />
+              ) : (
+                <ChevronUp size={16} color={cores.textoPrimario} />
+              )}
+            </Pressable>
           </View>
         </GestureDetector>
-
-        <View
-          style={{
-            paddingHorizontal: 16,
-            paddingTop: 10,
-            paddingBottom: 6,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "700",
-                color: cores.textoPrimario,
-              }}
-              numberOfLines={2}
-            >
-              {parada?.nome ?? "Parada"}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: cores.textoSecundario,
-                marginTop: 2,
-              }}
-            >
-              {parada?.ordem != null ? `Parada #${parada.ordem}` : ""}
-            </Text>
-          </View>
-          <Pressable
-            onPress={onFechar}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: cores.fundoSecundario,
-            }}
-          >
-            <X size={16} color={cores.textoSecundario} />
-          </Pressable>
-        </View>
-
-        <View style={{ paddingTop: 4 }}>
-          {hasLinhas ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingBottom: 8,
-                gap: 8,
-              }}
-            >
-              {linhas.map((l) => {
-                const fundo = misturar(l.cor, cores.fundoCard, 0.12);
-                const borda = misturar(l.cor, cores.fundoCard, 0.35);
-                return (
-                  <View
-                    key={l.linhaId}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      backgroundColor: fundo,
-                      borderWidth: 1,
-                      borderColor: borda,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: l.cor,
-                      }}
-                    >
-                      {l.codigo}
-                    </Text>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          ) : (
-            <Text
-              style={{
-                paddingHorizontal: 16,
-                paddingBottom: 8,
-                fontSize: 12,
-                color: cores.textoSecundario,
-              }}
-            >
-              Nenhuma linha assinada nesta parada.
-            </Text>
-          )}
-        </View>
-
-        <Pressable
-          onPress={onToggleExpandir}
-          style={{
-            marginHorizontal: 16,
-            marginTop: 2,
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 12,
-            backgroundColor: cores.fundoSecundario,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: "700",
-              color: cores.textoPrimario,
-            }}
-          >
-            {expandido ? "Ocultar detalhes" : "Ver proximos veiculos"}
-          </Text>
-          {expandido ? (
-            <ChevronDown size={16} color={cores.textoPrimario} />
-          ) : (
-            <ChevronUp size={16} color={cores.textoPrimario} />
-          )}
-        </Pressable>
-
-        {!expandido && proximo && (
-          <Text
-            style={{
-              paddingHorizontal: 16,
-              marginTop: 6,
-              fontSize: 12,
-              color: cores.textoSecundario,
-            }}
-          >
-            Proximo: {proximo.codigo} ·{" "}
-            {proximo.horarioPrevistoLocal ?? formatEta(proximo.etaSeg)}
-          </Text>
-        )}
 
         {expandido && (
           <Animated.View
@@ -423,7 +419,7 @@ const ParadaSheet = ({
                   flex: 1,
                 }}
               >
-                Proximos veiculos (linhas assinadas)
+                Proximos veiculos (assinadas em destaque)
               </Text>
               {onAtualizar && (
                 <Pressable
@@ -470,7 +466,10 @@ const ParadaSheet = ({
               </Text>
             ) : null}
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: navSpacer }}
+            >
               {hasChegadas ? (
                 chegadas.map((c) => {
                   const statusLabel = formatStatus(c.status);
@@ -480,20 +479,34 @@ const ParadaSheet = ({
                   const etaLabel = c.horarioPrevistoLocal
                     ? formatEta(c.etaSeg)
                     : null;
+                  const isAssinada = c.assinada !== false;
+                  const itemOpacity = isAssinada ? 1 : 0.55;
+                  const fundoCard = isAssinada
+                    ? cores.fundoCard
+                    : cores.fundoSecundario;
+                  const textoPrimario = isAssinada
+                    ? cores.textoPrimario
+                    : cores.textoSecundario;
+                  const indicadorCor = isAssinada
+                    ? c.cor
+                    : misturar(c.cor, cores.fundoCard, 0.25);
 
                   return (
-                    <View
+                    <Pressable
                       key={c.id}
+                      onPress={() => onFocarVeiculo?.(c)}
+                      disabled={!onFocarVeiculo}
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
                         paddingVertical: 10,
                         paddingHorizontal: 12,
                         borderRadius: 12,
-                        backgroundColor: cores.fundoCard,
+                        backgroundColor: fundoCard,
                         borderWidth: 1,
                         borderColor: cores.bordaSuave,
                         marginBottom: 8,
+                        opacity: itemOpacity,
                       }}
                     >
                       <View
@@ -501,7 +514,7 @@ const ParadaSheet = ({
                           width: 10,
                           height: 10,
                           borderRadius: 5,
-                          backgroundColor: c.cor,
+                          backgroundColor: indicadorCor,
                           marginRight: 10,
                         }}
                       />
@@ -510,11 +523,22 @@ const ParadaSheet = ({
                           style={{
                             fontSize: 13,
                             fontWeight: "700",
-                            color: cores.textoPrimario,
+                            color: textoPrimario,
                           }}
                         >
                           {c.codigo}
                         </Text>
+                        {c.ordem && (
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: cores.textoSecundario,
+                              marginTop: 2,
+                            }}
+                          >
+                            Ordem {c.ordem}
+                          </Text>
+                        )}
                         <View
                           style={{ flexDirection: "row", gap: 8, marginTop: 2 }}
                         >
@@ -546,7 +570,7 @@ const ParadaSheet = ({
                           style={{
                             fontSize: 13,
                             fontWeight: "700",
-                            color: cores.textoPrimario,
+                            color: textoPrimario,
                           }}
                         >
                           {horarioLabel}
@@ -574,7 +598,7 @@ const ParadaSheet = ({
                           </Text>
                         )}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })
               ) : (
@@ -585,7 +609,7 @@ const ParadaSheet = ({
                     marginTop: 4,
                   }}
                 >
-                  Sem previsão para as linhas assinadas.
+                  Sem previsao para esta parada.
                 </Text>
               )}
             </ScrollView>

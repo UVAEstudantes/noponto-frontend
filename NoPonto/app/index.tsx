@@ -34,7 +34,7 @@ import { Search } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
 
-const MAX_LINHAS = 5;
+const MAX_LINHAS = 10;
 
 const Home = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
@@ -275,6 +275,12 @@ const Home = () => {
     );
   }, []);
 
+  const atualizarCorLinha = useCallback((linhaId: string, cor: string) => {
+    setLinhasSelecionadas((prev) =>
+      prev.map((l) => (l.linhaId === linhaId ? { ...l, cor } : l)),
+    );
+  }, []);
+
   // ─── Paradas selecionadas ────────────────────────────────────────────────
 
   const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
@@ -313,7 +319,7 @@ const Home = () => {
   >(null);
 
   const atualizarChegadas = useCallback(async () => {
-    if (!paradaSelecionada || linhasNaParada.length === 0) {
+    if (!paradaSelecionada) {
       setChegadasParada([]);
       setAtualizadoChegadasEm(null);
       return;
@@ -329,7 +335,6 @@ const Home = () => {
       );
 
       const filtrados = lista
-        .filter((v) => mapaLinhas.has(normalizarCodigo(v.codigoLinha)))
         .map((v) => {
           const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
           return {
@@ -337,6 +342,11 @@ const Home = () => {
             linhaId: info?.linhaId,
             codigo: normalizarCodigo(v.codigoLinha),
             cor: info?.cor ?? "#94a3b8",
+            assinada: Boolean(info),
+            ordem: v.ordem,
+            latitude: v.latitude,
+            longitude: v.longitude,
+            itinerarioId: v.itinerarioId ?? null,
             etaSeg: v.etaParadaSegundos ?? null,
             distanciaMetros: v.distanciaParadaMetros ?? null,
             horarioPrevistoLocal: v.horarioChegadaPrevistoLocal ?? null,
@@ -376,6 +386,34 @@ const Home = () => {
     }
   }, [paradaExpandida, atualizarChegadas]);
 
+  const focarVeiculoNaParada = useCallback((chegada: ChegadaParadaInfo) => {
+    if (!chegada) return;
+    mapRef.current?.focarVeiculo({
+      ordem: chegada.ordem,
+      latitude: chegada.latitude ?? undefined,
+      longitude: chegada.longitude ?? undefined,
+      zoom: 17,
+    });
+  }, []);
+
+  const sentidosPorLinha = useMemo(() => {
+    const mapa: Record<string, { ida?: string; volta?: string }> = {};
+    Object.keys(itinerariosPorId).forEach((linhaId) => {
+      const itinerario = itinerariosPorId[linhaId];
+      if (!itinerario || !itinerario.itinerarioSentidoMap) return;
+      const ida = itinerario.itinerarioIdIda
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]
+        : undefined;
+      const volta = itinerario.itinerarioIdVolta
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta]
+        : undefined;
+      if (ida || volta) {
+        mapa[linhaId] = { ida, volta };
+      }
+    });
+    return mapa;
+  }, [itinerariosPorId]);
+
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
   const dadosParaMapa = useMemo(
@@ -398,7 +436,7 @@ const Home = () => {
             itinerarioIdFiltro,
           );
 
-          const paradas = obterParadasLinha(l);
+          const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
 
           // Mapa itinerarioId → índice do segmento para o dead reckoning
           const itinerarioSegmentoMap: Record<string, number> = {};
@@ -408,6 +446,8 @@ const Home = () => {
           if (itinerario?.itinerarioIdVolta) {
             itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
           }
+
+          const itinerarioSentidoMap = itinerario?.itinerarioSentidoMap ?? {};
 
           return {
             nome: l.nomeExibicao,
@@ -419,14 +459,22 @@ const Home = () => {
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
             itinerarioSegmentoMap, // ← novo
+            itinerarioSentidoMap:
+              Object.keys(itinerarioSentidoMap).length > 0
+                ? itinerarioSentidoMap
+                : undefined,
             posicoes: veiculos.map((v) => ({
               id: v.id,
+              ordem: v.id,
               latitude: v.latitude,
               longitude: v.longitude,
               direcao: v.direcao,
               velocidade: v.velocidade,
               velocidadeMedia: v.velocidadeMedia ?? null,
-              sentidoNome: l.nomeExibicao,
+              sentidoNome:
+                v.itinerarioId && itinerarioSentidoMap[v.itinerarioId]
+                  ? itinerarioSentidoMap[v.itinerarioId]
+                  : undefined,
               timestamp: v.timestamp,
               proximaParadaNome: v.proximaParadaNome ?? null,
               distanciaProximaParadaMetros:
@@ -521,6 +569,8 @@ const Home = () => {
         aoToggleAtiva={toggleAtiva}
         aoToggleSentido={toggleSentido}
         aoToggleParadas={toggleParadas}
+        aoAtualizarCor={atualizarCorLinha}
+        sentidosPorLinha={sentidosPorLinha}
         aberto={containerAberto}
         aoToggleAberto={() => setContainerAberto((p) => !p)}
       />
@@ -533,6 +583,7 @@ const Home = () => {
         carregandoChegadas={carregandoChegadas}
         atualizadoEm={atualizadoChegadasEm}
         onAtualizar={atualizarChegadas}
+        onFocarVeiculo={focarVeiculoNaParada}
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {

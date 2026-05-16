@@ -29,8 +29,15 @@ export interface LinhaParaMostrar {
    * ex: { "uuid-ida": 0, "uuid-volta": 1 }
    */
   itinerarioSegmentoMap?: Record<string, number>;
+  /**
+   * Mapeamento de itinerarioId -> nome do sentido.
+   * ex: { "uuid-ida": "Terminal Campo Grande" }
+   */
+  itinerarioSentidoMap?: Record<string, string>;
   posicoes?: {
     id?: string;
+    ordem?: string;
+    codigo?: string;
     latitude?: number | string;
     longitude?: number | string;
     direcao?: number | string | null;
@@ -61,6 +68,12 @@ export interface MapaOSMRef {
   fitToCoordinates: (
     coordinates: { latitude: number; longitude: number }[],
   ) => void;
+  focarVeiculo: (payload: {
+    ordem?: string;
+    latitude?: number;
+    longitude?: number;
+    zoom?: number;
+  }) => void;
   mostrarPoi: (payload: {
     poi: { lat: number; lng: number; nome?: string };
     parada?: { lat: number; lng: number; nome?: string } | null;
@@ -122,6 +135,11 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`,
         );
       },
+      focarVeiculo: (payload) => {
+        webViewRef.current?.injectJavaScript(
+          `if(window.focusOnVehicle) window.focusOnVehicle(${JSON.stringify(payload)});`,
+        );
+      },
       mostrarPoi: (payload) => {
         webViewRef.current?.injectJavaScript(
           `if(window.mostrarConexaoPoi) window.mostrarConexaoPoi(${JSON.stringify(payload)});`,
@@ -137,11 +155,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     const [mapReady, setMapReady] = React.useState(false);
 
     useEffect(() => {
-      if (!mapReady || !location?.coords) return;
+      if (!mapReady) return;
 
       const data = {
-        userLocation: [location.coords.latitude, location.coords.longitude],
-        heading: location.coords.heading ?? null,
+        userLocation: location?.coords
+          ? [location.coords.latitude, location.coords.longitude]
+          : null,
+        heading: location?.coords?.heading ?? null,
+        accuracy: location?.coords?.accuracy ?? null,
         linhas: linhasParaMostrar,
         darkMode,
         showTraffic,
@@ -151,14 +172,23 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       webViewRef.current?.injectJavaScript(
         `window.updateMap(${JSON.stringify(data)});`,
       );
-    }, [
-      mapReady,
-      location,
-      linhasParaMostrar,
-      darkMode,
-      showTraffic,
-      estiloMapa,
-    ]);
+      // Full map updates are heavy; user movement is handled separately.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mapReady, linhasParaMostrar, darkMode, showTraffic, estiloMapa]);
+
+    useEffect(() => {
+      if (!mapReady || !location?.coords) return;
+
+      const data = {
+        userLocation: [location.coords.latitude, location.coords.longitude],
+        heading: location.coords.heading ?? null,
+        accuracy: location.coords.accuracy ?? null,
+      };
+
+      webViewRef.current?.injectJavaScript(
+        `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
+      );
+    }, [mapReady, location]);
 
     const mapHTML = useMemo(
       () => `<!DOCTYPE html>
@@ -177,9 +207,15 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .maplibregl-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:0;padding:8px 10px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.2);background:#fff;color:#111}
     .maplibregl-popup-close-button{display:none}
 
-    .user-container{display:flex;align-items:center;justify-content:center}
-    .user-dot{width:12px;height:12px;background:#4FC3F7;border:2.5px solid white;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.4);z-index:2}
-    .user-arrow{position:absolute;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:6px solid #4FC3F7;top:-7px;transform-origin:50% 12px;transition:transform .2s ease-out}
+    .user-container{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+    .user-dot{width:12px;height:12px;background:#38bdf8;border:2.5px solid rgba(255,255,255,.95);border-radius:50%;box-shadow:0 0 0 6px rgba(56,189,248,.14),0 2px 8px rgba(0,0,0,.35);z-index:2}
+    .user-arrow{display:none;
+      position:absolute;left:50%;top:50%;width:0;height:0;
+      border-left:6px solid transparent;border-right:6px solid transparent;
+      border-bottom:9px solid #38bdf8;
+      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-15px);
+      transform-origin:50% 50%;transition:transform .2s ease-out;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))
+    }
 
     .bus-marker{background:transparent;border:none}
     .bus-inner{position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
@@ -192,11 +228,11 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       transform-origin:50% 50%;transition:transform .4s ease;pointer-events:none
     }
 
-    .stop-marker{background:transparent;border:none}
-    .stop-pin{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.95);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;position:relative}
-    .stop-core{width:6px;height:6px;border-radius:50%;background:var(--stop-color,#2196F3)}
-    .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;border:2px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.45;animation:stopPulse 2.4s ease-out infinite}
-    @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.6);opacity:.45}70%{transform:translate(-50%,-50%) scale(1.8);opacity:0}100%{opacity:0}}
+    .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
+    .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
+    .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
+    .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
+    @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.5);opacity:.2}70%{transform:translate(-50%,-50%) scale(1.35);opacity:0}100%{opacity:0}}
     @keyframes iconPulse{0%{transform:translate(-50%,-50%) scale(.8);opacity:.5}70%{transform:translate(-50%,-50%) scale(1.9);opacity:0}100%{opacity:0}}
 
     .popup-card{display:flex;flex-direction:column;gap:6px}
@@ -234,6 +270,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     #map.dark-mode .popup-toggle{background:#2a2f35;color:#e5e7eb}
     #map.dark-mode .popup-details{border-top-color:#3b4047}
     #map.dark-mode .popup-indicator{background:#1b1f24;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+    #map.dark-mode .stop-title{color:#f8fafc}
+    #map.dark-mode .stop-sub{color:#cbd5e1}
+    #map.dark-mode .stop-hint{color:#94a3b8}
+    #map.dark-mode .stop-pin{background:rgba(15,23,42,.9);border-color:rgba(148,163,184,.45);box-shadow:0 1px 6px rgba(0,0,0,.65)}
+    #map.dark-mode .stop-core{background:var(--stop-color,#38bdf8)}
+    #map.dark-mode .stop-pin:after{opacity:.18}
+    #map.dark-mode .user-dot{background:#7dd3fc;border-color:rgba(226,232,240,.85);box-shadow:0 0 0 7px rgba(125,211,252,.18),0 2px 10px rgba(0,0,0,.65)}
+    #map.dark-mode .user-arrow{border-bottom-color:#7dd3fc;filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))}
   </style>
 </head>
 <body>
@@ -243,16 +287,17 @@ var map,userMarker;
 var linesSourceId='lines-source',linesSolidLayerId='lines-solid',linesDashLayerId='lines-dash';
 var trafficSourceId='traffic-source',trafficLayerId='traffic-layer';
 var poiLineSourceId='poi-line-source',poiLineLayerId='poi-line-layer';
-var stopMarkers=[],poiMarker=null,poiDistanceMarker=null;
+var stopMarkersByKey={},stopCache=[],stopCacheKey='',poiMarker=null,poiDistanceMarker=null;
 var estilos=[${estilosJS}];
 var filtrosMapa={${filtrosMapaJS}};
 var currentStyleId='${ESTILO_MAPA_PADRAO}';
 var isDark=false;
-var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={};
+var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={},vehicleIndexByOrder={};
 var autoFollow=true,internalMove=false;
 var mapReady=false;
 var drInterval=null;
 var lastDrLog=0;
+var userLastUpdate=0;
 
 // ── Dead reckoning ────────────────────────────────────────────────────────────
 // drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
@@ -364,6 +409,14 @@ function calcHeading(from,to){
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
 }
 
+function distanceMeters(a,b){
+  var r=111320;
+  var avgLat=(a.lat+b.lat)*0.5*Math.PI/180;
+  var dx=(a.lng-b.lng)*Math.cos(avgLat);
+  var dy=(a.lat-b.lat);
+  return Math.sqrt(dx*dx+dy*dy)*r;
+}
+
 function safeId(v){
   return String(v).replace(/[^a-zA-Z0-9_-]/g,'_');
 }
@@ -400,6 +453,54 @@ function stopIcon(color){
   el.className='stop-marker';
   el.innerHTML='<div class="stop-pin" style="--stop-color:'+color+'"><div class="stop-core"></div></div>';
   return el;
+}
+
+function stopKeyFromParada(p,lat,lng){
+  if(p&&p.paradaId!=null)return String(p.paradaId);
+  if(lat!=null&&lng!=null){
+    return Math.round(lat*1e5)+'_'+Math.round(lng*1e5);
+  }
+  if(p&&p.nome)return safeId(p.nome);
+  return null;
+}
+
+function hashString(s){
+  var h=2166136261;
+  for(var i=0;i<s.length;i++){
+    h^=s.charCodeAt(i);
+    h+= (h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24);
+  }
+  return h>>>0;
+}
+
+function stopThinningFactor(zoom){
+  if(zoom>=15)return 1;
+  if(zoom>=14)return 2;
+  if(zoom>=13)return 3;
+  if(zoom>=12)return 4;
+  return 6;
+}
+
+function stopOpacityForZoom(zoom){
+  if(zoom>=15)return 0.75;
+  if(zoom>=14)return 0.6;
+  if(zoom>=13)return 0.45;
+  if(zoom>=12)return 0.2;
+  return 0.0;
+}
+
+function stopScaleForZoom(zoom){
+  if(zoom>=15)return 1;
+  if(zoom>=14)return 0.9;
+  if(zoom>=13)return 0.82;
+  if(zoom>=12)return 0.75;
+  return 0.65;
+}
+
+function applyStopStyle(el,zoom){
+  if(!el)return;
+  el.style.setProperty('--stop-opacity',String(stopOpacityForZoom(zoom)));
+  el.style.setProperty('--stop-scale',String(stopScaleForZoom(zoom)));
 }
 
 function poiIcon(iconName,color){
@@ -449,6 +550,12 @@ function updateTimeAgo(){
   }
 }
 
+function refreshIcons(){
+  if(window.lucide&&window.lucide.createIcons){
+    window.lucide.createIcons();
+  }
+}
+
 function toggleDetails(btn){
   if(!btn)return;
   var id=btn.getAttribute('data-target');
@@ -482,12 +589,15 @@ function buildPopup(linha,p,vid,heading){
   if(tsRaw&&tsRaw<1e12)tsRaw*=1000;
   var tsMs=tsRaw||null;
   var sentido=null;
-  if(p.itinerarioId&&linha&&linha.itinerarioSegmentoMap){
+  if(p.sentidoNome)sentido=p.sentidoNome;
+  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSentidoMap&&linha.itinerarioSentidoMap[p.itinerarioId]){
+    sentido=linha.itinerarioSentidoMap[p.itinerarioId];
+  }
+  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSegmentoMap){
     var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
     if(segIdx===0)sentido='Ida';
     else if(segIdx===1)sentido='Volta';
   }
-  if(!sentido&&p.sentidoNome)sentido=p.sentidoNome;
   if(sentido&&linha&&linha.nome&&sentido===linha.nome)sentido=null;
   if(!sentido&&linha&&linha.modoSentido){
     if(linha.modoSentido==='ida')sentido='Ida';
@@ -501,6 +611,8 @@ function buildPopup(linha,p,vid,heading){
   var popupId='popup_'+safeId(linha.nome+'_'+vid);
   var detailsId=popupId+'_details';
   var tempoHtml=tsMs?('<span class="ts-ago" data-ts="'+tsMs+'">'+formatElapsed(tsMs)+'</span>'):'-';
+  var ordemRaw=p.ordem!=null?p.ordem:(p.id!=null?p.id:(p.codigo!=null?p.codigo:null));
+  var ordemLabel=ordemRaw!=null?String(ordemRaw):'-';
   var speedHtml=speed!==null?Math.round(speed)+' km/h':'-';
   var prox=p.proximaParadaNome?p.proximaParadaNome:'-';
   var dist=p.distanciaProximaParadaMetros!=null?Math.round(p.distanciaProximaParadaMetros)+' m':'-';
@@ -511,6 +623,7 @@ function buildPopup(linha,p,vid,heading){
   html+='<div class="popup-main">';
   html+='<div class="popup-title">'+linha.nome+'</div>';
   html+='<div class="popup-sub">Sentido: '+sentidoLabel+'</div>';
+  html+='<div class="popup-sub">Ordem: '+ordemLabel+'</div>';
   html+='<div class="popup-time">Atualizado ha '+tempoHtml+'</div>';
   html+='</div>';
   html+='</div>';
@@ -577,11 +690,104 @@ function setPoiLine(coords,color){
   });
 }
 
-function clearStops(){
-  for(var i=0;i<stopMarkers.length;i++){
-    stopMarkers[i].remove();
+function stopSignature(linhas,darkMode){
+  var parts=[darkMode?'d1':'d0'];
+  if(!Array.isArray(linhas))return parts.join('|');
+  for(var i=0;i<linhas.length;i++){
+    var l=linhas[i];
+    if(!l||!l.mostrarParadas||!Array.isArray(l.paradas))continue;
+    parts.push((l.nome||'')+':'+l.paradas.length+':'+(l.cor||''));
   }
-  stopMarkers=[];
+  return parts.join('|');
+}
+
+function rebuildStopCache(linhas,darkMode){
+  var list=[];
+  var seen={};
+  if(!Array.isArray(linhas)){
+    stopCache=list;
+    return;
+  }
+  for(var i=0;i<linhas.length;i++){
+    var l=linhas[i];
+    if(!l||!l.mostrarParadas||!Array.isArray(l.paradas))continue;
+    var color=l.cor||(darkMode?'#4FC3F7':'#2196F3');
+    for(var j=0;j<l.paradas.length;j++){
+      var p=l.paradas[j];
+      var lat=parseNum(p.latitude),lng=parseNum(p.longitude);
+      if(lat===null||lng===null)continue;
+      var key=stopKeyFromParada(p,lat,lng);
+      if(!key||seen[key])continue;
+      seen[key]=true;
+      list.push({key:key,parada:p,lat:lat,lng:lng,color:color});
+    }
+  }
+  stopCache=list;
+}
+
+function updateStopMarkers(){
+  if(!map)return;
+  if(!stopCache||stopCache.length===0){
+    if(Object.keys(stopMarkersByKey).length>0)clearStops();
+    return;
+  }
+  var bounds=map.getBounds();
+  var zoom=map.getZoom();
+  var thinFactor=stopThinningFactor(zoom);
+  var visible={};
+
+  function inBounds(lat,lng){
+    if(!bounds||!bounds.contains)return true;
+    return bounds.contains([lng,lat]);
+  }
+
+  function ensureStopMarker(stop){
+    var key='s:'+stop.key;
+    var existing=stopMarkersByKey[key];
+    if(existing&&existing.marker){
+      existing.marker.setLngLat([stop.lng,stop.lat]);
+      if(existing.el)applyStopStyle(existing.el,zoom);
+      visible[key]=true;
+      return;
+    }
+    var el=stopIcon(stop.color);
+    applyStopStyle(el,zoom);
+    var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([stop.lng,stop.lat]);
+    var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada));
+    marker.setPopup(popup);
+    el.addEventListener('click',function(){
+      if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'stop_click',parada:stop.parada}));
+      }
+    });
+    marker.addTo(map);
+    stopMarkersByKey[key]={marker:marker,el:el,isCluster:false};
+    visible[key]=true;
+  }
+
+  for(var j=0;j<stopCache.length;j++){
+    var s2=stopCache[j];
+    if(!inBounds(s2.lat,s2.lng))continue;
+    if(thinFactor>1){
+      var h=hashString(String(s2.key));
+      if(h%thinFactor!==0)continue;
+    }
+    ensureStopMarker(s2);
+  }
+
+  Object.keys(stopMarkersByKey).forEach(function(k){
+    if(!visible[k]){
+      stopMarkersByKey[k].marker.remove();
+      delete stopMarkersByKey[k];
+    }
+  });
+}
+
+function clearStops(){
+  Object.keys(stopMarkersByKey).forEach(function(k){
+    stopMarkersByKey[k].marker.remove();
+    delete stopMarkersByKey[k];
+  });
 }
 
 function clearVehicles(){
@@ -621,9 +827,7 @@ function showPoi(payload){
     }
   }
 
-  if(window.lucide&&window.lucide.createIcons){
-    window.lucide.createIcons();
-  }
+  refreshIcons();
 }
 
 function normEstilo(id){
@@ -664,6 +868,74 @@ function setLineOpacity(dark){
   }
 }
 
+function updateUser(data){
+  if(!data||!data.userLocation||!userMarker||!map)return;
+  var lat=parseNum(data.userLocation[0]),lng=parseNum(data.userLocation[1]);
+  if(lat===null||lng===null)return;
+  var pos={lat:lat,lng:lng};
+  var cur=userMarker.getLngLat();
+  var distM=distanceMeters({lat:cur.lat,lng:cur.lng},pos);
+  var accuracy=parseNum(data.accuracy);
+  var now=Date.now();
+  var dt=userLastUpdate?now-userLastUpdate:0;
+  userLastUpdate=now;
+  var followMs=450;
+  if(distM>1500){
+    stopAnim('user');
+    userMarker.setLngLat([pos.lng,pos.lat]);
+  }else{
+    var minMs=250,maxMs=1200;
+    var animMs=300+distM*8;
+    if(dt>0)animMs=Math.max(animMs,dt*0.7);
+    if(accuracy!==null){
+      if(accuracy>40)animMs*=1.25;
+      else if(accuracy<15)animMs*=0.85;
+    }
+    animMs=Math.max(minMs,Math.min(maxMs,Math.round(animMs)));
+    animateTo('user',userMarker,pos,animMs);
+    followMs=Math.min(700,animMs);
+  }
+
+  var arrow=document.querySelector('.user-arrow');
+  if(arrow){
+    var h=normHeading(data.heading);
+    if(h!==null){arrow.style.display='block';arrow.style.setProperty('--h',h+'deg')}
+    else arrow.style.display='none';
+  }
+
+  if(autoFollow)runInternal(function(){map.easeTo({center:[pos.lng,pos.lat],duration:followMs})});
+}
+
+function focusOnVehicle(payload){
+  if(!map||!payload)return;
+  var target=null;
+  var ordem=payload.ordem||payload.id||null;
+  if(ordem&&vehicleIndexByOrder[ordem]&&vehicleMarkers[vehicleIndexByOrder[ordem]]){
+    var key=vehicleIndexByOrder[ordem];
+    var marker=vehicleMarkers[key];
+    var lngLat=marker.getLngLat();
+    target={lat:lngLat.lat,lng:lngLat.lng};
+    var popup=vehiclePopups[key]||(marker.getPopup&&marker.getPopup());
+    if(popup){
+      if(popup.isOpen&&popup.isOpen()){
+        // ja aberto
+      }else if(popup.addTo){
+        popup.addTo(map);
+        refreshIcons();
+      }
+    }
+  }
+  if(!target){
+    var lat=parseNum(payload.latitude),lng=parseNum(payload.longitude);
+    if(lat!==null&&lng!==null)target={lat:lat,lng:lng};
+  }
+  if(!target)return;
+  autoFollow=false;
+  var z=parseNum(payload.zoom);
+  var zoom=z!==null?z:17;
+  runInternal(function(){map.easeTo({center:[target.lng,target.lat],zoom:zoom,duration:700})});
+}
+
 function boundsFromCoords(coords){
   var minLat=90,minLng=180,maxLat=-90,maxLng=-180;
   for(var i=0;i<coords.length;i++){
@@ -697,8 +969,8 @@ window.onload=function(){
 
     map.on('movestart',function(){if(!internalMove)autoFollow=false});
     map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
-    map.on('moveend',function(){internalMove=false});
-    map.on('zoomend',function(){internalMove=false});
+    map.on('moveend',function(){internalMove=false;updateStopMarkers()});
+    map.on('zoomend',function(){internalMove=false;updateStopMarkers()});
 
     startDR();
     setInterval(updateTimeAgo,1000);
@@ -735,25 +1007,26 @@ window.updateMap=function(data){
   setTraffic(Boolean(data.showTraffic));
   setLineOpacity(Boolean(data.darkMode));
 
-  var pos={lat:data.userLocation[0],lng:data.userLocation[1]};
-  if(userMarker)userMarker.setLngLat([pos.lng,pos.lat]);
-
-  var arrow=document.querySelector('.user-arrow');
-  if(arrow){
-    if(data.heading!=null){arrow.style.display='block';arrow.style.transform='rotate('+data.heading+'deg)'}
-    else arrow.style.display='none';
-  }
-
-  if(autoFollow)runInternal(function(){map.jumpTo({center:[pos.lng,pos.lat]})});
-
-  clearStops();
+  if(data.userLocation)updateUser(data);
 
   var lineFeatures=[];
+  vehicleIndexByOrder={};
 
   if(!Array.isArray(data.linhas)||data.linhas.length===0){
     setLinesData(lineFeatures);
     clearVehicles();
+    stopCache=[];
+    stopCacheKey='';
+    clearStops();
     return;
+  }
+
+  var stopSig=stopSignature(data.linhas,Boolean(data.darkMode));
+  if(stopSig!==stopCacheKey){
+    stopCacheKey=stopSig;
+    rebuildStopCache(data.linhas,Boolean(data.darkMode));
+    clearStops();
+    updateStopMarkers();
   }
 
   var visibleKeys={};
@@ -784,24 +1057,6 @@ window.updateMap=function(data){
       });
     });
 
-    if(linha.mostrarParadas&&Array.isArray(linha.paradas)){
-      linha.paradas.forEach(function(parada){
-        var lat=parseNum(parada.latitude),lng=parseNum(parada.longitude);
-        if(lat===null||lng===null)return;
-        var el=stopIcon(color);
-        var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([lng,lat]);
-        var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(parada));
-        marker.setPopup(popup);
-        el.addEventListener('click',function(){
-          if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
-            window.ReactNativeWebView.postMessage(JSON.stringify({type:'stop_click',parada:parada}));
-          }
-        });
-        marker.addTo(map);
-        stopMarkers.push(marker);
-      });
-    }
-
     if(!Array.isArray(linha.posicoes))return;
 
     linha.posicoes.forEach(function(p,idx){
@@ -813,6 +1068,7 @@ window.updateMap=function(data){
       var vid=rawId?String(rawId).trim():linha.nome+'-'+idx;
       var vKey=(linha.modal||'m')+':'+linha.nome+':'+vid;
       visibleKeys[vKey]=true;
+      vehicleIndexByOrder[vid]=vKey;
 
       var dest={lat:lat,lng:lng};
       var heading=normHeading(p.direcao);
@@ -848,6 +1104,7 @@ window.updateMap=function(data){
         var el=busIcon(color,heading||0);
         marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
         popup=new maplibregl.Popup({offset:18,closeButton:false}).setHTML(buildPopup(linha,p,vid,heading));
+        if(popup.on)popup.on('open',refreshIcons);
         marker.setPopup(popup);
         marker.addTo(map);
         vehicleMarkers[vKey]=marker;
@@ -862,6 +1119,12 @@ window.updateMap=function(data){
           syncingUntil:0
         };
         return;
+      }
+
+      var markerEl=marker.getElement();
+      if(markerEl){
+        var blob=markerEl.querySelector('.bus-blob');
+        if(blob)blob.style.background=color;
       }
 
       // Atualiza heading
@@ -881,35 +1144,41 @@ window.updateMap=function(data){
         dr.comprimentoGraus=null;
       }
 
-      // Sincroniza posição na rota com o servidor
-      // O loop de DR continua avançando a partir daqui
-      if(posicaoNaRota!==null){
-        dr.posicaoNaRota=posicaoNaRota;
+      // Sincroniza posicao na rota sem recuar o marcador
+      var hasPosicao=posicaoNaRota!==null;
+      var acceptedPosicao=false;
+      if(hasPosicao){
+        var drPos=(typeof dr.posicaoNaRota==='number')?dr.posicaoNaRota:null;
+        var allowRewind=drPos!==null&&posicaoNaRota<drPos-0.15;
+        if(drPos===null||posicaoNaRota>=drPos||allowRewind){
+          acceptedPosicao=true;
+          dr.posicaoNaRota=posicaoNaRota;
+        }
       }else{
         dr.posicaoNaRota=null;
       }
       if(comprimentoMetros!==null)dr.comprimentoMetros=comprimentoMetros;
       if(velocidade!==null)dr.velocidade=velocidade;
 
-      // Reposiciona o marcador na rota interpolada (sincronização com servidor)
-      if(posicaoNaRota!==null&&lineCoordsDR){
-        var coordDR=interpolarNaRota(lineCoordsDR,posicaoNaRota);
-        if(coordDR){
-          var target={lat:coordDR[0],lng:coordDR[1]};
-          var syncMs=700;
-          dr.syncingUntil=Date.now()+syncMs;
-          animateTo(vKey,marker,target,syncMs);
-        }else{
-          // Fallback: sem coord válida, usa animação linear simples
-          animateTo(vKey,marker,dest,1600);
+      // Reposiciona o marcador na rota interpolada (sincronizacao com servidor)
+      if(acceptedPosicao){
+        var syncMs=700;
+        var target=null;
+        if(lineCoordsDR){
+          var coordDR=interpolarNaRota(lineCoordsDR,dr.posicaoNaRota);
+          if(coordDR)target={lat:coordDR[0],lng:coordDR[1]};
         }
-      }else{
-        // Fallback: sem posicaoNaRota, usa animação linear simples
+        if(!target)target=dest;
+        dr.syncingUntil=Date.now()+syncMs;
+        animateTo(vKey,marker,target,syncMs);
+      }else if(!hasPosicao){
+        // Fallback: sem posicaoNaRota, usa animacao linear simples
         animateTo(vKey,marker,dest,1600);
       }
 
       if(popup){
         popup.setHTML(buildPopup(linha,p,vid,heading));
+        if(popup.isOpen&&popup.isOpen())refreshIcons();
       }
     });
   });
@@ -926,10 +1195,11 @@ window.updateMap=function(data){
     }
   });
 
-  if(window.lucide&&window.lucide.createIcons){
-    window.lucide.createIcons();
-  }
+  refreshIcons();
 };
+
+window.updateUser=updateUser;
+window.focusOnVehicle=focusOnVehicle;
 </script>
 </body>
 </html>`,

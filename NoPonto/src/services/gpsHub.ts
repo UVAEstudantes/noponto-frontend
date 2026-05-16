@@ -134,11 +134,33 @@ export async function conectarGpsHub(): Promise<void> {
   }
 }
 
+async function aguardarConexao(timeoutMs: number = 4000): Promise<boolean> {
+  if (!connection) return false;
+
+  const estadoAtual = () => connection?.state;
+  if (estadoAtual() === signalR.HubConnectionState.Connected) return true;
+
+  const start = Date.now();
+  while (
+    estadoAtual() === signalR.HubConnectionState.Connecting &&
+    Date.now() - start < timeoutMs
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+
+  return estadoAtual() === signalR.HubConnectionState.Connected;
+}
+
 export async function inscreverLinha(codigoLinha: string): Promise<void> {
   if (!connection) return;
 
   if (connection.state !== signalR.HubConnectionState.Connected) {
     await conectarGpsHub();
+    const conectado = await aguardarConexao();
+    if (!conectado) {
+      console.warn("SignalR nao conectado para inscrever linha.");
+      return;
+    }
   }
 
   try {
@@ -151,6 +173,10 @@ export async function inscreverLinha(codigoLinha: string): Promise<void> {
 
 export async function cancelarLinha(codigoLinha: string): Promise<void> {
   if (!connection) return;
+
+  if (connection.state !== signalR.HubConnectionState.Connected) {
+    return;
+  }
 
   try {
     await connection.invoke("CancelarLinha", codigoLinha);
