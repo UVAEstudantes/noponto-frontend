@@ -192,6 +192,8 @@ interface LinhaCardProps {
   linha: LinhaSelecionadaInfo;
   aoRemover: () => void;
   aoToggleAtiva: () => void;
+  aoToggleParadas: () => void;
+  aoToggleSentido: () => void;
   aoAbrirConfig: () => void;
 }
 
@@ -199,6 +201,8 @@ function LinhaCard({
   linha,
   aoRemover,
   aoToggleAtiva,
+  aoToggleParadas,
+  aoToggleSentido,
   aoAbrirConfig,
 }: LinhaCardProps) {
   const { cores, temaAtual } = useTema();
@@ -310,6 +314,60 @@ function LinhaCard({
                 }}
               >
                 {linha.ativa ? "Ocultar" : "Mostrar"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={aoToggleParadas}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                gap: 6,
+              }}
+            >
+              {linha.mostrarParadas ? (
+                <MapPin color={escurecer(linha.cor, 0.1)} size={14} />
+              ) : (
+                <MapPinOff color={escurecer(linha.cor, 0.1)} size={14} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: escurecer(linha.cor, 0.1),
+                }}
+              >
+                Paradas
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={aoToggleSentido}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                gap: 6,
+              }}
+            >
+              <ArrowLeftRight color={escurecer(linha.cor, 0.1)} size={14} />
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: escurecer(linha.cor, 0.1),
+                }}
+              >
+                Sentido
               </Text>
             </Pressable>
 
@@ -426,7 +484,7 @@ function LinhasContainer({
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
   const screenHeight = Dimensions.get("window").height;
   const SHEET_HEIGHT = Math.round(screenHeight * 0.4);
-  const BASE_BOTTOM = 250;
+  const BASE_BOTTOM = 110;
   const progress = useSharedValue(aberto ? 1 : 0);
 
   React.useEffect(() => {
@@ -587,6 +645,8 @@ function LinhasContainer({
                 linha={linha}
                 aoRemover={() => aoRemoverLinha(linha.linhaId)}
                 aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
+                aoToggleParadas={() => aoToggleParadas(linha.linhaId)}
+                aoToggleSentido={() => aoToggleSentido(linha.linhaId)}
                 aoAbrirConfig={() => setLinhaConfigId(linha.linhaId)}
               />
             ))

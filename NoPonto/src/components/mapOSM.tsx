@@ -231,10 +231,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-inner{width:32px;height:32px}
-    .train-marker .bus-blob{width:22px;height:11px;border-radius:10px 10px 4px 4px;box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -2px 0 rgba(0,0,0,.16)}
-    .train-marker .bus-blob:after{width:7px;height:9px;right:-1px;border-radius:6px;background:rgba(255,255,255,.35)}
-    .train-marker .bus-arrow{display:none}
+    .train-marker .bus-inner{width:30px;height:30px}
+    .train-marker .bus-blob{width:20px;height:20px;border-radius:7px;box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -3px 0 rgba(0,0,0,.16)}
+    .train-pulse{position:absolute;width:24px;height:24px;border-radius:8px;border:2px solid rgba(255,255,255,.65);animation:iconPulse 2s ease-out infinite}
+    .train-marker .bus-arrow{border-left-width:4px;border-right-width:4px;border-bottom-width:8px;transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-16px)}
     .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
     .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
@@ -485,7 +485,7 @@ function stopThinningFactor(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
     if(zoom>=15)return 1;
     if(zoom>=14)return 2;
-    if(zoom>=13)return 3;
+    if(zoom>=13)return 4;
     return 9999;
   }
   if(zoom>=15)return 1;
@@ -498,8 +498,8 @@ function stopThinningFactor(zoom,modal){
 function stopOpacityForZoom(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
     if(zoom>=15)return 0.95;
-    if(zoom>=14)return 0.72;
-    if(zoom>=13)return 0.5;
+    if(zoom>=14)return 0.65;
+    if(zoom>=13)return 0.4;
     return 0.0;
   }
   if(zoom>=15)return 0.75;
@@ -511,9 +511,9 @@ function stopOpacityForZoom(zoom,modal){
 
 function stopScaleForZoom(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
-    if(zoom>=15)return 1.28;
-    if(zoom>=14)return 1.1;
-    if(zoom>=13)return 0.9;
+    if(zoom>=15)return 1.15;
+    if(zoom>=14)return 0.95;
+    if(zoom>=13)return 0.78;
     return 0.65;
   }
   if(zoom>=15)return 1;
