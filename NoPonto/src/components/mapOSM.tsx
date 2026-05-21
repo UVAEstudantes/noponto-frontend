@@ -218,20 +218,35 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
 
     .bus-marker{background:transparent;border:none}
-    .bus-inner{position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
-    .bus-blob{width:18px;height:18px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.35)}
-    .bus-arrow{
-      position:absolute;left:50%;top:50%;width:0;height:0;
-      border-left:5px solid transparent;border-right:5px solid transparent;
-      border-bottom:10px solid rgba(255,255,255,.95);
-      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-13px);
-      transform-origin:50% 50%;transition:transform .4s ease;pointer-events:none
+    .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg))}
+    /* onibus / brt = gota */
+    .bus-blob{
+      position:relative;width:16px;height:16px;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(135deg);
+      border:2px solid rgba(255,255,255,.95);
+      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14)
     }
+    .bus-blob:after{
+      content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;border-radius:50%;
+      background:rgba(255,255,255,.34)
+    }
+    .bus-arrow{display:none}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-blob{border-radius:6px}
-    .train-pulse{position:absolute;width:18px;height:18px;border-radius:7px;border:2px solid rgba(255,255,255,.7);animation:iconPulse 1.8s ease-out infinite}
+    .train-marker .bus-inner{width:34px;height:34px;transform:rotate(calc(var(--h,0deg) - 90deg))}
+    /* trem = pilula fina: frente arredondada, traseira reta */
+    .train-marker .bus-blob{
+      width:24px;height:10px;transform:none;
+      border-radius:3px 9px 9px 3px;
+      box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -2px 0 rgba(0,0,0,.16)
+    }
+    .train-marker .bus-blob:after{
+      content:'';position:absolute;right:2px;top:2px;width:8px;height:6px;border-radius:5px;
+      background:rgba(255,255,255,.32)
+    }
+    .train-marker .bus-arrow{display:none}
     .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
     .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
@@ -347,7 +362,7 @@ function startDR(){
       }
       if(!s.comprimentoGraus||s.comprimentoGraus<1e-9)return;
       // avanço normalizado = (velocidade em graus/s * dt) / comprimento em graus
-      var velGraus=kmhParaGrausPorSeg(s.velocidade);
+      var velGraus=kmhParaGrausPorSeg(s.velocidade*(s.decelFactor||1));
       var avanco=velGraus*dt/s.comprimentoGraus;
       s.posicaoNaRota=Math.min(1,s.posicaoNaRota+avanco);
       var coord=interpolarNaRota(s.lineCoords,s.posicaoNaRota);
@@ -447,7 +462,7 @@ function busIcon(color,heading,modal){
   var isTrain=(modal||'').toLowerCase()==='trem';
   el.className='bus-marker'+(isTrain?' train-marker':'');
   el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-               '<div class="bus-blob" style="background:'+color+'"></div>'+(isTrain?'<div class="train-pulse"></div>':'')+
+               '<div class="bus-blob" style="background:'+color+'"></div>'+
                '<div class="bus-arrow"></div></div>';
   return el;
 }
@@ -479,7 +494,12 @@ function hashString(s){
 }
 
 function stopThinningFactor(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1;
+    if(zoom>=14)return 2;
+    if(zoom>=13)return 3;
+    return 9999;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 2;
   if(zoom>=13)return 3;
@@ -488,7 +508,12 @@ function stopThinningFactor(zoom,modal){
 }
 
 function stopOpacityForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 0.95;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 0.95;
+    if(zoom>=14)return 0.72;
+    if(zoom>=13)return 0.5;
+    return 0.0;
+  }
   if(zoom>=15)return 0.75;
   if(zoom>=14)return 0.6;
   if(zoom>=13)return 0.45;
@@ -497,7 +522,12 @@ function stopOpacityForZoom(zoom,modal){
 }
 
 function stopScaleForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1.05;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1.28;
+    if(zoom>=14)return 1.1;
+    if(zoom>=13)return 0.9;
+    return 0.65;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 0.9;
   if(zoom>=13)return 0.82;
@@ -531,7 +561,16 @@ function setHeading(marker,heading){
   if(typeof heading!=='number')return;
   var el=marker.getElement();if(!el)return;
   var inner=el.querySelector('.bus-inner');
-  if(inner)inner.style.setProperty('--h',heading+'deg');
+  var bearing=(map&&map.getBearing)?map.getBearing():0;
+  var adjusted=heading-bearing;
+  if(inner)inner.style.setProperty('--h',adjusted+'deg');
+}
+
+function refreshVehicleHeadings(){
+  Object.keys(vehicleMarkers).forEach(function(k){
+    var h=vehicleHeadings[k];
+    if(typeof h==='number')setHeading(vehicleMarkers[k],h);
+  });
 }
 
 function fmtTs(v){
@@ -670,7 +709,7 @@ function ensureLayers(){
   if(!map.getSource(linesSourceId)){
     map.addSource(linesSourceId,{type:'geojson',data:emptyGeo()});
     map.addLayer({id:linesSolidLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],0],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.65}});
-    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.85,'line-dasharray':[8,5]}});
+    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.9,'line-blur':0.2,'line-dasharray':[2.2,1.4]}});
   }
   if(!map.getSource(poiLineSourceId)){
     map.addSource(poiLineSourceId,{type:'geojson',data:emptyGeo()});
@@ -909,7 +948,11 @@ function updateUser(data){
   var arrow=document.querySelector('.user-arrow');
   if(arrow){
     var h=normHeading(data.heading);
-    if(h!==null){arrow.style.display='block';arrow.style.setProperty('--h',h+'deg')}
+    if(h!==null){
+      var bearing=(map&&map.getBearing)?map.getBearing():0;
+      arrow.style.display='block';
+      arrow.style.setProperty('--h',(h-bearing)+'deg');
+    }
     else arrow.style.display='none';
   }
 
@@ -981,6 +1024,7 @@ window.onload=function(){
     map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
     map.on('moveend',function(){internalMove=false;updateStopMarkers()});
     map.on('zoomend',function(){internalMove=false;updateStopMarkers()});
+    map.on('rotate',function(){refreshVehicleHeadings()});
 
     startDR();
     setInterval(updateTimeAgo,1000);
@@ -998,7 +1042,7 @@ window.centerOnUser=function(){
   if(!map||!userMarker)return;
   autoFollow=true;
   var pos=userMarker.getLngLat();
-  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17})});
+  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17,bearing:0,pitch:0})});
 };
 
 window.fitToCoordinates=function(coords){
@@ -1063,7 +1107,7 @@ window.updateMap=function(data){
       lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4:(idx===1?3:4)}
+        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
       });
     });
 
@@ -1087,6 +1131,8 @@ window.updateMap=function(data){
       var posicaoNaRota=parseNum(p.posicaoNaRota);
       var comprimentoMetros=parseNum(p.comprimentoRotaMetros);
       var velocidade=parseNum(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade);
+      var distStop=parseNum(p.distanciaProximaParadaMetros);
+      var decelFactor=(distStop!==null&&distStop<300)?Math.max(0.72,0.95-(300-distStop)/1200):1;
 
       // Escolhe o segmento correto baseado no itinerarioId do veículo
       var lineCoordsDR=segmentos[0]||null;
@@ -1125,6 +1171,7 @@ window.updateMap=function(data){
           posicaoNaRota:posicaoNaRota,
           comprimentoGraus:null,
           velocidade:velocidade,
+          decelFactor:decelFactor,
           lineCoords:lineCoordsDR,
           syncingUntil:0
         };
@@ -1169,6 +1216,7 @@ window.updateMap=function(data){
       }
       if(comprimentoMetros!==null)dr.comprimentoMetros=comprimentoMetros;
       if(velocidade!==null)dr.velocidade=velocidade;
+      dr.decelFactor=decelFactor;
 
       // Reposiciona o marcador na rota interpolada (sincronizacao com servidor)
       if(acceptedPosicao){

@@ -4,7 +4,6 @@ import {
   Bus,
   BusFront,
   Car,
-  Check,
   SlidersHorizontal,
   Train,
   TrainFrontTunnel,
@@ -66,9 +65,13 @@ export default function Filtro({
   const [filtroaberto, setFiltroAberto] = React.useState(false);
 
   const estiloToggle = (ativo: boolean) => ({
+    width: 18,
+    height: 18,
+    borderRadius: 999,
     borderColor: ativo ? cores.fundoPrimario : cores.borda,
-    borderWidth: ativo ? 1 : 2,
-    backgroundColor: ativo ? cores.fundoPrimario : "transparent",
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
   });
 
   function abrirFiltros() {
@@ -114,7 +117,7 @@ export default function Filtro({
           {filtroaberto && (
             <TouchableWithoutFeedback onPress={() => setFiltroAberto(true)}>
               <View
-                className="absolute right-5 top-[120px] p-5 h-[410px] w-[250px] rounded-xl shadow-lg"
+                className="absolute right-4 top-[110px] px-4 py-4 w-[248px] rounded-2xl shadow-lg"
                 style={{
                   backgroundColor: cores.fundoPainel,
                   borderColor: cores.borda,
@@ -155,12 +158,10 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(modalSelecionado === "onibus")}
                     >
-                      {modalSelecionado === "onibus" && (
-                        <Check color="white" size={13} strokeWidth={6} />
-                      )}
+                      {modalSelecionado === "onibus" && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </TouchableOpacity>
 
@@ -189,10 +190,10 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(modalSelecionado === "brt")}
                     >
-                      {modalSelecionado === "brt" && <Check color="white" size={13} strokeWidth={6} />}
+                      {modalSelecionado === "brt" && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </TouchableOpacity>
 
@@ -221,12 +222,10 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(modalSelecionado === "trem")}
                     >
-                      {modalSelecionado === "trem" && (
-                        <Check color="white" size={13} strokeWidth={6} />
-                      )}
+                      {modalSelecionado === "trem" && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </TouchableOpacity>
 
@@ -255,12 +254,10 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(modalSelecionado === "metro")}
                     >
-                      {modalSelecionado === "metro" && (
-                        <Check color="white" size={13} strokeWidth={6} />
-                      )}
+                      {modalSelecionado === "metro" && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </TouchableOpacity>
                 </View>
@@ -300,12 +297,10 @@ export default function Filtro({
 
                     <Pressable
                       onPress={() => clickTransito()}
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(transito)}
                     >
-                      {transito && (
-                        <Check color="white" size={13} strokeWidth={6} />
-                      )}
+                      {transito && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </View>
 
@@ -330,12 +325,10 @@ export default function Filtro({
 
                     <Pressable
                       onPress={() => clickRisco()}
-                      className="ml-auto p-1 h-6 w-6 rounded-md"
+                      className="ml-auto"
                       style={estiloToggle(risco)}
                     >
-                      {risco && (
-                        <Check color="white" size={13} strokeWidth={6} />
-                      )}
+                      {risco && <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: cores.fundoPrimario }} />}
                     </Pressable>
                   </View>
                 </View>

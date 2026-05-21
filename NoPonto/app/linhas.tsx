@@ -15,6 +15,7 @@ import {
   buscarPoisPorParada,
   buscarSentidosPorLinha,
 } from "@/src/services/mobilidadeRio";
+import { carregarModalSelecionado } from "@/src/services/storage";
 import {
   LinhaDetalhesDto,
   ModalApiTransporte,
@@ -526,10 +527,17 @@ const Linhas = () => {
     buscarModais().then((lista) => {
       setModais(lista);
       if (lista.length > 0) {
-        const atual = modal ? lista.find((m) => m.nome.toLowerCase() === modal.toLowerCase()) : null;
-        const escolhido = atual ?? lista[0];
-        setModal(escolhido.nome);
-        setModalIdSelecionado(escolhido.id);
+        carregarModalSelecionado().then((modalIdSalvo) => {
+          const salvo = modalIdSalvo
+            ? lista.find((m) => m.id === modalIdSalvo)
+            : null;
+          const atual = modal
+            ? lista.find((m) => m.nome.toLowerCase() === modal.toLowerCase())
+            : null;
+          const escolhido = salvo ?? atual ?? lista[0];
+          setModal(escolhido.nome);
+          setModalIdSelecionado(escolhido.id);
+        });
       }
     });
   }, []);
