@@ -17,7 +17,8 @@ import { useTema } from "@/src/hooks/useTema";
 import { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import { ModoSentido } from "@/src/types/transporte";
 import React from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { Dimensions, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 
@@ -190,10 +191,16 @@ function IconeModal({ modal, cor }: { modal: string; cor: string }) {
 interface LinhaCardProps {
   linha: LinhaSelecionadaInfo;
   aoRemover: () => void;
+  aoToggleAtiva: () => void;
   aoAbrirConfig: () => void;
 }
 
-function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
+function LinhaCard({
+  linha,
+  aoRemover,
+  aoToggleAtiva,
+  aoAbrirConfig,
+}: LinhaCardProps) {
   const { cores, temaAtual } = useTema();
   const fundo = temaAtual === "escuro" ? "#1E1E1E" : "#FFFFFF";
   const fundoCor = misturar(linha.cor, fundo, 0.1);
@@ -275,16 +282,45 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
             </Pressable>
           </View>
 
-          {/* Botao de configuracao */}
-          <View style={{ flexDirection: "row" }}>
+          {/* Ações rápidas */}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Pressable
-              onPress={aoAbrirConfig}
+              onPress={aoToggleAtiva}
               style={{
-                flex: 1,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
                 paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                gap: 6,
+              }}
+            >
+              {linha.ativa ? (
+                <Eye color={escurecer(linha.cor, 0.1)} size={14} />
+              ) : (
+                <EyeOff color={escurecer(linha.cor, 0.1)} size={14} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: escurecer(linha.cor, 0.1),
+                }}
+              >
+                {linha.ativa ? "Ocultar" : "Mostrar"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={aoAbrirConfig}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                paddingHorizontal: 10,
                 borderRadius: 10,
                 backgroundColor: accentCor,
                 gap: 6,
@@ -387,8 +423,24 @@ function LinhasContainer({
   const { cores, temaAtual } = useTema();
   const modalBase = cores.fundoPainel;
   const highlightAlpha = temaAtual === "escuro" ? 0.28 : 0.22;
-  const largura = 300;
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
+  const screenHeight = Dimensions.get("window").height;
+  const SHEET_HEIGHT = Math.round(screenHeight * 0.4);
+  const BASE_BOTTOM = 250;
+  const progress = useSharedValue(aberto ? 1 : 0);
+
+  React.useEffect(() => {
+    progress.value = withTiming(aberto ? 1 : 0, { duration: 260 });
+  }, [aberto, progress]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * (SHEET_HEIGHT + 40) }],
+    opacity: 0.9 + progress.value * 0.1,
+  }));
+
+  const toggleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -progress.value * (SHEET_HEIGHT - 28) }],
+  }));
 
   const linhaConfig = React.useMemo(
     () =>
@@ -416,11 +468,13 @@ function LinhasContainer({
   return (
     <>
       {/* Botão toggle */}
-      <View style={{ position: "absolute", right: 12, bottom: 220, zIndex: 16 }}>
-        <Pressable
-          onPress={aoToggleAberto}
-          hitSlop={{ top: 10, bottom: 10, right: 10, left: 0 }}
-        >
+      <Animated.View
+        style={[
+          { position: "absolute", right: 12, bottom: BASE_BOTTOM, zIndex: 34 },
+          toggleStyle,
+        ]}
+      >
+        <Pressable onPress={aoToggleAberto} hitSlop={10}>
           <View
             style={{
               borderRadius: 999,
@@ -428,7 +482,6 @@ function LinhasContainer({
               height: 48,
               backgroundColor: cores.fundoPainel,
               borderWidth: 1,
-
               borderColor: cores.borda,
               alignItems: "center",
               justifyContent: "center",
@@ -439,31 +492,23 @@ function LinhasContainer({
             }}
           >
             {aberto ? (
-              <ChevronUp
-                color={cores.iconePrimario}
-                size={24}
-                strokeWidth={2.5}
-              />
+              <ChevronDown color={cores.iconePrimario} size={24} strokeWidth={2.5} />
             ) : (
-              <ChevronDown
-                color={cores.iconePrimario}
-                size={24}
-                strokeWidth={2.5}
-              />
+              <ChevronUp color={cores.iconePrimario} size={24} strokeWidth={2.5} />
             )}
           </View>
         </Pressable>
-      </View>
+      </Animated.View>
 
       {/* Container principal */}
-      {aberto && (<View
-        style={{
+      <Animated.View
+        style={[sheetStyle, {
             position: "absolute",
             left: 12,
             right: 12,
-            bottom: 20,
+            bottom: BASE_BOTTOM + 58,
             width: undefined,
-            height: "40%",
+            height: SHEET_HEIGHT,
             backgroundColor: cores.fundoPainel,
             borderRadius: 20,
             borderWidth: 1,
@@ -472,9 +517,9 @@ function LinhasContainer({
             shadowOpacity: 0.2,
             shadowRadius: 12,
             elevation: 10,
-            zIndex: 10,
+            zIndex: 33,
             overflow: "hidden",
-        }}
+        }]}
       >
         {/* Header */}
         <View
@@ -541,12 +586,13 @@ function LinhasContainer({
                 key={linha.linhaId}
                 linha={linha}
                 aoRemover={() => aoRemoverLinha(linha.linhaId)}
+                aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
                 aoAbrirConfig={() => setLinhaConfigId(linha.linhaId)}
               />
             ))
           )}
         </ScrollView>
-      </View>)}
+      </Animated.View>
       <Modal
         transparent
         visible={Boolean(linhaConfig)}
