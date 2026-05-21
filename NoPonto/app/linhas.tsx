@@ -159,6 +159,16 @@ const COR_PRIORIDADE = [
   { fundo: "#e0f2fe", texto: "#0369a1" }, // 2 - azul
   { fundo: "#f3f4f6", texto: "#6b7280" }, // 3 - cinza
 ];
+const CORES_RAMAIS_TREM: Record<string, string> = {
+  deodoro: "#ba0c2f",
+  santa_cruz: "#64a70b",
+  japeri: "#92c1e9",
+  saracuruna: "#de7c00",
+  belford_roxo: "#5c068c",
+  paracambi: "#00a3e0",
+  guapimirim: "#f1b500",
+  vila_inhomirim: "#c4b000",
+};
 
 function iconeParaCategoria(cat: string): LucideIcon {
   return ICONE_CAT[cat] ?? MapPin;
@@ -179,6 +189,11 @@ function normalizarModal(m: string | null): ModalApiTransporte | null {
   if (v === "metro") return "metro";
   return null;
 }
+const normalizarModalNome = (nome?: string | null) =>
+  (nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 type SentidoTipo = "ida" | "volta";
 
@@ -667,7 +682,7 @@ const Linhas = () => {
       if (!m) return;
 
       // Busca itinerário e sentidos em paralelo
-      const [_, sentidosRes, detalhesRes] = await Promise.all([
+      const [itRes, sentidosRes, detalhesRes] = await Promise.allSettled([
         garantirItinerario(
           opcao.linha.id,
           opcao.linha.codigo || opcao.linha.nome,
@@ -677,9 +692,13 @@ const Linhas = () => {
         buscarSentidosPorLinha(opcao.linha.id),
         buscarDetalhesLinha(opcao.linha.id),
       ]);
-
-      setSentidos(sentidosRes);
-      setDetalhesLinha(detalhesRes);
+      if (itRes.status === "rejected") {
+        console.error("Erro ao carregar itinerário da linha", itRes.reason);
+      }
+      setSentidos(sentidosRes.status === "fulfilled" ? sentidosRes.value : []);
+      setDetalhesLinha(
+        detalhesRes.status === "fulfilled" ? detalhesRes.value : null,
+      );
     },
     [modal, garantirItinerario],
   );
@@ -774,10 +793,16 @@ const Linhas = () => {
       itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
     }
 
+    const corLinha =
+      modalAtual === "trem"
+        ? Object.entries(CORES_RAMAIS_TREM).find(([ramal]) =>
+            normalizarModalNome(linhaSelecionada.nomeExibicao).includes(ramal),
+          )?.[1] ?? "#64a70b"
+        : "#2563eb";
     return [
       {
         nome: linhaSelecionada.linha.codigo || linhaSelecionada.linha.nome,
-        cor: "#2563eb",
+        cor: corLinha,
         modal: modalAtual,
         segmentos: segmentosTrajeto,
         coordenadas: segmentosTrajeto[0] ?? [],
@@ -1003,7 +1028,16 @@ const Linhas = () => {
           >
             Linhas e Horários
           </Text>
-          <SelectTransporte modal={modal} setModal={(m) => { setModal(m); const md = modais.find((x) => x.nome.toLowerCase() === m.toLowerCase()); setModalIdSelecionado(md?.id ?? null); }} />
+          <SelectTransporte
+            modal={modal}
+            setModal={(m) => {
+              setModal(m);
+              const md = modais.find(
+                (x) => normalizarModalNome(x.nome) === normalizarModalNome(m),
+              );
+              setModalIdSelecionado(md?.id ?? null);
+            }}
+          />
         </View>
 
         <FlatList

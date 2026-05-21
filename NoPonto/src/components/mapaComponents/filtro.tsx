@@ -12,7 +12,7 @@ import {
 } from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
-import { Pressable, Text, TouchableWithoutFeedback, View } from "react-native";
+import { Pressable, Text, TouchableOpacity, TouchableWithoutFeedback, View } from "react-native";
 
 const colorsLight = {
   bus: "#1156EA",
@@ -131,7 +131,12 @@ export default function Filtro({
                 {/*opcoes de transporte*/}
                 <View className=" mt-3">
                   {/* ônibus */}
-                  <View className="flex-row items-center mb-3 ml-1">
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => selecionarModal("onibus")}
+                    className="flex-row items-center mb-2 ml-1 rounded-xl px-2 py-2"
+                    style={{ backgroundColor: modalSelecionado === "onibus" ? cores.fundoSecundario : "transparent" }}
+                  >
                     <View
                       style={{
                         backgroundColor: colors.busBG,
@@ -150,7 +155,6 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => selecionarModal("onibus")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
                       style={estiloToggle(modalSelecionado === "onibus")}
                     >
@@ -158,10 +162,15 @@ export default function Filtro({
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>
-                  </View>
+                  </TouchableOpacity>
 
                   {/* brt */}
-                  <View className="flex-row items-center mb-3 ml-1">
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => selecionarModal("brt")}
+                    className="flex-row items-center mb-2 ml-1 rounded-xl px-2 py-2"
+                    style={{ backgroundColor: modalSelecionado === "brt" ? cores.fundoSecundario : "transparent" }}
+                  >
                     <View
                       style={{
                         backgroundColor: colors.brtBG,
@@ -180,16 +189,20 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => selecionarModal("brt")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
                       style={estiloToggle(modalSelecionado === "brt")}
                     >
                       {modalSelecionado === "brt" && <Check color="white" size={13} strokeWidth={6} />}
                     </Pressable>
-                  </View>
+                  </TouchableOpacity>
 
                   {/* trem */}
-                  <View className="flex-row items-center mb-3 ml-1">
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => selecionarModal("trem")}
+                    className="flex-row items-center mb-2 ml-1 rounded-xl px-2 py-2"
+                    style={{ backgroundColor: modalSelecionado === "trem" ? cores.fundoSecundario : "transparent" }}
+                  >
                     <View
                       style={{
                         backgroundColor: colors.tremBG,
@@ -208,7 +221,6 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => selecionarModal("trem")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
                       style={estiloToggle(modalSelecionado === "trem")}
                     >
@@ -216,10 +228,15 @@ export default function Filtro({
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>
-                  </View>
+                  </TouchableOpacity>
 
                   {/* metro */}
-                  <View className="flex-row items-center mb-3 ml-1">
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => selecionarModal("metro")}
+                    className="flex-row items-center mb-2 ml-1 rounded-xl px-2 py-2"
+                    style={{ backgroundColor: modalSelecionado === "metro" ? cores.fundoSecundario : "transparent" }}
+                  >
                     <View
                       style={{
                         backgroundColor: colors.metroBG,
@@ -238,7 +255,6 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => selecionarModal("metro")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
                       style={estiloToggle(modalSelecionado === "metro")}
                     >
@@ -246,7 +262,7 @@ export default function Filtro({
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
                 <View

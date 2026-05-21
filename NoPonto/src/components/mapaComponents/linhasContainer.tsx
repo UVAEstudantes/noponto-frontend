@@ -416,7 +416,7 @@ function LinhasContainer({
   return (
     <>
       {/* Botão toggle */}
-      <View style={{ position: "absolute", right: 12, bottom: 170, zIndex: 15 }}>
+      <View style={{ position: "absolute", right: 12, bottom: 220, zIndex: 16 }}>
         <Pressable
           onPress={aoToggleAberto}
           hitSlop={{ top: 10, bottom: 10, right: 10, left: 0 }}
@@ -459,10 +459,11 @@ function LinhasContainer({
       {aberto && (<View
         style={{
             position: "absolute",
+            left: 12,
             right: 12,
-            bottom: 228,
-            width: largura,
-            maxHeight: 360,
+            bottom: 20,
+            width: undefined,
+            height: "40%",
             backgroundColor: cores.fundoPainel,
             borderRadius: 20,
             borderWidth: 1,
