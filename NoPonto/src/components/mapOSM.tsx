@@ -230,8 +230,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-blob{border-radius:6px}
-    .train-pulse{position:absolute;width:18px;height:18px;border-radius:7px;border:2px solid rgba(255,255,255,.7);animation:iconPulse 1.8s ease-out infinite}
+    .train-marker .bus-inner{width:30px;height:30px}
+    .train-marker .bus-blob{width:20px;height:20px;border-radius:7px;box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -3px 0 rgba(0,0,0,.16)}
+    .train-pulse{position:absolute;width:24px;height:24px;border-radius:8px;border:2px solid rgba(255,255,255,.65);animation:iconPulse 2s ease-out infinite}
+    .train-marker .bus-arrow{border-left-width:4px;border-right-width:4px;border-bottom-width:8px;transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-16px)}
     .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
     .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
@@ -347,7 +349,7 @@ function startDR(){
       }
       if(!s.comprimentoGraus||s.comprimentoGraus<1e-9)return;
       // avanço normalizado = (velocidade em graus/s * dt) / comprimento em graus
-      var velGraus=kmhParaGrausPorSeg(s.velocidade);
+      var velGraus=kmhParaGrausPorSeg(s.velocidade*(s.decelFactor||1));
       var avanco=velGraus*dt/s.comprimentoGraus;
       s.posicaoNaRota=Math.min(1,s.posicaoNaRota+avanco);
       var coord=interpolarNaRota(s.lineCoords,s.posicaoNaRota);
@@ -479,7 +481,12 @@ function hashString(s){
 }
 
 function stopThinningFactor(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1;
+    if(zoom>=14)return 2;
+    if(zoom>=13)return 4;
+    return 9999;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 2;
   if(zoom>=13)return 3;
@@ -488,7 +495,12 @@ function stopThinningFactor(zoom,modal){
 }
 
 function stopOpacityForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 0.95;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 0.95;
+    if(zoom>=14)return 0.65;
+    if(zoom>=13)return 0.4;
+    return 0.0;
+  }
   if(zoom>=15)return 0.75;
   if(zoom>=14)return 0.6;
   if(zoom>=13)return 0.45;
@@ -497,7 +509,12 @@ function stopOpacityForZoom(zoom,modal){
 }
 
 function stopScaleForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1.05;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1.15;
+    if(zoom>=14)return 0.95;
+    if(zoom>=13)return 0.78;
+    return 0.65;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 0.9;
   if(zoom>=13)return 0.82;
@@ -670,7 +687,7 @@ function ensureLayers(){
   if(!map.getSource(linesSourceId)){
     map.addSource(linesSourceId,{type:'geojson',data:emptyGeo()});
     map.addLayer({id:linesSolidLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],0],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.65}});
-    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.85,'line-dasharray':[8,5]}});
+    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.9,'line-blur':0.2,'line-dasharray':[2.2,1.4]}});
   }
   if(!map.getSource(poiLineSourceId)){
     map.addSource(poiLineSourceId,{type:'geojson',data:emptyGeo()});
@@ -1063,7 +1080,7 @@ window.updateMap=function(data){
       lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4:(idx===1?3:4)}
+        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
       });
     });
 
@@ -1087,6 +1104,8 @@ window.updateMap=function(data){
       var posicaoNaRota=parseNum(p.posicaoNaRota);
       var comprimentoMetros=parseNum(p.comprimentoRotaMetros);
       var velocidade=parseNum(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade);
+      var distStop=parseNum(p.distanciaProximaParadaMetros);
+      var decelFactor=(distStop!==null&&distStop<300)?Math.max(0.72,0.95-(300-distStop)/1200):1;
 
       // Escolhe o segmento correto baseado no itinerarioId do veículo
       var lineCoordsDR=segmentos[0]||null;
@@ -1125,6 +1144,7 @@ window.updateMap=function(data){
           posicaoNaRota:posicaoNaRota,
           comprimentoGraus:null,
           velocidade:velocidade,
+          decelFactor:decelFactor,
           lineCoords:lineCoordsDR,
           syncingUntil:0
         };
@@ -1169,6 +1189,7 @@ window.updateMap=function(data){
       }
       if(comprimentoMetros!==null)dr.comprimentoMetros=comprimentoMetros;
       if(velocidade!==null)dr.velocidade=velocidade;
+      dr.decelFactor=decelFactor;
 
       // Reposiciona o marcador na rota interpolada (sincronizacao com servidor)
       if(acceptedPosicao){
