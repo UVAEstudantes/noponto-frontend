@@ -223,7 +223,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     .bus-blob{
       position:relative;width:16px;height:16px;
       border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg);
+      transform:rotate(135deg);
       border:2px solid rgba(255,255,255,.95);
       box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14)
     }
@@ -235,7 +235,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-inner{width:34px;height:34px}
+    .train-marker .bus-inner{width:34px;height:34px;transform:rotate(calc(var(--h,0deg) - 90deg))}
     /* trem = pilula fina: frente arredondada, traseira reta */
     .train-marker .bus-blob{
       width:24px;height:10px;transform:none;

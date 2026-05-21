@@ -434,8 +434,8 @@ function LinhasContainer({
   }, [aberto, progress]);
 
   const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * (SHEET_HEIGHT + 40) }],
-    opacity: 0.9 + progress.value * 0.1,
+    transform: [{ translateY: (1 - progress.value) * (SHEET_HEIGHT + 180) }],
+    opacity: 0.85 + progress.value * 0.15,
   }));
 
   const toggleStyle = useAnimatedStyle(() => ({
@@ -506,11 +506,12 @@ function LinhasContainer({
             position: "absolute",
             left: 12,
             right: 12,
-            bottom: BASE_BOTTOM + 58,
+            bottom: 0,
             width: undefined,
             height: SHEET_HEIGHT,
             backgroundColor: cores.fundoPainel,
-            borderRadius: 20,
+            borderTopLeftRadius: 22,
+            borderTopRightRadius: 22,
             borderWidth: 1,
             borderColor: cores.borda,
             shadowColor: "#000",
