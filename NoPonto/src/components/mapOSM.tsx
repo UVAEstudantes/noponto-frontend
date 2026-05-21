@@ -219,22 +219,34 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     .bus-marker{background:transparent;border:none}
     .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg))}
-    .bus-blob{position:relative;width:18px;height:12px;border-radius:10px 10px 8px 4px;border:2px solid rgba(255,255,255,.95);box-shadow:0 2px 7px rgba(0,0,0,.35)}
-    .bus-blob:after{content:'';position:absolute;right:-2px;top:50%;transform:translateY(-50%);width:5px;height:7px;border-radius:4px;background:rgba(255,255,255,.28)}
-    .bus-arrow{
-      position:absolute;left:50%;top:50%;width:0;height:0;
-      border-left:5px solid transparent;border-right:5px solid transparent;
-      border-bottom:10px solid rgba(255,255,255,.95);
-      transform:translate(-50%,-50%) translateY(-12px);
-      transform-origin:50% 50%;transition:opacity .2s ease;pointer-events:none
+    /* onibus / brt = gota */
+    .bus-blob{
+      position:relative;width:16px;height:16px;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:2px solid rgba(255,255,255,.95);
+      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14)
     }
+    .bus-blob:after{
+      content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;border-radius:50%;
+      background:rgba(255,255,255,.34)
+    }
+    .bus-arrow{display:none}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-inner{width:30px;height:30px}
-    .train-marker .bus-blob{width:20px;height:20px;border-radius:7px;box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -3px 0 rgba(0,0,0,.16)}
-    .train-pulse{position:absolute;width:24px;height:24px;border-radius:8px;border:2px solid rgba(255,255,255,.65);animation:iconPulse 2s ease-out infinite}
-    .train-marker .bus-arrow{border-left-width:4px;border-right-width:4px;border-bottom-width:8px;transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-16px)}
+    .train-marker .bus-inner{width:34px;height:34px}
+    /* trem = pilula fina: frente arredondada, traseira reta */
+    .train-marker .bus-blob{
+      width:24px;height:10px;transform:none;
+      border-radius:3px 9px 9px 3px;
+      box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -2px 0 rgba(0,0,0,.16)
+    }
+    .train-marker .bus-blob:after{
+      content:'';position:absolute;right:2px;top:2px;width:8px;height:6px;border-radius:5px;
+      background:rgba(255,255,255,.32)
+    }
+    .train-marker .bus-arrow{display:none}
     .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
     .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
@@ -485,7 +497,7 @@ function stopThinningFactor(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
     if(zoom>=15)return 1;
     if(zoom>=14)return 2;
-    if(zoom>=13)return 4;
+    if(zoom>=13)return 3;
     return 9999;
   }
   if(zoom>=15)return 1;
@@ -498,8 +510,8 @@ function stopThinningFactor(zoom,modal){
 function stopOpacityForZoom(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
     if(zoom>=15)return 0.95;
-    if(zoom>=14)return 0.65;
-    if(zoom>=13)return 0.4;
+    if(zoom>=14)return 0.72;
+    if(zoom>=13)return 0.5;
     return 0.0;
   }
   if(zoom>=15)return 0.75;
@@ -511,9 +523,9 @@ function stopOpacityForZoom(zoom,modal){
 
 function stopScaleForZoom(zoom,modal){
   if((modal||'').toLowerCase()==='trem'){
-    if(zoom>=15)return 1.15;
-    if(zoom>=14)return 0.95;
-    if(zoom>=13)return 0.78;
+    if(zoom>=15)return 1.28;
+    if(zoom>=14)return 1.1;
+    if(zoom>=13)return 0.9;
     return 0.65;
   }
   if(zoom>=15)return 1;
