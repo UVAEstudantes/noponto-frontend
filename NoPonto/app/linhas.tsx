@@ -9,6 +9,7 @@ import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import {
   buscarDetalhesLinha,
+  buscarModais,
   buscarOpcoesPorNome,
   buscarPoisPorItinerario,
   buscarPoisPorParada,
@@ -17,6 +18,7 @@ import {
 import {
   LinhaDetalhesDto,
   ModalApiTransporte,
+  ModalTransporteDto,
   OpcaoBusca,
   Parada,
   PoiDto,
@@ -173,6 +175,8 @@ function normalizarModal(m: string | null): ModalApiTransporte | null {
   const v = m.toLowerCase();
   if (v === "onibus") return "onibus";
   if (v === "brt") return "brt";
+  if (v === "trem") return "trem";
+  if (v === "metro") return "metro";
   return null;
 }
 
@@ -498,7 +502,22 @@ const Linhas = () => {
 
   // ─── Modal de transporte ──────────────────────────────────────────────────
 
+  const [modais, setModais] = useState<ModalTransporteDto[]>([]);
+  const [modalIdSelecionado, setModalIdSelecionado] = useState<string | null>(null);
   const [modal, setModal] = useState<string | null>("Onibus");
+
+
+  useEffect(() => {
+    buscarModais().then((lista) => {
+      setModais(lista);
+      if (lista.length > 0) {
+        const atual = modal ? lista.find((m) => m.nome.toLowerCase() === modal.toLowerCase()) : null;
+        const escolhido = atual ?? lista[0];
+        setModal(escolhido.nome);
+        setModalIdSelecionado(escolhido.id);
+      }
+    });
+  }, []);
 
   const placeholderBusca = useMemo(() => {
     if (modal === "BRT") return "Buscar Linhas BRT";
@@ -536,13 +555,13 @@ const Linhas = () => {
     }
     const id = setTimeout(async () => {
       try {
-        setOpcoesBusca(await buscarOpcoesPorNome(busca, 1, 20));
+        setOpcoesBusca(await buscarOpcoesPorNome(busca, 1, 20, modalIdSelecionado ?? undefined));
       } catch {
         setOpcoesBusca([]);
       }
     }, 400);
     return () => clearTimeout(id);
-  }, [busca, linhaSelecionada]);
+  }, [busca, linhaSelecionada, modalIdSelecionado]);
 
   const buscaAtiva = busca !== "" && opcoesBusca.length > 0;
 
@@ -984,7 +1003,7 @@ const Linhas = () => {
           >
             Linhas e Horários
           </Text>
-          <SelectTransporte modal={modal} setModal={setModal} />
+          <SelectTransporte modal={modal} setModal={(m) => { setModal(m); const md = modais.find((x) => x.nome.toLowerCase() === m.toLowerCase()); setModalIdSelecionado(md?.id ?? null); }} />
         </View>
 
         <FlatList

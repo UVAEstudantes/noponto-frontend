@@ -8,6 +8,7 @@ import {
     LinhasResponse,
     LinhaTempoReal,
     ModalApiTransporte,
+    ModalTransporteDto,
     OpcaoBusca,
     Parada,
     PoiDto,
@@ -28,6 +29,14 @@ const FORMATADOR_NUMERICO = new Intl.Collator("pt-BR", {
   numeric: true,
   sensitivity: "base",
 });
+
+// ─── /modais ───────────────────────────────────────────────────────────────
+
+export async function buscarModais(): Promise<ModalTransporteDto[]> {
+  const response = await api.get<ModalTransporteDto[]>("/modais");
+  if (!response.ok || !response.data) return [];
+  return response.data;
+}
 
 // ─── /linhas ───────────────────────────────────────────────────────────────
 
@@ -97,10 +106,12 @@ export async function buscarOpcoesPorNome(
   nome: string,
   page: number = 1,
   pageSize: number = 20,
+  modalId?: string,
 ): Promise<OpcaoBusca[]> {
   if (!nome.trim()) return [];
   const linhas = await buscarLinhasDto(nome, page, pageSize);
-  return linhas.map((linha) => ({
+  const linhasFiltradas = modalId ? linhas.filter((linha) => linha.modalId === modalId) : linhas;
+  return linhasFiltradas.map((linha) => ({
     linha,
     nomeExibicao: linha.codigo
       ? `${linha.codigo} - ${linha.nome
