@@ -17,11 +17,12 @@ import {
 } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import {
+  buscarModais,
   buscarOpcoesPorNome,
   buscarProximosVeiculosParada,
 } from "@/src/services/mobilidadeRio";
 import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
-import { ModalApiTransporte, OpcaoBusca, Parada } from "@/src/types/transporte";
+import { ModalApiTransporte, ModalTransporteDto, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -48,10 +49,16 @@ const Home = () => {
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
   const [transito, setTransito] = React.useState(false);
-  const [onibus, setOnibus] = React.useState(true);
-  const [brt, setBrt] = React.useState(false);
-  const [trem, setTrem] = React.useState(false);
-  const [metro, setMetro] = React.useState(false);
+  const [modais, setModais] = useState<ModalTransporteDto[]>([]);
+  const [modalSelecionadoId, setModalSelecionadoId] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    buscarModais().then((lista) => {
+      setModais(lista);
+      if (!modalSelecionadoId && lista.length > 0) setModalSelecionadoId(lista[0].id);
+    });
+  }, [modalSelecionadoId]);
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
@@ -119,7 +126,7 @@ const Home = () => {
 
     const id = setTimeout(async () => {
       try {
-        const opcoes = await buscarOpcoesPorNome(busca, 1, 20);
+        const opcoes = await buscarOpcoesPorNome(busca, 1, 20, modalSelecionadoId ?? undefined);
         setOpcoesBusca(opcoes);
       } catch (err) {
         console.error("Erro ao buscar opções:", err);
@@ -128,7 +135,7 @@ const Home = () => {
     }, 600);
 
     return () => clearTimeout(id);
-  }, [busca]);
+  }, [busca, modalSelecionadoId]);
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
@@ -185,7 +192,7 @@ const Home = () => {
 
       const { linha, nomeExibicao } = opcao;
       const linhaCodigo = linha.codigo || linha.nome;
-      const modal: ModalApiTransporte = "onibus";
+      const modal = ((linha.modalId && modais.find((m) => m.id === linha.modalId)?.nome.toLowerCase()) || "onibus") as ModalApiTransporte;
 
       setLinhasSelecionadas((prev) => {
         if (
@@ -237,7 +244,7 @@ const Home = () => {
         console.error("Erro ao buscar itinerário após seleção:", err);
       }
     },
-    [garantirItinerario],
+    [garantirItinerario, modais],
   );
 
   const removerLinha = useCallback(
@@ -416,9 +423,11 @@ const Home = () => {
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
+  const linhasSelecionadasFiltradas = useMemo(() => linhasSelecionadas.filter((l) => !modalSelecionadoId || modais.find((m) => m.id === modalSelecionadoId)?.nome.toLowerCase() === l.modal), [linhasSelecionadas, modalSelecionadoId, modais]);
+
   const dadosParaMapa = useMemo(
     () =>
-      linhasSelecionadas
+      linhasSelecionadasFiltradas
         .filter((l) => l.ativa)
         .map((l) => {
           const itinerario = itinerariosPorId[l.linhaId];
@@ -486,7 +495,7 @@ const Home = () => {
             })),
           };
         }),
-    [linhasSelecionadas, itinerariosPorId, getVeiculosPorCodigo],
+    [linhasSelecionadasFiltradas, itinerariosPorId, getVeiculosPorCodigo],
   );
 
   const dadosBuscaFormatados = useMemo(
@@ -550,21 +559,18 @@ const Home = () => {
       <Filtro
         transito={transito}
         clickTransito={() => setTransito((p) => !p)}
-        onibus={onibus}
-        setOnibus={setOnibus}
-        brt={brt}
-        setBrt={setBrt}
-        trem={trem}
-        setTrem={setTrem}
-        metro={metro}
-        setMetro={setMetro}
+        modalSelecionado={modais.find((m) => m.id === modalSelecionadoId)?.nome.toLowerCase() ?? "onibus"}
+        onSelecionarModal={(modalNome) => {
+          const modal = modais.find((m) => m.nome.toLowerCase() === modalNome);
+          if (modal) setModalSelecionadoId(modal.id);
+        }}
       />
 
       <RotaButton />
       <LocalButton location={location} mapRef={mapRef} />
 
       <LinhasContainer
-        linhasSelecionadas={linhasSelecionadas}
+        linhasSelecionadas={linhasSelecionadasFiltradas}
         aoRemoverLinha={removerLinha}
         aoToggleAtiva={toggleAtiva}
         aoToggleSentido={toggleSentido}

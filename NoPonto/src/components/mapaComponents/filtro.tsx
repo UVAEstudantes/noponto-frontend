@@ -49,27 +49,15 @@ const colorsDark = {
 interface FiltroProps {
   transito: boolean;
   clickTransito: () => void;
-  onibus: boolean;
-  setOnibus: (value: boolean) => void;
-  brt: boolean;
-  setBrt: (value: boolean) => void;
-  trem: boolean;
-  setTrem: (value: boolean) => void;
-  metro: boolean;
-  setMetro: (value: boolean) => void;
+  modalSelecionado: string | null;
+  onSelecionarModal: (modal: string) => void;
 }
 
 export default function Filtro({
   transito,
   clickTransito,
-  onibus,
-  setOnibus,
-  brt,
-  setBrt,
-  trem,
-  setTrem,
-  metro,
-  setMetro,
+  modalSelecionado,
+  onSelecionarModal,
 }: FiltroProps) {
   const { cores, temaAtual } = useTema();
   const [risco, setRisco] = React.useState(false);
@@ -88,25 +76,9 @@ export default function Filtro({
     console.log("abrir filtros", !filtroaberto);
   }
 
-  function clickOnibus() {
-    if (onibus && !brt && !trem && !metro) return;
-    setOnibus(!onibus);
-    console.log("onibus:", !onibus);
-  }
-  function clickBrt() {
-    if (brt && !onibus && !trem && !metro) return;
-    setBrt(!brt);
-    console.log("brt:", !brt);
-  }
-  function clickTrem() {
-    if (trem && !onibus && !brt && !metro) return;
-    setTrem(!trem);
-    console.log("trem:", !trem);
-  }
-  function clickMetro() {
-    if (metro && !onibus && !brt && !trem) return;
-    setMetro(!metro);
-    console.log("metro:", !metro);
+  function selecionarModal(modal: string) {
+    onSelecionarModal(modal);
+    console.log("modal:", modal);
   }
 
   function clickRisco() {
@@ -178,11 +150,11 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => clickOnibus()}
+                      onPress={() => selecionarModal("onibus")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
-                      style={estiloToggle(onibus)}
+                      style={estiloToggle(modalSelecionado === "onibus")}
                     >
-                      {onibus && (
+                      {modalSelecionado === "onibus" && (
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>
@@ -208,11 +180,11 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => clickBrt()}
+                      onPress={() => selecionarModal("brt")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
-                      style={estiloToggle(brt)}
+                      style={estiloToggle(modalSelecionado === "brt")}
                     >
-                      {brt && <Check color="white" size={13} strokeWidth={6} />}
+                      {modalSelecionado === "brt" && <Check color="white" size={13} strokeWidth={6} />}
                     </Pressable>
                   </View>
 
@@ -236,11 +208,11 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => clickTrem()}
+                      onPress={() => selecionarModal("trem")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
-                      style={estiloToggle(trem)}
+                      style={estiloToggle(modalSelecionado === "trem")}
                     >
-                      {trem && (
+                      {modalSelecionado === "trem" && (
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>
@@ -266,11 +238,11 @@ export default function Filtro({
                     </Text>
 
                     <Pressable
-                      onPress={() => clickMetro()}
+                      onPress={() => selecionarModal("metro")}
                       className="ml-auto p-1 h-6 w-6 rounded-md"
-                      style={estiloToggle(metro)}
+                      style={estiloToggle(modalSelecionado === "metro")}
                     >
-                      {metro && (
+                      {modalSelecionado === "metro" && (
                         <Check color="white" size={13} strokeWidth={6} />
                       )}
                     </Pressable>

@@ -80,6 +80,12 @@ export interface LinhaSimplesDto {
 
 export interface LinhasResponse extends PaginatedResponse<LinhaSimplesDto> {}
 
+
+export interface ModalTransporteDto {
+  id: string;
+  nome: string;
+}
+
 export interface SentidoSimples {
   id: string;
   nome: string;
