@@ -1,8 +1,8 @@
 import {
   ArrowLeftRight,
   Bus,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Eye,
   EyeOff,
   MapPin,
@@ -19,11 +19,7 @@ import { ModoSentido } from "@/src/types/transporte";
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+
 
 const MAX_LINHAS_VIEW = 10;
 
@@ -391,8 +387,7 @@ function LinhasContainer({
   const { cores, temaAtual } = useTema();
   const modalBase = cores.fundoPainel;
   const highlightAlpha = temaAtual === "escuro" ? 0.28 : 0.22;
-  const largura = 290;
-  const translateX = useSharedValue(-largura);
+  const largura = 300;
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
 
   const linhaConfig = React.useMemo(
@@ -417,43 +412,23 @@ function LinhasContainer({
     }
   }, [linhaConfigId, linhaConfig]);
 
-  const estiloContainer = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  const estiloBotao = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value + largura - 12 }],
-  }));
-
-  React.useEffect(() => {
-    translateX.value = withSpring(aberto ? 0 : -largura, {
-      damping: 32,
-      stiffness: 110,
-    });
-  }, [aberto, translateX]);
 
   return (
     <>
       {/* Botão toggle */}
-      <Animated.View
-        style={[
-          estiloBotao,
-          { position: "absolute", top: "20%", left: 0, zIndex: 1 },
-        ]}
-      >
+      <View style={{ position: "absolute", right: 12, bottom: 220, zIndex: 16 }}>
         <Pressable
           onPress={aoToggleAberto}
           hitSlop={{ top: 10, bottom: 10, right: 10, left: 0 }}
         >
           <View
             style={{
-              borderTopRightRadius: 16,
-              borderBottomRightRadius: 16,
-              width: 44,
-              height: 56,
+              borderRadius: 999,
+              width: 48,
+              height: 48,
               backgroundColor: cores.fundoPainel,
               borderWidth: 1,
-              borderLeftWidth: 0,
+
               borderColor: cores.borda,
               alignItems: "center",
               justifyContent: "center",
@@ -464,13 +439,13 @@ function LinhasContainer({
             }}
           >
             {aberto ? (
-              <ChevronLeft
+              <ChevronUp
                 color={cores.iconePrimario}
                 size={24}
                 strokeWidth={2.5}
               />
             ) : (
-              <ChevronRight
+              <ChevronDown
                 color={cores.iconePrimario}
                 size={24}
                 strokeWidth={2.5}
@@ -478,23 +453,20 @@ function LinhasContainer({
             )}
           </View>
         </Pressable>
-      </Animated.View>
+      </View>
 
       {/* Container principal */}
-      <Animated.View
-        style={[
-          estiloContainer,
-          {
+      {aberto && (<View
+        style={{
             position: "absolute",
-            top: "18%",
-            left: 0,
-            width: largura,
-            height: "66%",
+            left: 12,
+            right: 12,
+            bottom: 20,
+            width: undefined,
+            height: "40%",
             backgroundColor: cores.fundoPainel,
-            borderTopRightRadius: 20,
-            borderBottomRightRadius: 20,
+            borderRadius: 20,
             borderWidth: 1,
-            borderLeftWidth: 0,
             borderColor: cores.borda,
             shadowColor: "#000",
             shadowOpacity: 0.2,
@@ -502,8 +474,7 @@ function LinhasContainer({
             elevation: 10,
             zIndex: 10,
             overflow: "hidden",
-          },
-        ]}
+        }}
       >
         {/* Header */}
         <View
@@ -575,7 +546,7 @@ function LinhasContainer({
             ))
           )}
         </ScrollView>
-      </Animated.View>
+      </View>)}
       <Modal
         transparent
         visible={Boolean(linhaConfig)}

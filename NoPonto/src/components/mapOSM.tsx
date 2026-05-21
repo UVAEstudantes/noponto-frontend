@@ -229,6 +229,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
+    .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
+    .train-marker .bus-blob{border-radius:6px}
+    .train-pulse{position:absolute;width:18px;height:18px;border-radius:7px;border:2px solid rgba(255,255,255,.7);animation:iconPulse 1.8s ease-out infinite}
     .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
     .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
     .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
@@ -439,18 +442,20 @@ function animateTo(key,marker,dest,ms){
   animFrames[key]=requestAnimationFrame(step);
 }
 
-function busIcon(color,heading){
+function busIcon(color,heading,modal){
   var el=document.createElement('div');
-  el.className='bus-marker';
+  var isTrain=(modal||'').toLowerCase()==='trem';
+  el.className='bus-marker'+(isTrain?' train-marker':'');
   el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-               '<div class="bus-blob" style="background:'+color+'"></div>'+
+               '<div class="bus-blob" style="background:'+color+'"></div>'+(isTrain?'<div class="train-pulse"></div>':'')+
                '<div class="bus-arrow"></div></div>';
   return el;
 }
 
-function stopIcon(color){
+function stopIcon(color,modal){
   var el=document.createElement('div');
-  el.className='stop-marker';
+  var isTrain=(modal||'').toLowerCase()==='trem';
+  el.className='stop-marker'+(isTrain?' stop-train':'');
   el.innerHTML='<div class="stop-pin" style="--stop-color:'+color+'"><div class="stop-core"></div></div>';
   return el;
 }
@@ -473,7 +478,8 @@ function hashString(s){
   return h>>>0;
 }
 
-function stopThinningFactor(zoom){
+function stopThinningFactor(zoom,modal){
+  if((modal||'').toLowerCase()==='trem')return 1;
   if(zoom>=15)return 1;
   if(zoom>=14)return 2;
   if(zoom>=13)return 3;
@@ -481,7 +487,8 @@ function stopThinningFactor(zoom){
   return 6;
 }
 
-function stopOpacityForZoom(zoom){
+function stopOpacityForZoom(zoom,modal){
+  if((modal||'').toLowerCase()==='trem')return 0.95;
   if(zoom>=15)return 0.75;
   if(zoom>=14)return 0.6;
   if(zoom>=13)return 0.45;
@@ -489,7 +496,8 @@ function stopOpacityForZoom(zoom){
   return 0.0;
 }
 
-function stopScaleForZoom(zoom){
+function stopScaleForZoom(zoom,modal){
+  if((modal||'').toLowerCase()==='trem')return 1.05;
   if(zoom>=15)return 1;
   if(zoom>=14)return 0.9;
   if(zoom>=13)return 0.82;
@@ -497,10 +505,10 @@ function stopScaleForZoom(zoom){
   return 0.65;
 }
 
-function applyStopStyle(el,zoom){
+function applyStopStyle(el,zoom,modal){
   if(!el)return;
-  el.style.setProperty('--stop-opacity',String(stopOpacityForZoom(zoom)));
-  el.style.setProperty('--stop-scale',String(stopScaleForZoom(zoom)));
+  el.style.setProperty('--stop-opacity',String(stopOpacityForZoom(zoom,modal)));
+  el.style.setProperty('--stop-scale',String(stopScaleForZoom(zoom,modal)));
 }
 
 function poiIcon(iconName,color){
@@ -719,7 +727,7 @@ function rebuildStopCache(linhas,darkMode){
       var key=stopKeyFromParada(p,lat,lng);
       if(!key||seen[key])continue;
       seen[key]=true;
-      list.push({key:key,parada:p,lat:lat,lng:lng,color:color});
+      list.push({key:key,parada:p,lat:lat,lng:lng,color:color,modal:l.modal||'onibus'});
     }
   }
   stopCache=list;
@@ -733,7 +741,7 @@ function updateStopMarkers(){
   }
   var bounds=map.getBounds();
   var zoom=map.getZoom();
-  var thinFactor=stopThinningFactor(zoom);
+  var thinFactors={};
   var visible={};
 
   function inBounds(lat,lng){
@@ -746,12 +754,12 @@ function updateStopMarkers(){
     var existing=stopMarkersByKey[key];
     if(existing&&existing.marker){
       existing.marker.setLngLat([stop.lng,stop.lat]);
-      if(existing.el)applyStopStyle(existing.el,zoom);
+      if(existing.el)applyStopStyle(existing.el,zoom,stop.modal);
       visible[key]=true;
       return;
     }
-    var el=stopIcon(stop.color);
-    applyStopStyle(el,zoom);
+    var el=stopIcon(stop.color,stop.modal);
+    applyStopStyle(el,zoom,stop.modal);
     var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([stop.lng,stop.lat]);
     var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada));
     marker.setPopup(popup);
@@ -768,9 +776,11 @@ function updateStopMarkers(){
   for(var j=0;j<stopCache.length;j++){
     var s2=stopCache[j];
     if(!inBounds(s2.lat,s2.lng))continue;
-    if(thinFactor>1){
+    var tf=thinFactors[s2.modal];
+    if(tf==null){tf=stopThinningFactor(zoom,s2.modal);thinFactors[s2.modal]=tf;}
+    if(tf>1){
       var h=hashString(String(s2.key));
-      if(h%thinFactor!==0)continue;
+      if(h%tf!==0)continue;
     }
     ensureStopMarker(s2);
   }
@@ -1053,7 +1063,7 @@ window.updateMap=function(data){
       lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:idx===1?1:0,width:idx===1?3:4}
+        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4:(idx===1?3:4)}
       });
     });
 
@@ -1101,7 +1111,7 @@ window.updateMap=function(data){
           var c=interpolarNaRota(lineCoordsDR,posicaoNaRota);
           if(c)posInicial={lat:c[0],lng:c[1]};
         }
-        var el=busIcon(color,heading||0);
+        var el=busIcon(color,heading||0,linha.modal);
         marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
         popup=new maplibregl.Popup({offset:18,closeButton:false}).setHTML(buildPopup(linha,p,vid,heading));
         if(popup.on)popup.on('open',refreshIcons);

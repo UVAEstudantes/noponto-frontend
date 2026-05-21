@@ -17,11 +17,12 @@ import {
 } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import {
+  buscarModais,
   buscarOpcoesPorNome,
   buscarProximosVeiculosParada,
 } from "@/src/services/mobilidadeRio";
 import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
-import { ModalApiTransporte, OpcaoBusca, Parada } from "@/src/types/transporte";
+import { ModalApiTransporte, ModalTransporteDto, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -35,6 +36,21 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Keyboard, Pressable, View } from "react-native";
 
 const MAX_LINHAS = 10;
+const CORES_RAMAIS_TREM: Record<string, string> = {
+  deodoro: "#ba0c2f",
+  santa_cruz: "#64a70b",
+  japeri: "#92c1e9",
+  saracuruna: "#de7c00",
+  belford_roxo: "#5c068c",
+  paracambi: "#00a3e0",
+  guapimirim: "#f1b500",
+  vila_inhomirim: "#c4b000",
+};
+const normalizarModalNome = (nome?: string | null) =>
+  (nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const Home = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
@@ -48,10 +64,18 @@ const Home = () => {
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
   const [transito, setTransito] = React.useState(false);
-  const [onibus, setOnibus] = React.useState(true);
-  const [brt, setBrt] = React.useState(false);
-  const [trem, setTrem] = React.useState(false);
-  const [metro, setMetro] = React.useState(false);
+  const [modais, setModais] = useState<ModalTransporteDto[]>([]);
+  const [modalSelecionadoId, setModalSelecionadoId] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    buscarModais().then((lista) => {
+      setModais(lista);
+      if (lista.length > 0) {
+        setModalSelecionadoId((prev) => prev ?? lista[0].id);
+      }
+    });
+  }, []);
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
@@ -86,6 +110,13 @@ const Home = () => {
   const normalizarCodigo = useCallback((valor: string) => {
     return valor.trim().toUpperCase();
   }, []);
+  const corRamalTrem = useCallback((nomeExibicao: string) => {
+    const n = normalizarNome(nomeExibicao).replace(/\s+/g, "_");
+    for (const [ramal, cor] of Object.entries(CORES_RAMAIS_TREM)) {
+      if (n.includes(ramal)) return cor;
+    }
+    return null;
+  }, [normalizarNome]);
 
   useEffect(() => {
     let subscription: any;
@@ -119,7 +150,7 @@ const Home = () => {
 
     const id = setTimeout(async () => {
       try {
-        const opcoes = await buscarOpcoesPorNome(busca, 1, 20);
+        const opcoes = await buscarOpcoesPorNome(busca, 1, 20, modalSelecionadoId ?? undefined);
         setOpcoesBusca(opcoes);
       } catch (err) {
         console.error("Erro ao buscar opções:", err);
@@ -128,7 +159,7 @@ const Home = () => {
     }, 600);
 
     return () => clearTimeout(id);
-  }, [busca]);
+  }, [busca, modalSelecionadoId]);
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
@@ -185,7 +216,9 @@ const Home = () => {
 
       const { linha, nomeExibicao } = opcao;
       const linhaCodigo = linha.codigo || linha.nome;
-      const modal: ModalApiTransporte = "onibus";
+      const modal = ((linha.modalId &&
+        normalizarModalNome(modais.find((m) => m.id === linha.modalId)?.nome)) ||
+        "onibus") as ModalApiTransporte;
 
       setLinhasSelecionadas((prev) => {
         if (
@@ -195,7 +228,11 @@ const Home = () => {
           return prev;
         }
 
-        const cor = gerarCorAleatoria(prev.map((l) => l.cor));
+        const cor =
+          modal === "trem"
+            ? (corRamalTrem(nomeExibicao) ??
+              gerarCorAleatoria(prev.map((l) => l.cor)))
+            : gerarCorAleatoria(prev.map((l) => l.cor));
 
         return [
           ...prev,
@@ -237,7 +274,7 @@ const Home = () => {
         console.error("Erro ao buscar itinerário após seleção:", err);
       }
     },
-    [garantirItinerario],
+    [garantirItinerario, modais, corRamalTrem],
   );
 
   const removerLinha = useCallback(
@@ -416,9 +453,21 @@ const Home = () => {
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
+  const modalSelecionadoNome = useMemo(
+    () => normalizarModalNome(modais.find((m) => m.id === modalSelecionadoId)?.nome),
+    [modais, modalSelecionadoId],
+  );
+  const linhasSelecionadasFiltradas = useMemo(
+    () =>
+      linhasSelecionadas.filter(
+        (l) => !modalSelecionadoId || modalSelecionadoNome === l.modal,
+      ),
+    [linhasSelecionadas, modalSelecionadoId, modalSelecionadoNome],
+  );
+
   const dadosParaMapa = useMemo(
     () =>
-      linhasSelecionadas
+      linhasSelecionadasFiltradas
         .filter((l) => l.ativa)
         .map((l) => {
           const itinerario = itinerariosPorId[l.linhaId];
@@ -486,7 +535,7 @@ const Home = () => {
             })),
           };
         }),
-    [linhasSelecionadas, itinerariosPorId, getVeiculosPorCodigo],
+    [linhasSelecionadasFiltradas, itinerariosPorId, getVeiculosPorCodigo],
   );
 
   const dadosBuscaFormatados = useMemo(
@@ -550,21 +599,18 @@ const Home = () => {
       <Filtro
         transito={transito}
         clickTransito={() => setTransito((p) => !p)}
-        onibus={onibus}
-        setOnibus={setOnibus}
-        brt={brt}
-        setBrt={setBrt}
-        trem={trem}
-        setTrem={setTrem}
-        metro={metro}
-        setMetro={setMetro}
+        modalSelecionado={modalSelecionadoNome || "onibus"}
+        onSelecionarModal={(modalNome) => {
+          const modal = modais.find((m) => m.nome.toLowerCase() === modalNome);
+          if (modal) setModalSelecionadoId(modal.id);
+        }}
       />
 
       <RotaButton />
       <LocalButton location={location} mapRef={mapRef} />
 
       <LinhasContainer
-        linhasSelecionadas={linhasSelecionadas}
+        linhasSelecionadas={linhasSelecionadasFiltradas}
         aoRemoverLinha={removerLinha}
         aoToggleAtiva={toggleAtiva}
         aoToggleSentido={toggleSentido}
