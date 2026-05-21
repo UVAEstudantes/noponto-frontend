@@ -601,7 +601,9 @@ const Home = () => {
         clickTransito={() => setTransito((p) => !p)}
         modalSelecionado={modalSelecionadoNome || "onibus"}
         onSelecionarModal={(modalNome) => {
-          const modal = modais.find((m) => m.nome.toLowerCase() === modalNome);
+          const modal = modais.find(
+            (m) => normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
+          );
           if (modal) setModalSelecionadoId(modal.id);
         }}
       />
