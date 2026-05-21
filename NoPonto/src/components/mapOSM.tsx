@@ -218,14 +218,15 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
 
     .bus-marker{background:transparent;border:none}
-    .bus-inner{position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
-    .bus-blob{width:18px;height:18px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+    .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg))}
+    .bus-blob{position:relative;width:18px;height:12px;border-radius:10px 10px 8px 4px;border:2px solid rgba(255,255,255,.95);box-shadow:0 2px 7px rgba(0,0,0,.35)}
+    .bus-blob:after{content:'';position:absolute;right:-2px;top:50%;transform:translateY(-50%);width:5px;height:7px;border-radius:4px;background:rgba(255,255,255,.28)}
     .bus-arrow{
       position:absolute;left:50%;top:50%;width:0;height:0;
       border-left:5px solid transparent;border-right:5px solid transparent;
       border-bottom:10px solid rgba(255,255,255,.95);
-      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-13px);
-      transform-origin:50% 50%;transition:transform .4s ease;pointer-events:none
+      transform:translate(-50%,-50%) translateY(-12px);
+      transform-origin:50% 50%;transition:opacity .2s ease;pointer-events:none
     }
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
@@ -449,7 +450,7 @@ function busIcon(color,heading,modal){
   var isTrain=(modal||'').toLowerCase()==='trem';
   el.className='bus-marker'+(isTrain?' train-marker':'');
   el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-               '<div class="bus-blob" style="background:'+color+'"></div>'+(isTrain?'<div class="train-pulse"></div>':'')+
+               '<div class="bus-blob" style="background:'+color+'"></div>'+
                '<div class="bus-arrow"></div></div>';
   return el;
 }
@@ -548,7 +549,16 @@ function setHeading(marker,heading){
   if(typeof heading!=='number')return;
   var el=marker.getElement();if(!el)return;
   var inner=el.querySelector('.bus-inner');
-  if(inner)inner.style.setProperty('--h',heading+'deg');
+  var bearing=(map&&map.getBearing)?map.getBearing():0;
+  var adjusted=heading-bearing;
+  if(inner)inner.style.setProperty('--h',adjusted+'deg');
+}
+
+function refreshVehicleHeadings(){
+  Object.keys(vehicleMarkers).forEach(function(k){
+    var h=vehicleHeadings[k];
+    if(typeof h==='number')setHeading(vehicleMarkers[k],h);
+  });
 }
 
 function fmtTs(v){
@@ -926,7 +936,11 @@ function updateUser(data){
   var arrow=document.querySelector('.user-arrow');
   if(arrow){
     var h=normHeading(data.heading);
-    if(h!==null){arrow.style.display='block';arrow.style.setProperty('--h',h+'deg')}
+    if(h!==null){
+      var bearing=(map&&map.getBearing)?map.getBearing():0;
+      arrow.style.display='block';
+      arrow.style.setProperty('--h',(h-bearing)+'deg');
+    }
     else arrow.style.display='none';
   }
 
@@ -998,6 +1012,7 @@ window.onload=function(){
     map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
     map.on('moveend',function(){internalMove=false;updateStopMarkers()});
     map.on('zoomend',function(){internalMove=false;updateStopMarkers()});
+    map.on('rotate',function(){refreshVehicleHeadings()});
 
     startDR();
     setInterval(updateTimeAgo,1000);
@@ -1015,7 +1030,7 @@ window.centerOnUser=function(){
   if(!map||!userMarker)return;
   autoFollow=true;
   var pos=userMarker.getLngLat();
-  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17})});
+  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17,bearing:0,pitch:0})});
 };
 
 window.fitToCoordinates=function(coords){
