@@ -1,291 +1,15 @@
-import {
-  ESTILO_MAPA_PADRAO,
-  EstiloMapaId,
-  estilosMapaDisponiveis,
-} from "@/src/constants/estilosMapa";
-import { Parada } from "@/src/types/transporte";
-import React, {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
-import { WebView } from "react-native-webview";
-
-// Atualiza a interface LinhaParaMostrar para incluir mapeamento itinerarioId -> segmento
-export interface LinhaParaMostrar {
-  nome: string;
-  cor?: string;
-  modal?: string;
-  segmentos?: [number, number][][];
-  coordenadas?: [number, number][];
-  paradas?: Parada[];
-  mostrarParadas?: boolean;
-  modoSentido?: string;
-  /**
-   * Mapeamento de itinerarioId -> índice do segmento.
-   * Permite o dead reckoning usar o segmento correto para cada veículo.
-   * ex: { "uuid-ida": 0, "uuid-volta": 1 }
-   */
-  itinerarioSegmentoMap?: Record<string, number>;
-  /**
-   * Mapeamento de itinerarioId -> nome do sentido.
-   * ex: { "uuid-ida": "Terminal Campo Grande" }
-   */
-  itinerarioSentidoMap?: Record<string, string>;
-  posicoes?: {
-    id?: string;
-    ordem?: string;
-    codigo?: string;
-    latitude?: number | string;
-    longitude?: number | string;
-    direcao?: number | string | null;
-    velocidade?: number | string;
-    velocidadeMedia?: number | null;
-    sentidoNome?: string;
-    timestamp?: number | string;
-    proximaParadaNome?: string | null;
-    distanciaProximaParadaMetros?: number | null;
-    status?: number;
-    posicaoNaRota?: number | null;
-    comprimentoRotaMetros?: number | null;
-    itinerarioId?: string | null; // ← garante que está na interface
-  }[];
-}
-
-interface MapaOSMProps {
-  location: any;
-  linhasParaMostrar: LinhaParaMostrar[];
-  darkMode?: boolean;
-  showTraffic?: boolean;
-  estiloMapa?: EstiloMapaId;
-  onStopPress?: (parada: Parada) => void;
-}
-
-export interface MapaOSMRef {
-  centerOnUser: () => void;
-  fitToCoordinates: (
-    coordinates: { latitude: number; longitude: number }[],
-  ) => void;
-  focarVeiculo: (payload: {
-    ordem?: string;
-    latitude?: number;
-    longitude?: number;
-    zoom?: number;
-  }) => void;
-  mostrarPoi: (payload: {
-    poi: { lat: number; lng: number; nome?: string };
-    parada?: { lat: number; lng: number; nome?: string } | null;
-    distancia?: number | null;
-    icone?: string;
-    cor?: string;
-  }) => void;
-  limparPoi: () => void;
-}
-
-const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
-
-const filtrosMapaJS = estilosMapaDisponiveis
-  .map((e) => `"${e.id}":{light:"${e.filtroLight}",dark:"${e.filtroDark}"}`)
-  .join(",");
-
-const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
-  (
-    {
-      location,
-      linhasParaMostrar,
-      darkMode = false,
-      showTraffic = false,
-      estiloMapa = ESTILO_MAPA_PADRAO,
-      onStopPress,
-    },
-    ref,
-  ) => {
-    const webViewRef = useRef<WebView>(null);
-    const coordInicialRef = useRef<{
-      latitude: number;
-      longitude: number;
-    } | null>(null);
-
-    if (!coordInicialRef.current && location?.coords) {
-      coordInicialRef.current = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-    }
-
-    const latInicial =
-      coordInicialRef.current?.latitude ??
-      location?.coords?.latitude ??
-      -22.9068;
-    const lngInicial =
-      coordInicialRef.current?.longitude ??
-      location?.coords?.longitude ??
-      -43.1729;
-
-    useImperativeHandle(ref, () => ({
-      centerOnUser: () => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.centerOnUser) window.centerOnUser();`,
-        );
-      },
-      fitToCoordinates: (coordinates) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`,
-        );
-      },
-      focarVeiculo: (payload) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.focusOnVehicle) window.focusOnVehicle(${JSON.stringify(payload)});`,
-        );
-      },
-      mostrarPoi: (payload) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.mostrarConexaoPoi) window.mostrarConexaoPoi(${JSON.stringify(payload)});`,
-        );
-      },
-      limparPoi: () => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.limparConexaoPoi) window.limparConexaoPoi();`,
-        );
-      },
-    }));
-
-    const [mapReady, setMapReady] = React.useState(false);
-
-    useEffect(() => {
-      if (!mapReady) return;
-
-      const data = {
-        userLocation: location?.coords
-          ? [location.coords.latitude, location.coords.longitude]
-          : null,
-        heading: location?.coords?.heading ?? null,
-        accuracy: location?.coords?.accuracy ?? null,
-        linhas: linhasParaMostrar,
-        darkMode,
-        showTraffic,
-        estiloMapa,
-      };
-
-      webViewRef.current?.injectJavaScript(
-        `window.updateMap(${JSON.stringify(data)});`,
-      );
-      // Full map updates are heavy; user movement is handled separately.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mapReady, linhasParaMostrar, darkMode, showTraffic, estiloMapa]);
-
-    useEffect(() => {
-      if (!mapReady || !location?.coords) return;
-
-      const data = {
-        userLocation: [location.coords.latitude, location.coords.longitude],
-        heading: location.coords.heading ?? null,
-        accuracy: location.coords.accuracy ?? null,
-      };
-
-      webViewRef.current?.injectJavaScript(
-        `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
-      );
-    }, [mapReady, location]);
-
-    const mapHTML = useMemo(
-      () => `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet"/>
-  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <style>
-    html,body{height:100%;width:100%;margin:0;padding:0;background:#f0f0f0}
-    #map{height:100%;width:100%;position:absolute;top:0;left:0}
-    .maplibregl-canvas{outline:none}
-    .maplibregl-marker{cursor:pointer}
-    .maplibregl-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:0;padding:8px 10px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.2);background:#fff;color:#111}
-    .maplibregl-popup-close-button{display:none}
-
-    .user-container{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
-    .user-dot{width:12px;height:12px;background:#38bdf8;border:2.5px solid rgba(255,255,255,.95);border-radius:50%;box-shadow:0 0 0 6px rgba(56,189,248,.14),0 2px 8px rgba(0,0,0,.35);z-index:2}
-    .user-arrow{display:none;
-      position:absolute;left:50%;top:50%;width:0;height:0;
-      border-left:6px solid transparent;border-right:6px solid transparent;
-      border-bottom:9px solid #38bdf8;
-      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-15px);
-      transform-origin:50% 50%;transition:transform .2s ease-out;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))
-    }
-
-    .bus-marker{background:transparent;border:none}
-    .bus-inner{position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
-    .bus-blob{width:18px;height:18px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,.35)}
-    .bus-arrow{
-      position:absolute;left:50%;top:50%;width:0;height:0;
-      border-left:5px solid transparent;border-right:5px solid transparent;
-      border-bottom:10px solid rgba(255,255,255,.95);
-      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-13px);
-      transform-origin:50% 50%;transition:transform .4s ease;pointer-events:none
-    }
-
-    .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
-    .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-blob{border-radius:6px}
-    .train-pulse{position:absolute;width:18px;height:18px;border-radius:7px;border:2px solid rgba(255,255,255,.7);animation:iconPulse 1.8s ease-out infinite}
-    .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
-    .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
-    .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
-    @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.5);opacity:.2}70%{transform:translate(-50%,-50%) scale(1.35);opacity:0}100%{opacity:0}}
-    @keyframes iconPulse{0%{transform:translate(-50%,-50%) scale(.8);opacity:.5}70%{transform:translate(-50%,-50%) scale(1.9);opacity:0}100%{opacity:0}}
-
-    .popup-card{display:flex;flex-direction:column;gap:6px}
-    .popup-header{display:flex;align-items:center;gap:8px}
-    .popup-indicator{width:28px;height:28px;position:relative;flex:0 0 28px;border-radius:10px;background:#fff;border:1.5px solid currentColor;color:var(--c,#2196F3);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-    .popup-indicator:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid currentColor;transform:translate(-50%,-50%);opacity:.45;animation:iconPulse 2.6s ease-out infinite}
-    .popup-indicator svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none}
-    .popup-title{font-weight:700;font-size:14px;color:#111}
-    .popup-sub{font-size:12px;color:#555}
-    .popup-time{font-size:12px;color:#666}
-    .popup-main{display:flex;flex-direction:column;gap:2px}
-    .popup-toggle{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f3f4f6;color:#1f2937;font-weight:600;font-size:12px;cursor:pointer;user-select:none;align-self:flex-start;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    .popup-toggle .toggle-chevron{width:8px;height:8px;border:2px solid currentColor;border-left:0;border-top:0;transform:rotate(45deg);transition:transform .2s ease}
-    .popup-toggle.open .toggle-chevron{transform:rotate(-135deg)}
-    .popup-details{max-height:0;opacity:0;overflow:hidden;border-top:1px dashed #e5e7eb;padding-top:0;margin-top:2px;transition:max-height .25s ease,opacity .2s ease,padding-top .2s ease}
-    .popup-details.open{max-height:160px;opacity:1;padding-top:8px}
-    .popup-row{display:flex;gap:6px;color:#555}
-    .popup-label{font-weight:600;color:#333;min-width:86px}
-
-    .stop-popup{min-width:180px}
-    .stop-title{font-weight:700;font-size:14px;color:#111}
-    .stop-sub{font-size:11px;color:#666;margin-top:2px}
-    .stop-hint{font-size:11px;color:#6b7280;margin-top:6px}
-
-    .poi-marker{width:28px;height:28px;border-radius:12px;background:#fff;border:1.5px solid var(--c,#f59e0b);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.25);position:relative}
-    .poi-marker:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid var(--c,#f59e0b);transform:translate(-50%,-50%);opacity:.35;animation:iconPulse 2.4s ease-out infinite}
-    .poi-marker svg{width:16px;height:16px;stroke:var(--c,#f59e0b);stroke-width:2;fill:none}
-    .poi-distance{padding:4px 10px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;display:inline-block;min-width:46px;text-align:center}
-
-    #map.dark-mode .maplibregl-popup-content{background:#1b1f24;color:#e5e7eb}
-    #map.dark-mode .maplibregl-popup-tip{border-top-color:#1b1f24}
-    #map.dark-mode .popup-title{color:#f3f4f6}
-    #map.dark-mode .popup-sub,#map.dark-mode .popup-time,#map.dark-mode .popup-row{color:#cbd5e1}
-    #map.dark-mode .popup-label{color:#e5e7eb}
-    #map.dark-mode .popup-toggle{background:#2a2f35;color:#e5e7eb}
-    #map.dark-mode .popup-details{border-top-color:#3b4047}
-    #map.dark-mode .popup-indicator{background:#1b1f24;box-shadow:0 2px 8px rgba(0,0,0,.45)}
-    #map.dark-mode .stop-title{color:#f8fafc}
-    #map.dark-mode .stop-sub{color:#cbd5e1}
-    #map.dark-mode .stop-hint{color:#94a3b8}
-    #map.dark-mode .stop-pin{background:rgba(15,23,42,.9);border-color:rgba(148,163,184,.45);box-shadow:0 1px 6px rgba(0,0,0,.65)}
-    #map.dark-mode .stop-core{background:var(--stop-color,#38bdf8)}
-    #map.dark-mode .stop-pin:after{opacity:.18}
-    #map.dark-mode .user-dot{background:#7dd3fc;border-color:rgba(226,232,240,.85);box-shadow:0 0 0 7px rgba(125,211,252,.18),0 2px 10px rgba(0,0,0,.65)}
-    #map.dark-mode .user-arrow{border-bottom-color:#7dd3fc;filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))}
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script>
+// Responsabilidade: script que roda dentro da WebView e controla MapLibre,
+// markers, animações e integração com React Native via postMessage.
+// usadas pelo host React Native e por fluxos realtime/dead reckoning.
+export function buildMapWebViewScript(params: {
+  latInicial: number;
+  lngInicial: number;
+  estilosJS: string;
+  filtrosMapaJS: string;
+  estiloMapaPadrao: string;
+}) {
+  const { latInicial, lngInicial, estilosJS, filtrosMapaJS, estiloMapaPadrao } = params;
+  return `
 var map,userMarker;
 var linesSourceId='lines-source',linesSolidLayerId='lines-solid',linesDashLayerId='lines-dash';
 var trafficSourceId='traffic-source',trafficLayerId='traffic-layer';
@@ -293,7 +17,7 @@ var poiLineSourceId='poi-line-source',poiLineLayerId='poi-line-layer';
 var stopMarkersByKey={},stopCache=[],stopCacheKey='',poiMarker=null,poiDistanceMarker=null;
 var estilos=[${estilosJS}];
 var filtrosMapa={${filtrosMapaJS}};
-var currentStyleId='${ESTILO_MAPA_PADRAO}';
+var currentStyleId='${estiloMapaPadrao}';
 var isDark=false;
 var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={},vehicleIndexByOrder={};
 var autoFollow=true,internalMove=false;
@@ -347,7 +71,7 @@ function startDR(){
       }
       if(!s.comprimentoGraus||s.comprimentoGraus<1e-9)return;
       // avanço normalizado = (velocidade em graus/s * dt) / comprimento em graus
-      var velGraus=kmhParaGrausPorSeg(s.velocidade);
+      var velGraus=kmhParaGrausPorSeg(s.velocidade*(s.decelFactor||1));
       var avanco=velGraus*dt/s.comprimentoGraus;
       s.posicaoNaRota=Math.min(1,s.posicaoNaRota+avanco);
       var coord=interpolarNaRota(s.lineCoords,s.posicaoNaRota);
@@ -442,13 +166,32 @@ function animateTo(key,marker,dest,ms){
   animFrames[key]=requestAnimationFrame(step);
 }
 
+// ── busIcon: gera o elemento DOM do marcador de veículo ──────────────────────
+// BRT usa formato de máscara (sino com olhos), igual à imagem de referência.
 function busIcon(color,heading,modal){
   var el=document.createElement('div');
   var isTrain=(modal||'').toLowerCase()==='trem';
-  el.className='bus-marker'+(isTrain?' train-marker':'');
-  el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-               '<div class="bus-blob" style="background:'+color+'"></div>'+(isTrain?'<div class="train-pulse"></div>':'')+
-               '<div class="bus-arrow"></div></div>';
+  var isBrt=(modal||'').toLowerCase()==='brt';
+  el.className='bus-marker'+(isTrain?' train-marker':'')+(isBrt?' brt-marker':'');
+  if(isBrt){
+    // Shape: gota com recorte no topo (pinça), rotacionada corretamente
+    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
+      '<div class="brt-mask">'+
+        '<svg viewBox="0 0 20 30" xmlns="http://www.w3.org/2000/svg">'+
+          '<path fill-rule="evenodd" d="'+
+            // Gota externa
+            'M10 29 C7 29 1 24 1 17 C1 10 5 3 10 1 C15 3 19 10 19 17 C19 24 13 29 10 29 Z '+
+            // Recorte interno maior e mais alto — pontas mais longas e separadas
+            'M10 2.5 C7.5 4.5 5.5 8 5.5 11 C5.5 13.8 7 15.5 10 15.5 C13 15.5 14.5 13.8 14.5 11 C14.5 8 12.5 4.5 10 2.5 Z'+
+          '" fill="'+color+'" stroke="rgba(255,255,255,0.95)" stroke-width="1.8" stroke-linejoin="round"/>'+
+        '</svg>'+
+      '</div>'+
+    '</div>';
+  }else{
+    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
+                 '<div class="bus-blob" style="background:'+color+'"></div>'+
+                 '<div class="bus-arrow"></div></div>';
+  }
   return el;
 }
 
@@ -479,7 +222,12 @@ function hashString(s){
 }
 
 function stopThinningFactor(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1;
+    if(zoom>=14)return 2;
+    if(zoom>=13)return 3;
+    return 9999;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 2;
   if(zoom>=13)return 3;
@@ -488,7 +236,12 @@ function stopThinningFactor(zoom,modal){
 }
 
 function stopOpacityForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 0.95;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 0.95;
+    if(zoom>=14)return 0.72;
+    if(zoom>=13)return 0.5;
+    return 0.0;
+  }
   if(zoom>=15)return 0.75;
   if(zoom>=14)return 0.6;
   if(zoom>=13)return 0.45;
@@ -497,7 +250,12 @@ function stopOpacityForZoom(zoom,modal){
 }
 
 function stopScaleForZoom(zoom,modal){
-  if((modal||'').toLowerCase()==='trem')return 1.05;
+  if((modal||'').toLowerCase()==='trem'){
+    if(zoom>=15)return 1.28;
+    if(zoom>=14)return 1.1;
+    if(zoom>=13)return 0.9;
+    return 0.65;
+  }
   if(zoom>=15)return 1;
   if(zoom>=14)return 0.9;
   if(zoom>=13)return 0.82;
@@ -531,7 +289,16 @@ function setHeading(marker,heading){
   if(typeof heading!=='number')return;
   var el=marker.getElement();if(!el)return;
   var inner=el.querySelector('.bus-inner');
-  if(inner)inner.style.setProperty('--h',heading+'deg');
+  var bearing=(map&&map.getBearing)?map.getBearing():0;
+  var adjusted=heading-bearing;
+  if(inner)inner.style.setProperty('--h',adjusted+'deg');
+}
+
+function refreshVehicleHeadings(){
+  Object.keys(vehicleMarkers).forEach(function(k){
+    var h=vehicleHeadings[k];
+    if(typeof h==='number')setHeading(vehicleMarkers[k],h);
+  });
 }
 
 function fmtTs(v){
@@ -670,7 +437,7 @@ function ensureLayers(){
   if(!map.getSource(linesSourceId)){
     map.addSource(linesSourceId,{type:'geojson',data:emptyGeo()});
     map.addLayer({id:linesSolidLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],0],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.65}});
-    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.85,'line-dasharray':[8,5]}});
+    map.addLayer({id:linesDashLayerId,type:'line',source:linesSourceId,filter:['==',['get','dash'],1],paint:{'line-color':['get','color'],'line-width':['get','width'],'line-opacity':0.9,'line-blur':0.2,'line-dasharray':[2.2,1.4]}});
   }
   if(!map.getSource(poiLineSourceId)){
     map.addSource(poiLineSourceId,{type:'geojson',data:emptyGeo()});
@@ -841,7 +608,7 @@ function showPoi(payload){
 }
 
 function normEstilo(id){
-  return(typeof id==='string'&&estilos.indexOf(id)>=0)?id:'${ESTILO_MAPA_PADRAO}';
+  return(typeof id==='string'&&estilos.indexOf(id)>=0)?id:'${estiloMapaPadrao}';
 }
 
 function applyMapFilter(){
@@ -909,7 +676,11 @@ function updateUser(data){
   var arrow=document.querySelector('.user-arrow');
   if(arrow){
     var h=normHeading(data.heading);
-    if(h!==null){arrow.style.display='block';arrow.style.setProperty('--h',h+'deg')}
+    if(h!==null){
+      var bearing=(map&&map.getBearing)?map.getBearing():0;
+      arrow.style.display='block';
+      arrow.style.setProperty('--h',(h-bearing)+'deg');
+    }
     else arrow.style.display='none';
   }
 
@@ -974,13 +745,14 @@ window.onload=function(){
     map.getCanvas().style.transition='filter .25s ease';
     ensureLayers();
     userMarker=new maplibregl.Marker({element:userIcon(),anchor:'center'}).setLngLat([${lngInicial},${latInicial}]).addTo(map);
-    setMapStyle('${ESTILO_MAPA_PADRAO}');
+    setMapStyle('${estiloMapaPadrao}');
     setDark(false);
 
     map.on('movestart',function(){if(!internalMove)autoFollow=false});
     map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
     map.on('moveend',function(){internalMove=false;updateStopMarkers()});
     map.on('zoomend',function(){internalMove=false;updateStopMarkers()});
+    map.on('rotate',function(){refreshVehicleHeadings()});
 
     startDR();
     setInterval(updateTimeAgo,1000);
@@ -998,7 +770,7 @@ window.centerOnUser=function(){
   if(!map||!userMarker)return;
   autoFollow=true;
   var pos=userMarker.getLngLat();
-  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17})});
+  runInternal(function(){map.flyTo({center:[pos.lng,pos.lat],zoom:17,bearing:0,pitch:0})});
 };
 
 window.fitToCoordinates=function(coords){
@@ -1063,7 +835,7 @@ window.updateMap=function(data){
       lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4:(idx===1?3:4)}
+        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
       });
     });
 
@@ -1087,6 +859,8 @@ window.updateMap=function(data){
       var posicaoNaRota=parseNum(p.posicaoNaRota);
       var comprimentoMetros=parseNum(p.comprimentoRotaMetros);
       var velocidade=parseNum(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade);
+      var distStop=parseNum(p.distanciaProximaParadaMetros);
+      var decelFactor=(distStop!==null&&distStop<300)?Math.max(0.72,0.95-(300-distStop)/1200):1;
 
       // Escolhe o segmento correto baseado no itinerarioId do veículo
       var lineCoordsDR=segmentos[0]||null;
@@ -1125,6 +899,7 @@ window.updateMap=function(data){
           posicaoNaRota:posicaoNaRota,
           comprimentoGraus:null,
           velocidade:velocidade,
+          decelFactor:decelFactor,
           lineCoords:lineCoordsDR,
           syncingUntil:0
         };
@@ -1135,6 +910,9 @@ window.updateMap=function(data){
       if(markerEl){
         var blob=markerEl.querySelector('.bus-blob');
         if(blob)blob.style.background=color;
+        // Atualiza cor do BRT (SVG path fill)
+        var brtPath=markerEl.querySelector('.brt-mask path');
+        if(brtPath)brtPath.setAttribute('fill',color);
       }
 
       // Atualiza heading
@@ -1169,6 +947,7 @@ window.updateMap=function(data){
       }
       if(comprimentoMetros!==null)dr.comprimentoMetros=comprimentoMetros;
       if(velocidade!==null)dr.velocidade=velocidade;
+      dr.decelFactor=decelFactor;
 
       // Reposiciona o marcador na rota interpolada (sincronizacao com servidor)
       if(acceptedPosicao){
@@ -1210,43 +989,5 @@ window.updateMap=function(data){
 
 window.updateUser=updateUser;
 window.focusOnVehicle=focusOnVehicle;
-</script>
-</body>
-</html>`,
-      [latInicial, lngInicial],
-    );
-
-    return (
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ html: mapHTML }}
-        style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#f0f0f0" }}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        onLoadEnd={() => {
-          webViewRef.current?.injectJavaScript(`if(map) map.resize();`);
-        }}
-        onMessage={(event) => {
-          const raw = event.nativeEvent.data;
-          if (raw === "map_ready") {
-            setMapReady(true);
-            return;
-          }
-          try {
-            const payload = JSON.parse(raw);
-            if (payload?.type === "stop_click" && payload.parada) {
-              onStopPress?.(payload.parada);
-            }
-          } catch {
-            // ignora mensagens nao JSON
-          }
-        }}
-      />
-    );
-  },
-);
-
-MapaOSM.displayName = "MapaOSM";
-
-export default MapaOSM;
+`;
+}

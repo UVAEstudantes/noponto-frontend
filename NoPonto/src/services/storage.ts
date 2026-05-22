@@ -11,6 +11,7 @@ export type PreferenciaTema = NomeTema | "sistema";
 const CHAVE_TEMA = "@temaSelecionado";
 const CHAVE_PREFERENCIA_TEMA = "@preferenciaTema";
 const CHAVE_ESTILO_MAPA = "@estiloMapaSelecionado";
+const CHAVE_MODAL_SELECIONADO = "@modalSelecionado";
 
 const ehPreferenciaTemaValida = (
     valor: string | null,
@@ -100,6 +101,23 @@ export const carregarEstiloMapa = async (): Promise<EstiloMapaId> => {
     } catch (error) {
         console.error("Erro ao carregar estilo do mapa:", error);
         return ESTILO_MAPA_PADRAO;
+    }
+};
+
+export const salvarModalSelecionado = async (modalId: string) => {
+    try {
+        await AsyncStorage.setItem(CHAVE_MODAL_SELECIONADO, modalId);
+    } catch (error) {
+        console.error("Erro ao salvar modal selecionado:", error);
+    }
+};
+
+export const carregarModalSelecionado = async (): Promise<string | null> => {
+    try {
+        return await AsyncStorage.getItem(CHAVE_MODAL_SELECIONADO);
+    } catch (error) {
+        console.error("Erro ao carregar modal selecionado:", error);
+        return null;
     }
 };
 

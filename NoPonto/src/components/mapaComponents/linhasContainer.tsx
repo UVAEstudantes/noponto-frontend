@@ -1,8 +1,8 @@
 import {
   ArrowLeftRight,
   Bus,
+  BusFront,
   ChevronDown,
-  ChevronUp,
   Eye,
   EyeOff,
   MapPin,
@@ -17,10 +17,12 @@ import { useTema } from "@/src/hooks/useTema";
 import { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import { ModoSentido } from "@/src/types/transporte";
 import React from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { Dimensions, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
 
+// ─── Limite de linhas simultâneas no mapa ─────────────────────────────────
 const MAX_LINHAS_VIEW = 10;
 
 interface Props {
@@ -33,15 +35,17 @@ interface Props {
   sentidosPorLinha?: Record<string, { ida?: string; volta?: string }>;
   aberto: boolean;
   aoToggleAberto: () => void;
+  modalAtivo?: string | null;
 }
 
-// ─── Manipulação de cor ────────────────────────────────────────────────────
-
+// ─── Utilitários de cor ────────────────────────────────────────────────────
+// Converte hex (#RRGGBB) para objeto {r, g, b} com valores 0–255
 function hexToRgb(hex: string) {
   const n = parseInt(hex.replace("#", ""), 16);
   return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
 }
 
+// Converte componentes RGB (0–255) de volta para string hex #RRGGBB
 function rgbToHex(r: number, g: number, b: number) {
   return (
     "#" +
@@ -49,6 +53,8 @@ function rgbToHex(r: number, g: number, b: number) {
   );
 }
 
+// Mistura uma cor com o fundo usando alpha (0 = fundo puro, 1 = cor pura)
+// Usado para gerar fundos e bordas suaves derivados da cor da linha
 function misturar(hex: string, fundo: string, alpha: number) {
   const c = hexToRgb(hex);
   const f = hexToRgb(fundo);
@@ -59,11 +65,15 @@ function misturar(hex: string, fundo: string, alpha: number) {
   );
 }
 
+// Escurece uma cor em `p` (0–1). p=0.35 = 35% mais escura.
+// Usado para garantir contraste em ícones e textos sobre fundos coloridos
 function escurecer(hex: string, p = 0.35) {
   const { r, g, b } = hexToRgb(hex);
   return rgbToHex(r * (1 - p), g * (1 - p), b * (1 - p));
 }
 
+// Converte HSL (hue 0–360, saturation 0–100, lightness 0–100) para RGB 0–255
+// Usado internamente pelo seletor de cor (color wheel)
 function hslToRgb(h: number, s: number, l: number) {
   const sN = s / 100;
   const lN = l / 100;
@@ -102,16 +112,23 @@ function hslToRgb(h: number, s: number, l: number) {
   };
 }
 
+// Atalho: HSL direto para hex — alimenta cada fatia do color wheel
 function hslToHex(h: number, s: number, l: number) {
   const { r, g, b } = hslToRgb(h, s, l);
   return rgbToHex(r, g, b);
 }
 
+// ─── Geometria do color wheel (SVG) ───────────────────────────────────────
+
+// Converte ângulo polar (0° = topo, sentido horário) para coordenada cartesiana
+// Usado para calcular os pontos dos arcos de cada segmento do anel
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
   const rad = ((angle - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
+// Gera o path SVG de um segmento de anel (donut slice)
+// rOuter = raio externo, rInner = raio interno do anel
 function ringSegmentPath(
   cx: number,
   cy: number,
@@ -127,40 +144,25 @@ function ringSegmentPath(
   const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
 
   return [
-    "M",
-    startOuter.x,
-    startOuter.y,
-    "A",
-    rOuter,
-    rOuter,
-    0,
-    largeArc,
-    0,
-    endOuter.x,
-    endOuter.y,
-    "L",
-    startInner.x,
-    startInner.y,
-    "A",
-    rInner,
-    rInner,
-    0,
-    largeArc,
-    1,
-    endInner.x,
-    endInner.y,
+    "M", startOuter.x, startOuter.y,
+    "A", rOuter, rOuter, 0, largeArc, 0, endOuter.x, endOuter.y,
+    "L", startInner.x, startInner.y,
+    "A", rInner, rInner, 0, largeArc, 1, endInner.x, endInner.y,
     "Z",
   ].join(" ");
 }
 
-// ─── Constantes exportadas diretamente ────────────────────────────────────
-
+// ─── Exportação: ciclo de sentidos ────────────────────────────────────────
+// Usado no Home para avançar o sentido ao pressionar o botão:
+// ambos → ida → volta → ambos → ...
 export const PROXIMO_SENTIDO: Record<ModoSentido, ModoSentido> = {
   ambos: "ida",
   ida: "volta",
   volta: "ambos",
 };
 
+// Retorna o texto legível do sentido atual da linha
+// Se o itinerário tiver nomes reais (ex: "Zona Sul → Centro"), usa eles
 function rotuloSentido(
   modo: ModoSentido,
   sentido?: { ida?: string; volta?: string },
@@ -173,8 +175,8 @@ function rotuloSentido(
   return ida || volta || "Ambos";
 }
 
-// ─── Sub-componentes ───────────────────────────────────────────────────────
-
+// ─── IconeModal ───────────────────────────────────────────────────────────
+// Ícone do tipo de transporte (trem / metrô / ônibus) com cor da linha
 function IconeModal({ modal, cor }: { modal: string; cor: string }) {
   const c = escurecer(cor, 0.1);
   switch (modal.toLowerCase()) {
@@ -187,18 +189,30 @@ function IconeModal({ modal, cor }: { modal: string; cor: string }) {
   }
 }
 
+// ─── LinhaCard ────────────────────────────────────────────────────────────
+// Card exibido na lista de linhas selecionadas.
+// Contém: barra colorida lateral, ícone de modal, nome da linha,
+// botão de remover (X), botão ocultar/mostrar e botão configurar.
 interface LinhaCardProps {
   linha: LinhaSelecionadaInfo;
   aoRemover: () => void;
+  aoToggleAtiva: () => void;
   aoAbrirConfig: () => void;
 }
 
-function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
+function LinhaCard({
+  linha,
+  aoRemover,
+  aoToggleAtiva,
+  aoAbrirConfig,
+}: LinhaCardProps) {
   const { cores, temaAtual } = useTema();
+
+  // Cores derivadas da cor da linha para criar o visual tematizado do card
   const fundo = temaAtual === "escuro" ? "#1E1E1E" : "#FFFFFF";
-  const fundoCor = misturar(linha.cor, fundo, 0.1);
-  const bordaCor = misturar(linha.cor, fundo, 0.35);
-  const accentCor = misturar(linha.cor, fundo, 0.2);
+  const fundoCor = misturar(linha.cor, fundo, 0.1);   // fundo suave do card
+  const bordaCor = misturar(linha.cor, fundo, 0.35);  // borda sutil colorida
+  const accentCor = misturar(linha.cor, fundo, 0.2);  // fundo dos botões de ação
 
   return (
     <View
@@ -206,22 +220,23 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
         marginBottom: 12,
         borderRadius: 16,
         overflow: "hidden",
+        // Card ativo → fundo colorido; inativo → fundo neutro
         backgroundColor: linha.ativa ? fundoCor : cores.fundoSecundario,
         borderWidth: 1.5,
         borderColor: linha.ativa ? bordaCor : cores.bordaSuave,
       }}
     >
       <View style={{ flexDirection: "row" }}>
-        {/* Barra colorida lateral */}
+        {/* Barra colorida na esquerda — indica a cor da linha no mapa */}
         <View
           style={{
-            width: 4,
+            width: 8,
             backgroundColor: linha.ativa ? linha.cor : cores.borda,
           }}
         />
 
         <View style={{ flex: 1, padding: 12 }}>
-          {/* Header */}
+          {/* Header: ícone de modal + nome da linha + botão remover */}
           <View
             style={{
               flexDirection: "row",
@@ -229,6 +244,7 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
               marginBottom: 10,
             }}
           >
+            {/* Ícone do tipo de transporte */}
             <View
               style={{
                 width: 32,
@@ -243,21 +259,21 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
               <IconeModal modal={linha.modal} cor={linha.cor} />
             </View>
 
+            {/* Nome da linha (até 2 linhas) */}
             <Text
               style={{
                 flex: 1,
                 fontWeight: "700",
                 fontSize: 13,
                 lineHeight: 18,
-                color: linha.ativa
-                  ? cores.textoPrimario
-                  : cores.textoSecundario,
+                color: linha.ativa ? cores.textoPrimario : cores.textoSecundario,
               }}
               numberOfLines={2}
             >
               {linha.nomeExibicao}
             </Text>
 
+            {/* Botão remover linha da lista */}
             <Pressable
               onPress={aoRemover}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -275,16 +291,47 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
             </Pressable>
           </View>
 
-          {/* Botao de configuracao */}
-          <View style={{ flexDirection: "row" }}>
+          {/* Ações rápidas: ocultar/mostrar no mapa e abrir modal de config */}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {/* Botão toggle visibilidade da linha no mapa */}
             <Pressable
-              onPress={aoAbrirConfig}
+              onPress={aoToggleAtiva}
               style={{
-                flex: 1,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
                 paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 10,
+                backgroundColor: accentCor,
+                gap: 6,
+              }}
+            >
+              {linha.ativa ? (
+                <Eye color={escurecer(linha.cor, 0.1)} size={14} />
+              ) : (
+                <EyeOff color={escurecer(linha.cor, 0.1)} size={14} />
+              )}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  color: escurecer(linha.cor, 0.1),
+                }}
+              >
+                {linha.ativa ? "Ocultar" : "Mostrar"}
+              </Text>
+            </Pressable>
+
+            {/* Botão que abre o modal de configurações (sentido, paradas, cor) */}
+            <Pressable
+              onPress={aoAbrirConfig}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 8,
+                paddingHorizontal: 10,
                 borderRadius: 10,
                 backgroundColor: accentCor,
                 gap: 6,
@@ -308,6 +355,10 @@ function LinhaCard({ linha, aoRemover, aoAbrirConfig }: LinhaCardProps) {
   );
 }
 
+// ─── ColorWheel ───────────────────────────────────────────────────────────
+// Seletor de cor em forma de roda (anel SVG com 48 fatias coloridas).
+// O círculo central mostra a cor selecionada atualmente.
+// Ao tocar em uma fatia, dispara onChange com o hex correspondente.
 function ColorWheel({
   cor,
   onChange,
@@ -316,12 +367,15 @@ function ColorWheel({
   onChange: (cor: string) => void;
 }) {
   const { cores } = useTema();
+
+  // Dimensões do SVG e do anel
   const size = 190;
   const center = size / 2;
-  const outer = 84;
-  const inner = 52;
-  const segments = 48;
+  const outer = 84;  // raio externo do anel
+  const inner = 52;  // raio interno (buraco do donut)
+  const segments = 360; // número de fatias (mais fatias = transição mais suave)
 
+  // Pré-calcula todos os segmentos: path SVG + cor HSL correspondente
   const parts = React.useMemo(() => {
     const list: { key: string; color: string; path: string }[] = [];
     for (let i = 0; i < segments; i += 1) {
@@ -340,6 +394,7 @@ function ColorWheel({
   return (
     <View style={{ alignItems: "center" }}>
       <Svg width={size} height={size}>
+        {/* Fatias coloridas do anel — cada uma chama onChange ao ser tocada */}
         {parts.map((p) => (
           <Path
             key={p.key}
@@ -348,6 +403,7 @@ function ColorWheel({
             onPress={() => onChange(p.color)}
           />
         ))}
+        {/* Círculo central: preview da cor atualmente selecionada */}
         <Circle
           cx={center}
           cy={center}
@@ -357,6 +413,7 @@ function ColorWheel({
           strokeWidth={2}
         />
       </Svg>
+      {/* Hex da cor selecionada em texto */}
       <Text
         style={{
           marginTop: 6,
@@ -371,7 +428,11 @@ function ColorWheel({
   );
 }
 
-// ─── Container principal ───────────────────────────────────────────────────
+// ─── LinhasContainer ──────────────────────────────────────────────────────
+// Componente principal. Renderiza dois elementos sobrepostos ao mapa:
+//   1. Botão flutuante (toggle) — abre/fecha o sheet de linhas
+//   2. Sheet deslizante (Animated.View) — lista de LinhaCards + ScrollView
+// Também renderiza um Modal (React Native) para configurações individuais de linha.
 
 function LinhasContainer({
   linhasSelecionadas,
@@ -383,13 +444,59 @@ function LinhasContainer({
   sentidosPorLinha,
   aberto,
   aoToggleAberto,
+  modalAtivo,
 }: Props) {
   const { cores, temaAtual } = useTema();
+
+  // Cor base do modal de config (usada no misturar para highlight dos botões)
   const modalBase = cores.fundoPainel;
+  // Alpha do highlight no modal: escuro precisa de mais opacidade pra aparecer
   const highlightAlpha = temaAtual === "escuro" ? 0.28 : 0.22;
-  const largura = 300;
+
+  // ID da linha cujo modal de configuração está aberto (null = fechado)
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
 
+  // ─── Dimensões e posicionamento do sheet ──────────────────────────────
+  const screenHeight = Dimensions.get("window").height;
+
+  // SHEET_HEIGHT: altura do painel de linhas.
+  // 0.52 = ocupa ~52% da tela. Aumente para mostrar mais linhas sem scroll.
+  const SHEET_HEIGHT = Math.round(screenHeight * 0.52);
+
+  // BASE_BOTTOM: distância do fundo da tela onde o botão toggle repousa (fechado).
+  // Deve ser maior que a barra de navegação + outros elementos flutuantes embaixo.
+  const BASE_BOTTOM = 250;
+
+  // GAP_BTN_SHEET: espaço em px entre a borda superior do sheet e o botão toggle.
+  // O botão sobe junto com o sheet; esse valor empurra ele um pouquinho a mais.
+  const GAP_BTN_SHEET = 5;
+
+  // ─── Animação de abertura/fechamento ──────────────────────────────────
+  // progress: 0 = fechado, 1 = aberto. Transiciona com withTiming (260ms).
+  const progress = useSharedValue(aberto ? 1 : 0);
+
+  React.useEffect(() => {
+    progress.value = withTiming(aberto ? 1 : 0, { duration: 260 });
+  }, [aberto, progress]);
+
+  // O sheet começa "abaixo da tela" (translateY positivo = para baixo)
+  // e desliza para Y=0 quando aberto. Opacidade vai de 0.85 → 1.
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * (SHEET_HEIGHT + 180) }],
+    opacity: 0.85 + progress.value * 0.15,
+  }));
+
+  // O botão toggle sobe junto com o sheet quando aberto.
+  // translateY negativo = move para cima.
+  // (SHEET_HEIGHT + GAP_BTN_SHEET) garante o gap visual entre btn e sheet.
+  const toggleStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -progress.value * (SHEET_HEIGHT - BASE_BOTTOM + GAP_BTN_SHEET) },
+    ],
+  }));
+
+  // ─── Linha sendo configurada no modal ─────────────────────────────────
+  // Deriva o objeto completo da linha a partir do ID armazenado
   const linhaConfig = React.useMemo(
     () =>
       linhaConfigId
@@ -398,6 +505,7 @@ function LinhasContainer({
     [linhaConfigId, linhasSelecionadas],
   );
 
+  // Texto do sentido atual exibido no botão de configuração
   const sentidoAtual = React.useMemo(() => {
     if (!linhaConfig) return "";
     return rotuloSentido(
@@ -406,6 +514,7 @@ function LinhasContainer({
     );
   }, [linhaConfig, sentidosPorLinha]);
 
+  // Se a linha configurada foi removida da lista enquanto o modal estava aberto, fecha o modal automaticamente
   React.useEffect(() => {
     if (linhaConfigId && !linhaConfig) {
       setLinhaConfigId(null);
@@ -415,12 +524,22 @@ function LinhasContainer({
 
   return (
     <>
-      {/* Botão toggle */}
-      <View style={{ position: "absolute", right: 12, bottom: 220, zIndex: 16 }}>
-        <Pressable
-          onPress={aoToggleAberto}
-          hitSlop={{ top: 10, bottom: 10, right: 10, left: 0 }}
-        >
+      {/* ── Botão toggle (flutuante, fora do sheet) ──────────────────────
+          Fica fixo à direita no fundo da tela.
+          Quando o sheet abre, anima para cima junto com ele + GAP_BTN_SHEET.
+          O ícone muda conforme o estado:
+            - Aberto       → ChevronDown (fechar)
+            - Modal = trem → Train
+            - Modal = metro → TrainFront
+            - Modal = ônibus → BusFront ou Bus
+      */}
+      <Animated.View
+        style={[
+          { position: "absolute", right: 35, bottom: BASE_BOTTOM, zIndex: 34 },
+          toggleStyle,
+        ]}
+      >
+        <Pressable onPress={aoToggleAberto} hitSlop={10}>
           <View
             style={{
               borderRadius: 999,
@@ -428,7 +547,6 @@ function LinhasContainer({
               height: 48,
               backgroundColor: cores.fundoPainel,
               borderWidth: 1,
-
               borderColor: cores.borda,
               alignItems: "center",
               justifyContent: "center",
@@ -439,44 +557,49 @@ function LinhasContainer({
             }}
           >
             {aberto ? (
-              <ChevronUp
-                color={cores.iconePrimario}
-                size={24}
-                strokeWidth={2.5}
-              />
+              <ChevronDown color={cores.iconePrimario} size={20} strokeWidth={2.5} />
+            ) : modalAtivo === "trem" ? (
+              <Train color={cores.iconePrimario} size={21} />
+            ) : modalAtivo === "metro" ? (
+              <TrainFront color={cores.iconePrimario} size={21} />
+            ) : modalAtivo === "onibus" ? (
+              <BusFront color={cores.iconePrimario} size={21} />
             ) : (
-              <ChevronDown
-                color={cores.iconePrimario}
-                size={24}
-                strokeWidth={2.5}
-              />
+              <Bus color={cores.iconePrimario} size={21} />
             )}
           </View>
         </Pressable>
-      </View>
+      </Animated.View>
 
-      {/* Container principal */}
-      {aberto && (<View
-        style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 20,
-            width: undefined,
-            height: "40%",
-            backgroundColor: cores.fundoPainel,
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: cores.borda,
-            shadowColor: "#000",
-            shadowOpacity: 0.2,
-            shadowRadius: 12,
-            elevation: 10,
-            zIndex: 10,
-            overflow: "hidden",
-        }}
+      {/* ── Sheet principal de linhas ─────────────────────────────────────
+          Painel ancorado no fundo da tela com altura = SHEET_HEIGHT.
+          Desliza de baixo para cima com a animação `sheetStyle`.
+          Contém:
+            - Header (título + contador de linhas)
+            - ScrollView com os LinhaCards ou estado vazio
+      */}
+      <Animated.View
+        style={[sheetStyle, {
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: undefined,
+          height: SHEET_HEIGHT,          // ← altura do painel (ajuste aqui)
+          backgroundColor: cores.fundoPainel,
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          borderWidth: 1,
+          borderColor: cores.borda,
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 12,
+          elevation: 10,
+          zIndex: 33,
+          overflow: "hidden",
+        }]}
       >
-        {/* Header */}
+        {/* Header: título "Linhas no Mapa" + badge X/MAX_LINHAS_VIEW */}
         <View
           style={{
             flexDirection: "row",
@@ -497,6 +620,8 @@ function LinhasContainer({
           >
             Linhas no Mapa
           </Text>
+
+          {/* Badge contador: mostra quantas linhas estão ativas / limite */}
           <View
             style={{
               paddingHorizontal: 10,
@@ -517,12 +642,15 @@ function LinhasContainer({
           </View>
         </View>
 
+        {/* Lista de linhas ou estado vazio
+            paddingBottom grande para não cobrir o conteúdo com a barra de nav */}
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 124 }}
           showsVerticalScrollIndicator={false}
         >
           {linhasSelecionadas.length === 0 ? (
+            // Estado vazio: instrução para buscar uma linha
             <View style={{ alignItems: "center", paddingVertical: 40 }}>
               <Text
                 style={{
@@ -536,17 +664,30 @@ function LinhasContainer({
               </Text>
             </View>
           ) : (
+            // Um LinhaCard por linha selecionada
             linhasSelecionadas.map((linha) => (
               <LinhaCard
                 key={linha.linhaId}
                 linha={linha}
                 aoRemover={() => aoRemoverLinha(linha.linhaId)}
+                aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
                 aoAbrirConfig={() => setLinhaConfigId(linha.linhaId)}
               />
             ))
           )}
         </ScrollView>
-      </View>)}
+      </Animated.View>
+
+      {/* ── Modal de configuração individual da linha ─────────────────────
+          Aberto ao pressionar "Configurar" em qualquer LinhaCard.
+          Sobrepõe tudo com fundo semi-transparente.
+          Pressionar fora do card fecha o modal.
+          Contém três opções de configuração:
+            1. Visibilidade (toggle ativa/inativa)
+            2. Sentido (ambos / ida / volta — cicla com PROXIMO_SENTIDO)
+            3. Paradas (exibir ou ocultar pins de parada no mapa)
+          E o ColorWheel para trocar a cor da linha.
+      */}
       <Modal
         transparent
         visible={Boolean(linhaConfig)}
@@ -561,16 +702,12 @@ function LinhasContainer({
             padding: 20,
           }}
         >
+          {/* Área de toque fora do card fecha o modal */}
           <Pressable
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-            }}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
             onPress={() => setLinhaConfigId(null)}
           />
+
           {linhaConfig && (
             <View
               style={{
@@ -581,6 +718,7 @@ function LinhasContainer({
                 borderColor: cores.borda,
               }}
             >
+              {/* Header do modal: nome + código da linha + botão fechar */}
               <View
                 style={{
                   flexDirection: "row",
@@ -623,7 +761,10 @@ function LinhasContainer({
                 </Pressable>
               </View>
 
+              {/* ── Opções de configuração ──────────────────────────────── */}
               <View style={{ marginTop: 14, gap: 8 }}>
+
+                {/* 1. Visibilidade: alterna se a linha aparece no mapa */}
                 <Pressable
                   onPress={() => aoToggleAtiva(linhaConfig.linhaId)}
                   style={{
@@ -633,6 +774,7 @@ function LinhasContainer({
                     paddingVertical: 10,
                     paddingHorizontal: 12,
                     borderRadius: 12,
+                    // Fundo colorido se ativa, neutro se oculta
                     backgroundColor: linhaConfig.ativa
                       ? misturar(linhaConfig.cor, modalBase, highlightAlpha)
                       : cores.fundoSecundario,
@@ -640,25 +782,13 @@ function LinhasContainer({
                     borderColor: cores.bordaSuave,
                   }}
                 >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     {linhaConfig.ativa ? (
                       <Eye color={linhaConfig.cor} size={16} />
                     ) : (
                       <EyeOff color={cores.textoSecundario} size={16} />
                     )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>
                       Visibilidade
                     </Text>
                   </View>
@@ -666,15 +796,14 @@ function LinhasContainer({
                     style={{
                       fontSize: 12,
                       fontWeight: "600",
-                      color: linhaConfig.ativa
-                        ? linhaConfig.cor
-                        : cores.textoSecundario,
+                      color: linhaConfig.ativa ? linhaConfig.cor : cores.textoSecundario,
                     }}
                   >
                     {linhaConfig.ativa ? "Visivel" : "Oculto"}
                   </Text>
                 </Pressable>
 
+                {/* 2. Sentido: cicla entre ambos / ida / volta */}
                 <Pressable
                   onPress={() => aoToggleSentido(linhaConfig.linhaId)}
                   style={{
@@ -684,48 +813,27 @@ function LinhasContainer({
                     paddingVertical: 10,
                     paddingHorizontal: 12,
                     borderRadius: 12,
-                    backgroundColor: misturar(
-                      linhaConfig.cor,
-                      modalBase,
-                      highlightAlpha,
-                    ),
+                    backgroundColor: misturar(linhaConfig.cor, modalBase, highlightAlpha),
                     borderWidth: 1,
                     borderColor: cores.bordaSuave,
                   }}
                 >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    {/* Ícone: setas duplas = ambos; seta simples = ida ou volta (espelhada) */}
                     {linhaConfig.modoSentido === "ambos" ? (
-                      <ArrowLeftRight
-                        color={escurecer(linhaConfig.cor, 0.1)}
-                        size={16}
-                      />
+                      <ArrowLeftRight color={escurecer(linhaConfig.cor, 0.1)} size={16} />
                     ) : (
                       <MoveRight
                         color={escurecer(linhaConfig.cor, 0.1)}
                         size={16}
                         style={{
                           transform: [
-                            {
-                              scaleX:
-                                linhaConfig.modoSentido === "volta" ? -1 : 1,
-                            },
+                            { scaleX: linhaConfig.modoSentido === "volta" ? -1 : 1 },
                           ],
                         }}
                       />
                     )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>
                       Sentido
                     </Text>
                   </View>
@@ -740,6 +848,7 @@ function LinhasContainer({
                   </Text>
                 </Pressable>
 
+                {/* 3. Paradas: exibe ou oculta os pins de parada no mapa */}
                 <Pressable
                   onPress={() => aoToggleParadas(linhaConfig.linhaId)}
                   style={{
@@ -756,25 +865,13 @@ function LinhasContainer({
                     borderColor: cores.bordaSuave,
                   }}
                 >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     {linhaConfig.mostrarParadas ? (
                       <MapPin color={linhaConfig.cor} size={16} />
                     ) : (
                       <MapPinOff color={cores.textoSecundario} size={16} />
                     )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>
                       Paradas
                     </Text>
                   </View>
@@ -782,9 +879,7 @@ function LinhasContainer({
                     style={{
                       fontSize: 12,
                       fontWeight: "600",
-                      color: linhaConfig.mostrarParadas
-                        ? linhaConfig.cor
-                        : cores.textoSecundario,
+                      color: linhaConfig.mostrarParadas ? linhaConfig.cor : cores.textoSecundario,
                     }}
                   >
                     {linhaConfig.mostrarParadas ? "Ativas" : "Ocultas"}
@@ -792,6 +887,9 @@ function LinhasContainer({
                 </Pressable>
               </View>
 
+              {/* ── ColorWheel: seletor de cor da linha ────────────────────
+                  Exibe o anel de cores abaixo das opções de configuração.
+                  Ao tocar em uma fatia, atualiza a cor da linha em tempo real. */}
               <View style={{ marginTop: 16 }}>
                 <Text
                   style={{

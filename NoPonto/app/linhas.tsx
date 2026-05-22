@@ -2,7 +2,8 @@ import InputBusca from "@/src/components/inputBusca";
 import Chegada from "@/src/components/linhasComponents/chegada";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
 import Tarifas from "@/src/components/linhasComponents/tarifas";
-import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
+import MapaOSM from "@/src/components/mapOSM/mapOSM";
+import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
 import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
@@ -15,6 +16,7 @@ import {
   buscarPoisPorParada,
   buscarSentidosPorLinha,
 } from "@/src/services/mobilidadeRio";
+import { carregarModalSelecionado } from "@/src/services/storage";
 import {
   LinhaDetalhesDto,
   ModalApiTransporte,
@@ -518,18 +520,26 @@ const Linhas = () => {
   // ─── Modal de transporte ──────────────────────────────────────────────────
 
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
-  const [modalIdSelecionado, setModalIdSelecionado] = useState<string | null>(null);
+  const [modalIdSelecionado, setModalIdSelecionado] = useState<string | null>(
+    null,
+  );
   const [modal, setModal] = useState<string | null>("Onibus");
-
 
   useEffect(() => {
     buscarModais().then((lista) => {
       setModais(lista);
       if (lista.length > 0) {
-        const atual = modal ? lista.find((m) => m.nome.toLowerCase() === modal.toLowerCase()) : null;
-        const escolhido = atual ?? lista[0];
-        setModal(escolhido.nome);
-        setModalIdSelecionado(escolhido.id);
+        carregarModalSelecionado().then((modalIdSalvo) => {
+          const salvo = modalIdSalvo
+            ? lista.find((m) => m.id === modalIdSalvo)
+            : null;
+          const atual = modal
+            ? lista.find((m) => m.nome.toLowerCase() === modal.toLowerCase())
+            : null;
+          const escolhido = salvo ?? atual ?? lista[0];
+          setModal(escolhido.nome);
+          setModalIdSelecionado(escolhido.id);
+        });
       }
     });
   }, []);
@@ -570,7 +580,14 @@ const Linhas = () => {
     }
     const id = setTimeout(async () => {
       try {
-        setOpcoesBusca(await buscarOpcoesPorNome(busca, 1, 20, modalIdSelecionado ?? undefined));
+        setOpcoesBusca(
+          await buscarOpcoesPorNome(
+            busca,
+            1,
+            20,
+            modalIdSelecionado ?? undefined,
+          ),
+        );
       } catch {
         setOpcoesBusca([]);
       }
@@ -795,9 +812,9 @@ const Linhas = () => {
 
     const corLinha =
       modalAtual === "trem"
-        ? Object.entries(CORES_RAMAIS_TREM).find(([ramal]) =>
+        ? (Object.entries(CORES_RAMAIS_TREM).find(([ramal]) =>
             normalizarModalNome(linhaSelecionada.nomeExibicao).includes(ramal),
-          )?.[1] ?? "#64a70b"
+          )?.[1] ?? "#64a70b")
         : "#2563eb";
     return [
       {

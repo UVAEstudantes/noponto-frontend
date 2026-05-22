@@ -8,6 +8,11 @@ interface Props {
 }
 
 const TIPO_MODAIS = ["Onibus", "BRT", "Trem", "Metro"];
+const normalizar = (v?: string | null) =>
+  (v ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 export default function SelectTransporte(props: Props) {
   const { cores } = useTema();
@@ -33,7 +38,9 @@ export default function SelectTransporte(props: Props) {
 
   useEffect(() => {
     if (containerWidth > 0 && !inicializadoRef.current) {
-      const initialIndex = TIPO_MODAIS.indexOf(props.modal as string);
+      const initialIndex = TIPO_MODAIS.findIndex(
+        (m) => normalizar(m) === normalizar(props.modal),
+      );
       const targetIndex = initialIndex !== -1 ? initialIndex : 0;
       const initialPos = getPos(targetIndex, containerWidth);
 
@@ -83,7 +90,9 @@ export default function SelectTransporte(props: Props) {
           <Text
             style={{
               color:
-                props.modal === item ? cores.textoInverso : cores.textoPrimario,
+                normalizar(props.modal) === normalizar(item)
+                  ? cores.textoInverso
+                  : cores.textoPrimario,
               fontWeight: "600",
             }}
           >
