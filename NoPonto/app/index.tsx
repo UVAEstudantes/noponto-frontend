@@ -21,7 +21,12 @@ import {
   buscarOpcoesPorNome,
   buscarProximosVeiculosParada,
 } from "@/src/services/mobilidadeRio";
-import { carregarLinhasSalvas, salvarLinhas } from "@/src/services/storage";
+import {
+  carregarLinhasSalvas,
+  carregarModalSelecionado,
+  salvarLinhas,
+  salvarModalSelecionado,
+} from "@/src/services/storage";
 import { ModalApiTransporte, ModalTransporteDto, OpcaoBusca, Parada } from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
@@ -71,11 +76,20 @@ const Home = () => {
   useEffect(() => {
     buscarModais().then((lista) => {
       setModais(lista);
-      if (lista.length > 0) {
-        setModalSelecionadoId((prev) => prev ?? lista[0].id);
-      }
+      if (lista.length === 0) return;
+      carregarModalSelecionado().then((salvo) => {
+        if (salvo && lista.some((m) => m.id === salvo)) {
+          setModalSelecionadoId(salvo);
+        } else {
+          setModalSelecionadoId((prev) => prev ?? lista[0].id);
+        }
+      });
     });
   }, []);
+
+  useEffect(() => {
+    if (modalSelecionadoId) salvarModalSelecionado(modalSelecionadoId);
+  }, [modalSelecionadoId]);
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
@@ -601,7 +615,9 @@ const Home = () => {
         clickTransito={() => setTransito((p) => !p)}
         modalSelecionado={modalSelecionadoNome || "onibus"}
         onSelecionarModal={(modalNome) => {
-          const modal = modais.find((m) => m.nome.toLowerCase() === modalNome);
+          const modal = modais.find(
+            (m) => normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
+          );
           if (modal) setModalSelecionadoId(modal.id);
         }}
       />
@@ -619,6 +635,7 @@ const Home = () => {
         sentidosPorLinha={sentidosPorLinha}
         aberto={containerAberto}
         aoToggleAberto={() => setContainerAberto((p) => !p)}
+        modalAtivo={modalSelecionadoNome}
       />
 
       <ParadaSheet
