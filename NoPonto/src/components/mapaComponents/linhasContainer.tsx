@@ -222,7 +222,7 @@ function LinhaCard({
         {/* Barra colorida lateral */}
         <View
           style={{
-            width: 4,
+            width: 8,
             backgroundColor: linha.ativa ? linha.cor : cores.borda,
           }}
         />

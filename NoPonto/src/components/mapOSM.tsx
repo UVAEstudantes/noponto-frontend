@@ -243,6 +243,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       background:rgba(255,255,255,.85);
       box-shadow:0 1px 0 rgba(0,0,0,.08) inset;
     }
+    .bus-arrow{display:none}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
