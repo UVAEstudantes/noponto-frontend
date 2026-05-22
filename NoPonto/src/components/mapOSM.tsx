@@ -232,6 +232,18 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       background:rgba(255,255,255,.34)
     }
     .bus-arrow{display:none}
+    .brt-marker .bus-blob{
+      width:17px;height:17px;border-radius:48% 48% 56% 28%;
+      transform:rotate(135deg);
+      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14);
+    }
+    .brt-marker .bus-blob:before{
+      content:'';position:absolute;top:1px;left:50%;transform:translateX(-50%);
+      width:7px;height:8px;border-radius:0 0 8px 8px;
+      background:rgba(255,255,255,.85);
+      box-shadow:0 1px 0 rgba(0,0,0,.08) inset;
+    }
+    .bus-arrow{display:none}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
@@ -460,7 +472,8 @@ function animateTo(key,marker,dest,ms){
 function busIcon(color,heading,modal){
   var el=document.createElement('div');
   var isTrain=(modal||'').toLowerCase()==='trem';
-  el.className='bus-marker'+(isTrain?' train-marker':'');
+  var isBrt=(modal||'').toLowerCase()==='brt';
+  el.className='bus-marker'+(isTrain?' train-marker':'')+(isBrt?' brt-marker':'');
   el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
                '<div class="bus-blob" style="background:'+color+'"></div>'+
                '<div class="bus-arrow"></div></div>';

@@ -635,6 +635,7 @@ const Home = () => {
         sentidosPorLinha={sentidosPorLinha}
         aberto={containerAberto}
         aoToggleAberto={() => setContainerAberto((p) => !p)}
+        modalAtivo={modalSelecionadoNome}
       />
 
       <ParadaSheet

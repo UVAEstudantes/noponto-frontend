@@ -2,7 +2,6 @@ import {
   ArrowLeftRight,
   Bus,
   ChevronDown,
-  ChevronUp,
   Eye,
   EyeOff,
   MapPin,
@@ -34,6 +33,7 @@ interface Props {
   sentidosPorLinha?: Record<string, { ida?: string; volta?: string }>;
   aberto: boolean;
   aoToggleAberto: () => void;
+  modalAtivo?: string | null;
 }
 
 // ─── Manipulação de cor ────────────────────────────────────────────────────
@@ -419,6 +419,7 @@ function LinhasContainer({
   sentidosPorLinha,
   aberto,
   aoToggleAberto,
+  modalAtivo,
 }: Props) {
   const { cores, temaAtual } = useTema();
   const modalBase = cores.fundoPainel;
@@ -439,7 +440,7 @@ function LinhasContainer({
   }));
 
   const toggleStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -progress.value * (SHEET_HEIGHT - 28) }],
+    transform: [{ translateY: -progress.value * 76 }],
   }));
 
   const linhaConfig = React.useMemo(
@@ -470,7 +471,7 @@ function LinhasContainer({
       {/* Botão toggle */}
       <Animated.View
         style={[
-          { position: "absolute", right: 12, bottom: BASE_BOTTOM, zIndex: 34 },
+          { position: "absolute", right: 40, bottom: BASE_BOTTOM, zIndex: 34 },
           toggleStyle,
         ]}
       >
@@ -492,9 +493,13 @@ function LinhasContainer({
             }}
           >
             {aberto ? (
-              <ChevronDown color={cores.iconePrimario} size={24} strokeWidth={2.5} />
+              <ChevronDown color={cores.iconePrimario} size={20} strokeWidth={2.5} />
+            ) : modalAtivo === "trem" ? (
+              <Train color={cores.iconePrimario} size={21} />
+            ) : modalAtivo === "metro" ? (
+              <TrainFront color={cores.iconePrimario} size={21} />
             ) : (
-              <ChevronUp color={cores.iconePrimario} size={24} strokeWidth={2.5} />
+              <Bus color={cores.iconePrimario} size={21} />
             )}
           </View>
         </Pressable>
@@ -504,8 +509,8 @@ function LinhasContainer({
       <Animated.View
         style={[sheetStyle, {
             position: "absolute",
-            left: 12,
-            right: 12,
+            left: 0,
+            right: 0,
             bottom: 0,
             width: undefined,
             height: SHEET_HEIGHT,
@@ -565,7 +570,7 @@ function LinhasContainer({
 
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 124 }}
           showsVerticalScrollIndicator={false}
         >
           {linhasSelecionadas.length === 0 ? (
