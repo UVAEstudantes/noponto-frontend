@@ -1,9 +1,7 @@
 import {
   ESTILO_MAPA_PADRAO,
-  EstiloMapaId,
   estilosMapaDisponiveis,
 } from "@/src/constants/estilosMapa";
-import { Parada } from "@/src/types/transporte";
 import React, {
   forwardRef,
   useEffect,
@@ -12,83 +10,20 @@ import React, {
   useRef,
 } from "react";
 import { WebView } from "react-native-webview";
-
-// Atualiza a interface LinhaParaMostrar para incluir mapeamento itinerarioId -> segmento
-export interface LinhaParaMostrar {
-  nome: string;
-  cor?: string;
-  modal?: string;
-  segmentos?: [number, number][][];
-  coordenadas?: [number, number][];
-  paradas?: Parada[];
-  mostrarParadas?: boolean;
-  modoSentido?: string;
-  /**
-   * Mapeamento de itinerarioId -> índice do segmento.
-   * Permite o dead reckoning usar o segmento correto para cada veículo.
-   * ex: { "uuid-ida": 0, "uuid-volta": 1 }
-   */
-  itinerarioSegmentoMap?: Record<string, number>;
-  /**
-   * Mapeamento de itinerarioId -> nome do sentido.
-   * ex: { "uuid-ida": "Terminal Campo Grande" }
-   */
-  itinerarioSentidoMap?: Record<string, string>;
-  posicoes?: {
-    id?: string;
-    ordem?: string;
-    codigo?: string;
-    latitude?: number | string;
-    longitude?: number | string;
-    direcao?: number | string | null;
-    velocidade?: number | string;
-    velocidadeMedia?: number | null;
-    sentidoNome?: string;
-    timestamp?: number | string;
-    proximaParadaNome?: string | null;
-    distanciaProximaParadaMetros?: number | null;
-    status?: number;
-    posicaoNaRota?: number | null;
-    comprimentoRotaMetros?: number | null;
-    itinerarioId?: string | null; // ← garante que está na interface
-  }[];
-}
-
-interface MapaOSMProps {
-  location: any;
-  linhasParaMostrar: LinhaParaMostrar[];
-  darkMode?: boolean;
-  showTraffic?: boolean;
-  estiloMapa?: EstiloMapaId;
-  onStopPress?: (parada: Parada) => void;
-}
-
-export interface MapaOSMRef {
-  centerOnUser: () => void;
-  fitToCoordinates: (
-    coordinates: { latitude: number; longitude: number }[],
-  ) => void;
-  focarVeiculo: (payload: {
-    ordem?: string;
-    latitude?: number;
-    longitude?: number;
-    zoom?: number;
-  }) => void;
-  mostrarPoi: (payload: {
-    poi: { lat: number; lng: number; nome?: string };
-    parada?: { lat: number; lng: number; nome?: string } | null;
-    distancia?: number | null;
-    icone?: string;
-    cor?: string;
-  }) => void;
-  limparPoi: () => void;
-}
+import { MapaOSMProps, MapaOSMRef } from "./types";
 
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
 
 const filtrosMapaJS = estilosMapaDisponiveis
   .map((e) => `"${e.id}":{light:"${e.filtroLight}",dark:"${e.filtroDark}"}`)
   .join(",");
+
+function injectWebViewCommand(
+  webViewRef: React.RefObject<WebView | null>,
+  script: string,
+) {
+  webViewRef.current?.injectJavaScript(script);
+}
 
 const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   (
@@ -126,27 +61,32 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     useImperativeHandle(ref, () => ({
       centerOnUser: () => {
-        webViewRef.current?.injectJavaScript(
+        injectWebViewCommand(
+          webViewRef,
           `if(window.centerOnUser) window.centerOnUser();`,
         );
       },
       fitToCoordinates: (coordinates) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`,
+        injectWebViewCommand(
+          webViewRef,
+          `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)}`,
         );
       },
       focarVeiculo: (payload) => {
-        webViewRef.current?.injectJavaScript(
+        injectWebViewCommand(
+          webViewRef,
           `if(window.focusOnVehicle) window.focusOnVehicle(${JSON.stringify(payload)});`,
         );
       },
       mostrarPoi: (payload) => {
-        webViewRef.current?.injectJavaScript(
+        injectWebViewCommand(
+          webViewRef,
           `if(window.mostrarConexaoPoi) window.mostrarConexaoPoi(${JSON.stringify(payload)});`,
         );
       },
       limparPoi: () => {
-        webViewRef.current?.injectJavaScript(
+        injectWebViewCommand(
+          webViewRef,
           `if(window.limparConexaoPoi) window.limparConexaoPoi();`,
         );
       },
@@ -169,9 +109,11 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         estiloMapa,
       };
 
-      webViewRef.current?.injectJavaScript(
+      injectWebViewCommand(
+        webViewRef,
         `window.updateMap(${JSON.stringify(data)});`,
       );
+
       // Full map updates are heavy; user movement is handled separately.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mapReady, linhasParaMostrar, darkMode, showTraffic, estiloMapa]);
@@ -185,7 +127,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         accuracy: location.coords.accuracy ?? null,
       };
 
-      webViewRef.current?.injectJavaScript(
+      injectWebViewCommand(
+        webViewRef,
         `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
       );
     }, [mapReady, location]);
@@ -1312,7 +1255,7 @@ window.focusOnVehicle=focusOnVehicle;
         javaScriptEnabled={true}
         domStorageEnabled={true}
         onLoadEnd={() => {
-          webViewRef.current?.injectJavaScript(`if(map) map.resize();`);
+          injectWebViewCommand(webViewRef, `if(map) map.resize();`);
         }}
         onMessage={(event) => {
           const raw = event.nativeEvent.data;

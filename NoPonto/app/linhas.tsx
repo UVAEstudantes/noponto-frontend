@@ -2,7 +2,8 @@ import InputBusca from "@/src/components/inputBusca";
 import Chegada from "@/src/components/linhasComponents/chegada";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
 import Tarifas from "@/src/components/linhasComponents/tarifas";
-import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
+import MapaOSM from "@/src/components/mapOSM/mapOSM";
+import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import Select from "@/src/components/select";
 import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
@@ -519,9 +520,10 @@ const Linhas = () => {
   // ─── Modal de transporte ──────────────────────────────────────────────────
 
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
-  const [modalIdSelecionado, setModalIdSelecionado] = useState<string | null>(null);
+  const [modalIdSelecionado, setModalIdSelecionado] = useState<string | null>(
+    null,
+  );
   const [modal, setModal] = useState<string | null>("Onibus");
-
 
   useEffect(() => {
     buscarModais().then((lista) => {
@@ -578,7 +580,14 @@ const Linhas = () => {
     }
     const id = setTimeout(async () => {
       try {
-        setOpcoesBusca(await buscarOpcoesPorNome(busca, 1, 20, modalIdSelecionado ?? undefined));
+        setOpcoesBusca(
+          await buscarOpcoesPorNome(
+            busca,
+            1,
+            20,
+            modalIdSelecionado ?? undefined,
+          ),
+        );
       } catch {
         setOpcoesBusca([]);
       }
@@ -803,9 +812,9 @@ const Linhas = () => {
 
     const corLinha =
       modalAtual === "trem"
-        ? Object.entries(CORES_RAMAIS_TREM).find(([ramal]) =>
+        ? (Object.entries(CORES_RAMAIS_TREM).find(([ramal]) =>
             normalizarModalNome(linhaSelecionada.nomeExibicao).includes(ramal),
-          )?.[1] ?? "#64a70b"
+          )?.[1] ?? "#64a70b")
         : "#2563eb";
     return [
       {

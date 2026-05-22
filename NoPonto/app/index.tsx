@@ -9,7 +9,8 @@ import ParadaSheet, {
   LinhaParadaInfo,
 } from "@/src/components/mapaComponents/paradaSheet";
 import RotaButton from "@/src/components/mapaComponents/rotaButton";
-import MapaOSM, { MapaOSMRef } from "@/src/components/mapOSM";
+import MapaOSM from "@/src/components/mapOSM/mapOSM";
+import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import ResultadoBusca from "@/src/components/resultadoBusca";
 import {
   LinhaSelecionadaInfo,
