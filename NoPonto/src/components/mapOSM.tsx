@@ -219,7 +219,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     .bus-marker{background:transparent;border:none}
     .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg))}
-    /* onibus / brt = gota */
+    /* onibus = gota */
     .bus-blob{
       position:relative;width:16px;height:16px;
       border-radius:50% 50% 50% 0;
@@ -232,18 +232,23 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       background:rgba(255,255,255,.34)
     }
     .bus-arrow{display:none}
-    .brt-marker .bus-blob{
-      width:17px;height:17px;border-radius:48% 48% 56% 28%;
-      transform:rotate(135deg);
-      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14);
+
+    /* ── BRT marker: formato máscara SVG (sino com olhos) ── */
+    .brt-marker .bus-blob{display:none}
+    .brt-mask{
+      position:relative;
+      width:14px;height:21px;
+      display:flex;align-items:center;justify-content:center;
     }
-    .brt-marker .bus-blob:before{
-      content:'';position:absolute;top:1px;left:50%;transform:translateX(-50%);
-      width:7px;height:8px;border-radius:0 0 8px 8px;
-      background:rgba(255,255,255,.85);
-      box-shadow:0 1px 0 rgba(0,0,0,.08) inset;
+    .brt-mask svg{
+      width:14px;height:21px;
+      filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));
+      overflow:visible;
     }
-    .bus-arrow{display:none}
+    /* BRT: pinça aponta para trás — rotaciona o inner 180° + heading */
+    .brt-marker .bus-inner{
+      transform:rotate(calc(var(--h,0deg) + 180deg));
+    }
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
@@ -469,14 +474,32 @@ function animateTo(key,marker,dest,ms){
   animFrames[key]=requestAnimationFrame(step);
 }
 
+// ── busIcon: gera o elemento DOM do marcador de veículo ──────────────────────
+// BRT usa formato de máscara (sino com olhos), igual à imagem de referência.
 function busIcon(color,heading,modal){
   var el=document.createElement('div');
   var isTrain=(modal||'').toLowerCase()==='trem';
   var isBrt=(modal||'').toLowerCase()==='brt';
   el.className='bus-marker'+(isTrain?' train-marker':'')+(isBrt?' brt-marker':'');
-  el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-               '<div class="bus-blob" style="background:'+color+'"></div>'+
-               '<div class="bus-arrow"></div></div>';
+  if(isBrt){
+    // Shape: gota com recorte no topo (pinça), rotacionada corretamente
+    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
+      '<div class="brt-mask">'+
+        '<svg viewBox="0 0 20 30" xmlns="http://www.w3.org/2000/svg">'+
+          '<path fill-rule="evenodd" d="'+
+            // Gota externa
+            'M10 29 C7 29 1 24 1 17 C1 10 5 3 10 1 C15 3 19 10 19 17 C19 24 13 29 10 29 Z '+
+            // Recorte interno maior e mais alto — pontas mais longas e separadas
+            'M10 2.5 C7.5 4.5 5.5 8 5.5 11 C5.5 13.8 7 15.5 10 15.5 C13 15.5 14.5 13.8 14.5 11 C14.5 8 12.5 4.5 10 2.5 Z'+
+          '" fill="'+color+'" stroke="rgba(255,255,255,0.95)" stroke-width="1.8" stroke-linejoin="round"/>'+
+        '</svg>'+
+      '</div>'+
+    '</div>';
+  }else{
+    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
+                 '<div class="bus-blob" style="background:'+color+'"></div>'+
+                 '<div class="bus-arrow"></div></div>';
+  }
   return el;
 }
 
@@ -1195,6 +1218,9 @@ window.updateMap=function(data){
       if(markerEl){
         var blob=markerEl.querySelector('.bus-blob');
         if(blob)blob.style.background=color;
+        // Atualiza cor do BRT (SVG path fill)
+        var brtPath=markerEl.querySelector('.brt-mask path');
+        if(brtPath)brtPath.setAttribute('fill',color);
       }
 
       // Atualiza heading

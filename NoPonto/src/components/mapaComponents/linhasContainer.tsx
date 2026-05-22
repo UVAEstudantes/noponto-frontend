@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   Bus,
+  BusFront,
   ChevronDown,
   Eye,
   EyeOff,
@@ -471,7 +472,7 @@ function LinhasContainer({
       {/* Botão toggle */}
       <Animated.View
         style={[
-          { position: "absolute", right: 40, bottom: BASE_BOTTOM, zIndex: 34 },
+          { position: "absolute", right: 35, bottom: BASE_BOTTOM, zIndex: 34 },
           toggleStyle,
         ]}
       >
@@ -493,14 +494,16 @@ function LinhasContainer({
             }}
           >
             {aberto ? (
-              <ChevronDown color={cores.iconePrimario} size={20} strokeWidth={2.5} />
+              <ChevronDown color={cores.iconePrimario} size={20} strokeWidth={2.5} /> 
             ) : modalAtivo === "trem" ? (
               <Train color={cores.iconePrimario} size={21} />
             ) : modalAtivo === "metro" ? (
               <TrainFront color={cores.iconePrimario} size={21} />
-            ) : (
+            ) : modalAtivo === "onibus" ? (
+              <BusFront color={cores.iconePrimario} size={21} />
+            ) :
               <Bus color={cores.iconePrimario} size={21} />
-            )}
+            }
           </View>
         </Pressable>
       </Animated.View>
