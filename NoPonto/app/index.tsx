@@ -1,4 +1,3 @@
-import InputBusca from "@/src/components/inputBusca";
 import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer, {
   PROXIMO_SENTIDO,
@@ -28,7 +27,12 @@ import {
   salvarLinhas,
   salvarModalSelecionado,
 } from "@/src/services/storage";
-import { ModalApiTransporte, ModalTransporteDto, OpcaoBusca, Parada } from "@/src/types/transporte";
+import {
+  ModalApiTransporte,
+  ModalTransporteDto,
+  OpcaoBusca,
+  Parada,
+} from "@/src/types/transporte";
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import {
   getCurrentPositionAsync,
@@ -37,9 +41,9 @@ import {
   requestForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
-import { Search } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Keyboard, Pressable, View } from "react-native";
+import { Search, SlidersHorizontal } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Keyboard, Pressable, TextInput, View } from "react-native";
 
 const MAX_LINHAS = 10;
 const CORES_RAMAIS_TREM: Record<string, string> = {
@@ -52,6 +56,7 @@ const CORES_RAMAIS_TREM: Record<string, string> = {
   guapimirim: "#f1b500",
   vila_inhomirim: "#c4b000",
 };
+
 const normalizarModalNome = (nome?: string | null) =>
   (nome ?? "")
     .toLowerCase()
@@ -69,10 +74,10 @@ const Home = () => {
 
   // ─── Filtros ──────────────────────────────────────────────────────────────
 
-  const [transito, setTransito] = React.useState(false);
+  const [transito, setTransito] = useState(false);
+  const [filtroAberto, setFiltroAberto] = useState(false);
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
   const [modalSelecionadoId, setModalSelecionadoId] = useState<string | null>(null);
-
 
   useEffect(() => {
     buscarModais().then((lista) => {
@@ -94,12 +99,9 @@ const Home = () => {
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
-  const mapRef = React.useRef<MapaOSMRef>(null);
+  const mapRef = useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
-
-  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
-    null,
-  );
+  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(null);
   const [paradaExpandida, setParadaExpandida] = useState(false);
 
   useEffect(() => {
@@ -125,23 +127,23 @@ const Home = () => {
   const normalizarCodigo = useCallback((valor: string) => {
     return valor.trim().toUpperCase();
   }, []);
-  const corRamalTrem = useCallback((nomeExibicao: string) => {
-    const n = normalizarNome(nomeExibicao).replace(/\s+/g, "_");
-    for (const [ramal, cor] of Object.entries(CORES_RAMAIS_TREM)) {
-      if (n.includes(ramal)) return cor;
-    }
-    return null;
-  }, [normalizarNome]);
+
+  const corRamalTrem = useCallback(
+    (nomeExibicao: string) => {
+      const n = normalizarNome(nomeExibicao).replace(/\s+/g, "_");
+      for (const [ramal, cor] of Object.entries(CORES_RAMAIS_TREM)) {
+        if (n.includes(ramal)) return cor;
+      }
+      return null;
+    },
+    [normalizarNome],
+  );
 
   useEffect(() => {
     let subscription: any;
     async function startWatching() {
       subscription = await watchPositionAsync(
-        {
-          accuracy: LocationAccuracy.Highest,
-          timeInterval: 2000,
-          distanceInterval: 5,
-        },
+        { accuracy: LocationAccuracy.Highest, timeInterval: 2000, distanceInterval: 5 },
         (response) => setLocation(response),
       );
     }
@@ -162,25 +164,23 @@ const Home = () => {
       setOpcoesBusca([]);
       return;
     }
-
     const id = setTimeout(async () => {
       try {
-        const opcoes = await buscarOpcoesPorNome(busca, 1, 20, modalSelecionadoId ?? undefined);
+        const opcoes = await buscarOpcoesPorNome(
+          busca, 1, 20, modalSelecionadoId ?? undefined,
+        );
         setOpcoesBusca(opcoes);
       } catch (err) {
         console.error("Erro ao buscar opções:", err);
         setOpcoesBusca([]);
       }
     }, 600);
-
     return () => clearTimeout(id);
   }, [busca, modalSelecionadoId]);
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
-  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
-    LinhaSelecionadaInfo[]
-  >([]);
+  const [linhasSelecionadas, setLinhasSelecionadas] = useState<LinhaSelecionadaInfo[]>([]);
 
   useEffect(() => {
     carregarLinhasSalvas().then((salvas) => {
@@ -194,28 +194,20 @@ const Home = () => {
     (linha: LinhaSelecionadaInfo) => {
       const itinerario = itinerariosPorId[linha.linhaId];
       if (!itinerario) return [] as Parada[];
-
-      if (linha.modoSentido === "ambos") {
-        return itinerario.paradas ?? [];
-      }
-
+      if (linha.modoSentido === "ambos") return itinerario.paradas ?? [];
       const itId =
         linha.modoSentido === "ida"
           ? itinerario.itinerarioIdIda
           : itinerario.itinerarioIdVolta;
-
       if (itId && itinerario.paradasPorItinerario?.[itId]) {
         return itinerario.paradasPorItinerario[itId];
       }
-
       return itinerario.paradas ?? [];
     },
     [itinerariosPorId],
   );
 
-  useEffect(() => {
-    salvarLinhas(linhasSelecionadas);
-  }, [linhasSelecionadas]);
+  useEffect(() => { salvarLinhas(linhasSelecionadas); }, [linhasSelecionadas]);
 
   useEffect(() => {
     linhasSelecionadas.forEach((l) => {
@@ -236,19 +228,13 @@ const Home = () => {
         "onibus") as ModalApiTransporte;
 
       setLinhasSelecionadas((prev) => {
-        if (
-          prev.some((l) => l.linhaId === linha.id) ||
-          prev.length >= MAX_LINHAS
-        ) {
+        if (prev.some((l) => l.linhaId === linha.id) || prev.length >= MAX_LINHAS) {
           return prev;
         }
-
         const cor =
           modal === "trem"
-            ? (corRamalTrem(nomeExibicao) ??
-              gerarCorAleatoria(prev.map((l) => l.cor)))
+            ? (corRamalTrem(nomeExibicao) ?? gerarCorAleatoria(prev.map((l) => l.cor)))
             : gerarCorAleatoria(prev.map((l) => l.cor));
-
         return [
           ...prev,
           {
@@ -265,24 +251,16 @@ const Home = () => {
       });
 
       try {
-        const itinerario = await garantirItinerario(
-          linha.id,
-          linhaCodigo,
-          modal,
-          false,
-        );
-
+        const itinerario = await garantirItinerario(linha.id, linhaCodigo, modal, false);
         if (
           itinerario &&
           (itinerario.segmentos[0]?.length ?? 0) > 1 &&
           mapRef.current?.fitToCoordinates
         ) {
-          const coordenadas = itinerario.segmentos[0].map(
-            ([latitude, longitude]) => ({
-              latitude,
-              longitude,
-            }),
-          );
+          const coordenadas = itinerario.segmentos[0].map(([latitude, longitude]) => ({
+            latitude,
+            longitude,
+          }));
           setTimeout(() => mapRef.current?.fitToCoordinates(coordenadas), 350);
         }
       } catch (err) {
@@ -296,20 +274,18 @@ const Home = () => {
     (linhaId: string) => {
       const linha = linhasSelecionadas.find((l) => l.linhaId === linhaId);
       if (linha) removerItinerario(linhaId, linha.linhaCodigo);
-      setLinhasSelecionadas((prev) =>
-        prev.filter((l) => l.linhaId !== linhaId),
-      );
+      setLinhasSelecionadas((prev) => prev.filter((l) => l.linhaId !== linhaId));
     },
     [linhasSelecionadas, removerItinerario],
   );
 
-  const toggleAtiva = useCallback((linhaId: string) => {
+  const toggleAtiva    = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) => (l.linhaId === linhaId ? { ...l, ativa: !l.ativa } : l)),
     );
   }, []);
 
-  const toggleSentido = useCallback((linhaId: string) => {
+  const toggleSentido  = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) =>
         l.linhaId === linhaId
@@ -319,7 +295,7 @@ const Home = () => {
     );
   }, []);
 
-  const toggleParadas = useCallback((linhaId: string) => {
+  const toggleParadas  = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) =>
         l.linhaId === linhaId ? { ...l, mostrarParadas: !l.mostrarParadas } : l,
@@ -333,11 +309,11 @@ const Home = () => {
     );
   }, []);
 
-  // ─── Paradas selecionadas ────────────────────────────────────────────────
+  // ─── Paradas ──────────────────────────────────────────────────────────────
 
   const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
     if (!paradaSelecionada) return [];
-    const alvoId = paradaSelecionada.paradaId;
+    const alvoId   = paradaSelecionada.paradaId;
     const alvoNome = normalizarNome(paradaSelecionada.nome);
 
     return linhasSelecionadas
@@ -357,18 +333,11 @@ const Home = () => {
         };
       })
       .filter(Boolean) as LinhaParadaInfo[];
-  }, [
-    paradaSelecionada,
-    linhasSelecionadas,
-    normalizarNome,
-    obterParadasLinha,
-  ]);
+  }, [paradaSelecionada, linhasSelecionadas, normalizarNome, obterParadasLinha]);
 
-  const [chegadasParada, setChegadasParada] = useState<ChegadaParadaInfo[]>([]);
-  const [carregandoChegadas, setCarregandoChegadas] = useState<boolean>(false);
-  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<
-    number | null
-  >(null);
+  const [chegadasParada, setChegadasParada]         = useState<ChegadaParadaInfo[]>([]);
+  const [carregandoChegadas, setCarregandoChegadas] = useState(false);
+  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<number | null>(null);
 
   const atualizarChegadas = useCallback(async () => {
     if (!paradaSelecionada) {
@@ -376,16 +345,10 @@ const Home = () => {
       setAtualizadoChegadasEm(null);
       return;
     }
-
     setCarregandoChegadas(true);
     try {
-      const lista = await buscarProximosVeiculosParada(
-        paradaSelecionada.paradaId,
-      );
-      const mapaLinhas = new Map(
-        linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]),
-      );
-
+      const lista = await buscarProximosVeiculosParada(paradaSelecionada.paradaId);
+      const mapaLinhas = new Map(linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]));
       const filtrados = lista
         .map((v) => {
           const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
@@ -412,7 +375,6 @@ const Home = () => {
           const eb = b.etaSeg ?? Number.POSITIVE_INFINITY;
           return ea - eb;
         });
-
       setChegadasParada(filtrados);
       setAtualizadoChegadasEm(Date.now());
     } catch (err) {
@@ -433,9 +395,7 @@ const Home = () => {
   }, [paradaSelecionada, linhasNaParada, atualizarChegadas]);
 
   useEffect(() => {
-    if (paradaExpandida) {
-      atualizarChegadas();
-    }
+    if (paradaExpandida) atualizarChegadas();
   }, [paradaExpandida, atualizarChegadas]);
 
   const focarVeiculoNaParada = useCallback((chegada: ChegadaParadaInfo) => {
@@ -452,16 +412,10 @@ const Home = () => {
     const mapa: Record<string, { ida?: string; volta?: string }> = {};
     Object.keys(itinerariosPorId).forEach((linhaId) => {
       const itinerario = itinerariosPorId[linhaId];
-      if (!itinerario || !itinerario.itinerarioSentidoMap) return;
-      const ida = itinerario.itinerarioIdIda
-        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]
-        : undefined;
-      const volta = itinerario.itinerarioIdVolta
-        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta]
-        : undefined;
-      if (ida || volta) {
-        mapa[linhaId] = { ida, volta };
-      }
+      if (!itinerario?.itinerarioSentidoMap) return;
+      const ida   = itinerario.itinerarioIdIda   ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]   : undefined;
+      const volta = itinerario.itinerarioIdVolta ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta] : undefined;
+      if (ida || volta) mapa[linhaId] = { ida, volta };
     });
     return mapa;
   }, [itinerariosPorId]);
@@ -472,6 +426,7 @@ const Home = () => {
     () => normalizarModalNome(modais.find((m) => m.id === modalSelecionadoId)?.nome),
     [modais, modalSelecionadoId],
   );
+
   const linhasSelecionadasFiltradas = useMemo(
     () =>
       linhasSelecionadas.filter(
@@ -486,30 +441,18 @@ const Home = () => {
         .filter((l) => l.ativa)
         .map((l) => {
           const itinerario = itinerariosPorId[l.linhaId];
-          const segmentos = itinerario?.segmentos ?? [];
+          const segmentos  = itinerario?.segmentos ?? [];
 
           let itinerarioIdFiltro: string | null = null;
-          if (l.modoSentido === "ida") {
-            itinerarioIdFiltro = itinerario?.itinerarioIdIda ?? null;
-          } else if (l.modoSentido === "volta") {
-            itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
-          }
+          if (l.modoSentido === "ida")   itinerarioIdFiltro = itinerario?.itinerarioIdIda   ?? null;
+          if (l.modoSentido === "volta") itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
 
-          const veiculos = getVeiculosPorCodigo(
-            l.linhaCodigo,
-            itinerarioIdFiltro,
-          );
+          const veiculos = getVeiculosPorCodigo(l.linhaCodigo, itinerarioIdFiltro);
+          const paradas  = l.mostrarParadas ? obterParadasLinha(l) : [];
 
-          const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
-
-          // Mapa itinerarioId → índice do segmento para o dead reckoning
           const itinerarioSegmentoMap: Record<string, number> = {};
-          if (itinerario?.itinerarioIdIda) {
-            itinerarioSegmentoMap[itinerario.itinerarioIdIda] = 0;
-          }
-          if (itinerario?.itinerarioIdVolta) {
-            itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
-          }
+          if (itinerario?.itinerarioIdIda)   itinerarioSegmentoMap[itinerario.itinerarioIdIda]   = 0;
+          if (itinerario?.itinerarioIdVolta) itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
 
           const itinerarioSentidoMap = itinerario?.itinerarioSentidoMap ?? {};
 
@@ -522,7 +465,7 @@ const Home = () => {
             paradas,
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
-            itinerarioSegmentoMap, // ← novo
+            itinerarioSegmentoMap,
             itinerarioSentidoMap:
               Object.keys(itinerarioSentidoMap).length > 0
                 ? itinerarioSentidoMap
@@ -541,16 +484,15 @@ const Home = () => {
                   : undefined,
               timestamp: v.timestamp,
               proximaParadaNome: v.proximaParadaNome ?? null,
-              distanciaProximaParadaMetros:
-                v.distanciaProximaParadaMetros ?? null,
+              distanciaProximaParadaMetros: v.distanciaProximaParadaMetros ?? null,
               status: v.status ?? 0,
-              posicaoNaRota: v.posicaoNaRota ?? null, // ← novo
-              comprimentoRotaMetros: v.comprimentoRotaMetros ?? null, // ← novo
-              itinerarioId: v.itinerarioId ?? null, // ← novo
+              posicaoNaRota: v.posicaoNaRota ?? null,
+              comprimentoRotaMetros: v.comprimentoRotaMetros ?? null,
+              itinerarioId: v.itinerarioId ?? null,
             })),
           };
         }),
-    [linhasSelecionadasFiltradas, itinerariosPorId, getVeiculosPorCodigo],
+    [linhasSelecionadasFiltradas, itinerariosPorId, getVeiculosPorCodigo, obterParadasLinha],
   );
 
   const dadosBuscaFormatados = useMemo(
@@ -568,59 +510,105 @@ const Home = () => {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <View
-      className="flex-1 flex-col"
-      style={{ backgroundColor: cores.fundoApp }}
-    >
-      {
-        <MapaOSM
-          ref={mapRef}
-          location={location}
-          linhasParaMostrar={dadosParaMapa}
-          showTraffic={transito}
-          darkMode={temaAtual === "escuro"}
-          estiloMapa={estiloMapaAtual}
-          onStopPress={(parada) => {
-            setParadaSelecionada(parada);
-            setParadaExpandida(false);
-          }}
-        />
-      }
-
-      {containerAberto && (
-        <Pressable
-          onPress={() => setContainerAberto(false)}
-          className="absolute inset-0 z-10"
-        />
-      )}
-
-      <InputBusca
-        placeholder="Buscar Linhas"
-        icon={Search}
-        className="absolute top-[4rem] !w-3/4 right-[5rem]"
-        value={busca}
-        onChangeText={setBusca}
+    <View style={{ flex: 1, backgroundColor: cores.fundoApp }}>
+      <MapaOSM
+        ref={mapRef}
+        location={location}
+        linhasParaMostrar={dadosParaMapa}
+        showTraffic={transito}
+        darkMode={temaAtual === "escuro"}
+        estiloMapa={estiloMapaAtual}
+        onStopPress={(parada) => {
+          setParadaSelecionada(parada);
+          setParadaExpandida(false);
+        }}
       />
 
+      {/* ── Barra de busca integrada ────────────────────────────────────── */}
+      <View
+        style={{
+          position: "absolute",
+          top: 56,
+          left: 12,
+          right: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: cores.fundoInput,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: cores.borda,
+          height: 48,
+          paddingHorizontal: 14,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 8,
+          elevation: 4,
+          zIndex: 10,
+        }}
+      >
+        <Search size={18} color={cores.iconeSecundario} />
+
+        <TextInput
+          style={{
+            flex: 1,
+            marginHorizontal: 10,
+            fontSize: 15,
+            color: cores.textoPrimario,
+          }}
+          placeholder="Buscar linhas ou destinos"
+          placeholderTextColor={cores.textoSecundario}
+          value={busca}
+          onChangeText={setBusca}
+        />
+
+        <View
+          style={{
+            width: 1,
+            height: 22,
+            backgroundColor: cores.borda,
+            marginRight: 10,
+          }}
+        />
+
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            setFiltroAberto((p) => !p);
+          }}
+          hitSlop={8}
+        >
+          <SlidersHorizontal
+            size={18}
+            color={filtroAberto ? cores.iconePrimario : cores.iconeSecundario}
+          />
+        </Pressable>
+      </View>
+
+      {/* ── Resultado da busca ──────────────────────────────────────────── */}
       {buscaAtiva && (
         <ResultadoBusca
           data={dadosBuscaFormatados}
           listaSelecionada={(item) => selecionarOpcao(item._opcao)}
-          className="absolute top-[8rem] !w-3/4 right-[5rem] shadow-lg rounded-2xl z-20"
+          className="absolute shadow-lg rounded-2xl z-20"
+          style={{ top: 112, left: 12, right: 12 }}
           maxHeight={400}
         />
       )}
 
+      {/* ── Filtro ─────────────────────────────────────────────────────── */}
       <Filtro
         transito={transito}
         clickTransito={() => setTransito((p) => !p)}
         modalSelecionado={modalSelecionadoNome || "onibus"}
         onSelecionarModal={(modalNome) => {
           const modal = modais.find(
-            (m) => normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
+            (m) =>
+              normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
           );
           if (modal) setModalSelecionadoId(modal.id);
         }}
+        aberto={filtroAberto}
+        onToggle={() => setFiltroAberto(false)}
       />
 
       <RotaButton />

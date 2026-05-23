@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text } from "react-native";
+import { Pressable, ScrollView, Text, ViewStyle } from "react-native";
 import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
 import { useTema } from "@/src/hooks/useTema";
 
@@ -12,6 +12,7 @@ interface Props<T extends ItemResultadoBusca> {
   data: T[];
   listaSelecionada: (item: T) => void;
   className?: string;
+  style?: ViewStyle;
   maxHeight?: number;
 }
 
@@ -20,7 +21,7 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
 ) {
   const { cores } = useTema();
   const maxHeight = props.maxHeight || 400;
-  const itemHeight = 72; // altura aproximada de cada item (p-4 + texto)
+  const itemHeight = 72;
   const calculatedHeight = Math.min(props.data.length * itemHeight, maxHeight);
 
   return (
@@ -28,12 +29,15 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
       entering={FadeInUp.duration(400).springify()}
       layout={LinearTransition}
       className={props.className}
-      style={{
-        height: calculatedHeight,
-        backgroundColor: cores.fundoCard,
-        borderColor: cores.borda,
-        borderWidth: 1,
-      }}
+      style={[
+        {
+          height: calculatedHeight,
+          backgroundColor: cores.fundoCard,
+          borderColor: cores.borda,
+          borderWidth: 1,
+        },
+        props.style,
+      ]}
     >
       <ScrollView
         nestedScrollEnabled={true}

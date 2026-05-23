@@ -17,7 +17,7 @@ export default function InputBusca(props: Props) {
   return (
     <View className={`w-full ${props.className}`}>
       <TextInput
-        className="bg-white rounded-3xl h-12 w-full px-12 mr-12 shadow-md"
+        className="rounded-3xl h-12 w-full px-12 mr-12 shadow-md"
         style={{
           backgroundColor: cores.fundoInput,
           color: cores.textoPrimario,
