@@ -138,47 +138,39 @@ function NavShape({
   const extra = notchR * 0.55;
   const svgH = height + extra;
 
-  const animatedProps = useAnimatedProps(() => {
-    const cx = notchCX.value;
-    const r = notchR;
-    // Ponto onde o recorte começa/termina na linha do topo
-    // Usamos um arco SVG: dois pontos na borda superior, curva para baixo
-    const arcSpread = r * 1.25;
-    const arcDepth = r * 0.55; // quanto afunda
+const animatedProps = useAnimatedProps(() => {
+  const cx = notchCX.value;
+  const r = notchR;
 
-    const x1 = cx - arcSpread;
-    const x2 = cx + arcSpread;
-    // raio do arco SVG (maior = curva mais suave)
-    const arcR = r * 1.15;
+  const arcSpread = r * 2.2;
+  const arcDepth = r * 1.5;
 
-    const d = [
-      // começa canto superior esquerdo
-      `M ${br} ${extra}`,
-      // linha até início do recorte
-      `L ${x1} ${extra}`,
-      // arco côncavo para baixo
-      `A ${arcR} ${arcR} 0 0 0 ${x2} ${extra}`,
-      // linha até canto superior direito
-      `L ${width - br} ${extra}`,
-      // canto superior direito
-      `Q ${width} ${extra} ${width} ${extra + br}`,
-      // lado direito
-      `L ${width} ${svgH - br}`,
-      // canto inferior direito
-      `Q ${width} ${svgH} ${width - br} ${svgH}`,
-      // base
-      `L ${br} ${svgH}`,
-      // canto inferior esquerdo
-      `Q 0 ${svgH} 0 ${svgH - br}`,
-      // lado esquerdo
-      `L 0 ${extra + br}`,
-      // canto superior esquerdo
-      `Q 0 ${extra} ${br} ${extra}`,
-      `Z`,
-    ].join(" ");
+  const x1 = cx - arcSpread;
+  const x2 = cx + arcSpread;
 
-    return { d };
-  });
+  // quanto as "orelhas" ficam arredondadas
+  const shoulder = arcSpread * 0.5;
+
+  const d = [
+    `M ${br} ${extra}`,
+    `L ${x1} ${extra}`,
+    // entrada suave: linha desce enquanto avança horizontalmente
+    `C ${x1 + shoulder} ${extra}, ${cx - arcSpread * 0.6} ${extra + arcDepth}, ${cx} ${extra + arcDepth}`,
+    // saída suave: sobe de volta
+    `C ${cx + arcSpread * 0.6} ${extra + arcDepth}, ${x2 - shoulder} ${extra}, ${x2} ${extra}`,
+    `L ${width - br} ${extra}`,
+    `Q ${width} ${extra} ${width} ${extra + br}`,
+    `L ${width} ${svgH - br}`,
+    `Q ${width} ${svgH} ${width - br} ${svgH}`,
+    `L ${br} ${svgH}`,
+    `Q 0 ${svgH} 0 ${svgH - br}`,
+    `L 0 ${extra + br}`,
+    `Q 0 ${extra} ${br} ${extra}`,
+    `Z`,
+  ].join(" ");
+
+  return { d };
+});
 
   return (
     <Svg
@@ -214,7 +206,7 @@ export default function NavBar() {
   const sphereSize = 50;
   const sphereR = sphereSize / 2;
   // esfera fica com metade dentro da navbar
-  const sphereOverlap = sphereR * 1;
+  const sphereOverlap = sphereR * 1.2;
   const sphereBottom = bottomOffset + navHeight - sphereOverlap;
 
   const tabsAreaWidth = Math.max(
