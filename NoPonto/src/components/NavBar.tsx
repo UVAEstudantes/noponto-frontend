@@ -4,12 +4,10 @@ import {
   Bus,
   LucideIcon,
   MapPinned,
-  PanelRightClose,
-  PanelRightOpen,
   Settings,
   Star,
 } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -19,10 +17,10 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import { Text } from "react-native";
 
 type TabRoute = "/favoritos" | "/linhas" | "/" | "/configuracao";
 type TabItem = { href: TabRoute; label: string; Icon: LucideIcon };
@@ -39,7 +37,6 @@ function routeMatches(href: TabRoute, pathname: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// ── Tab individual ──
 function TabButton({
   tab,
   isActive,
@@ -54,57 +51,25 @@ function TabButton({
   cores: any;
 }) {
   const iconStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      bumpProgress.value,
-      [0, 0.4, 1],
-      [1, 0.1, 0],
-      Extrapolation.CLAMP
-    ),
+    opacity: interpolate(bumpProgress.value, [0, 0.4, 1], [1, 0.1, 0], Extrapolation.CLAMP),
     transform: [
-      {
-        translateY: interpolate(
-          bumpProgress.value,
-          [0, 1],
-          [0, -6],
-          Extrapolation.CLAMP
-        ),
-      },
+      { translateY: interpolate(bumpProgress.value, [0, 1], [0, -6], Extrapolation.CLAMP) },
     ],
   }));
 
   const labelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      bumpProgress.value,
-      [0, 0.5, 1],
-      [0.55, 0.1, 0],
-      Extrapolation.CLAMP
-    ),
+    opacity: interpolate(bumpProgress.value, [0, 0.5, 1], [0.55, 0.1, 0], Extrapolation.CLAMP),
   }));
 
   return (
     <Link href={tab.href} replace asChild>
       <Pressable
-        style={{
-          width: tabWidth,
-          height: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 3,
-        }}
+        style={{ width: tabWidth, height: "100%", alignItems: "center", justifyContent: "center", gap: 3 }}
       >
         <Animated.View style={iconStyle}>
-          <tab.Icon
-            color={cores.iconeSecundario}
-            size={20}
-            strokeWidth={2.1}
-          />
+          <tab.Icon color={cores.iconeSecundario} size={20} strokeWidth={2.1} />
         </Animated.View>
-        <Animated.Text
-          style={[
-            labelStyle,
-            { fontSize: 10, color: cores.textoSecundario },
-          ]}
-        >
+        <Animated.Text style={[labelStyle, { fontSize: 10, color: cores.textoSecundario }]}>
           {tab.label}
         </Animated.Text>
       </Pressable>
@@ -116,7 +81,6 @@ function SphereIcon({ tab }: { tab: TabItem }) {
   return <tab.Icon color="#FFFFFF" size={22} strokeWidth={2.4} />;
 }
 
-// ── SVG navbar com recorte côncavo animado ──
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 function NavShape({
@@ -126,15 +90,16 @@ function NavShape({
   notchR,
   br,
   fill,
+  cores,
 }: {
   width: number;
   height: number;
   notchCX: ReturnType<typeof useSharedValue<number>>;
-  notchR: number; // raio do recorte
-  br: number;     // border radius da navbar
+  notchR: number;
+  br: number;
   fill: string;
+  cores: string;
 }) {
-  // O SVG tem altura extra no topo para acomodar o recorte
   const extra = notchR * 0.55;
   const svgH = height + extra;
 
@@ -179,7 +144,12 @@ const animatedProps = useAnimatedProps(() => {
       style={{ position: "absolute", top: -extra, left: 0 }}
       pointerEvents="none"
     >
-      <AnimatedPath animatedProps={animatedProps} fill={fill} />
+      <AnimatedPath
+        animatedProps={animatedProps}
+        fill={fill}
+        stroke={cores}
+        strokeWidth={1}
+      />
     </Svg>
   );
 }
@@ -189,52 +159,35 @@ export default function NavBar() {
   const { cores } = useTema();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [collapsed, setCollapsed] = useState(false);
 
   const activeIndex = tabs.findIndex((t) => routeMatches(t.href, pathname));
   const safeIndex = activeIndex === -1 ? 0 : activeIndex;
   const activeTab = tabs[safeIndex] as TabItem;
 
-  const collapsedSize = 62;
-  const expandedWidth = Math.min(screenWidth - 32, 560);
-  const navHeight = 64;
-  const toggleSize = 46;
-  const horizontalPadding = 8;
-  const openRight = Math.max((screenWidth - expandedWidth) / 2, 16);
-  const bottomOffset = Math.max(insets.bottom + 8, 24);
+  const expandedWidth = screenWidth + 3;
+  const navHeight = 54;
+  const horizontalPadding = 16;
+  const bottomOffset = - 2;
 
   const sphereSize = 50;
   const sphereR = sphereSize / 2;
-  // esfera fica com metade dentro da navbar
-  const sphereOverlap = sphereR * 1.2;
-  const sphereBottom = bottomOffset + navHeight - sphereOverlap;
+  const sphereOverlap = sphereR * 0.7 ;
+  const clampedInset = Math.min(Math.max(insets.bottom, 0), 60);
+  const insetOffset = clampedInset * (clampedInset < 25 ? 0 : 0.65);
+  const sphereBottom = navHeight + insetOffset - sphereOverlap;
 
-  const tabsAreaWidth = Math.max(
-    expandedWidth - toggleSize - horizontalPadding * 3,
-    200
-  );
-  const tabWidth = tabsAreaWidth / tabs.length;
+  const tabWidth = (expandedWidth - horizontalPadding * 2) / tabs.length;
 
-  // Centro X do tab ativo (relativo à tela, da direita)
-  // notchCX precisa ser relativo ao SVG (que tem width = expandedWidth, left = openRight da direita)
   const getNotchCX = (index: number) =>
     horizontalPadding + index * tabWidth + tabWidth / 2;
 
   const getSphereLeft = (index: number) =>
-    screenWidth -
-    openRight -
-    expandedWidth +
-    horizontalPadding +
-    index * tabWidth +
-    tabWidth / 2 -
-    sphereR;
+    getNotchCX(index) - sphereR;
 
   const notchCX = useSharedValue(getNotchCX(safeIndex));
   const sphereX = useSharedValue(getSphereLeft(safeIndex));
 
   const prevIndex = useRef(safeIndex);
-  const openProgress = useSharedValue(1);
-  const toggleScale = useSharedValue(1);
 
   const bump0 = useSharedValue(safeIndex === 0 ? 1 : 0);
   const bump1 = useSharedValue(safeIndex === 1 ? 1 : 0);
@@ -242,8 +195,8 @@ export default function NavBar() {
   const bump3 = useSharedValue(safeIndex === 3 ? 1 : 0);
   const bumpValues = [bump0, bump1, bump2, bump3];
 
-  const springConfig = { damping: 18, stiffness: 200, mass: 0.85 };
-  const bumpConfig = { damping: 22, stiffness: 320, mass: 0.6 };
+  const springCfg = { damping: 18, stiffness: 200, mass: 0.85 };
+  const bumpCfg   = { damping: 22, stiffness: 320, mass: 0.6  };
 
   useEffect(() => {
     const prev = prevIndex.current;
@@ -254,68 +207,23 @@ export default function NavBar() {
     cancelAnimation(sphereX);
     cancelAnimation(notchCX);
 
-    bumpValues[prev].value = withSpring(0, bumpConfig);
-    bumpValues[safeIndex].value = withSpring(1, bumpConfig);
-    sphereX.value = withSpring(getSphereLeft(safeIndex), springConfig);
-    notchCX.value = withSpring(getNotchCX(safeIndex), springConfig);
+    bumpValues[prev].value      = withSpring(0, bumpCfg);
+    bumpValues[safeIndex].value = withSpring(1, bumpCfg);
+    sphereX.value               = withSpring(getSphereLeft(safeIndex), springCfg);
+    notchCX.value               = withSpring(getNotchCX(safeIndex), springCfg);
 
     prevIndex.current = safeIndex;
   }, [safeIndex]);
 
-  useEffect(() => {
-    openProgress.value = withSpring(collapsed ? 0 : 1, {
-      damping: 18,
-      stiffness: 230,
-      mass: 0.9,
-    });
-  }, [collapsed]);
-
-  const containerAnimatedStyle = useAnimatedStyle(() => {
-    const width = interpolate(
-      openProgress.value,
-      [0, 1],
-      [collapsedSize, expandedWidth],
-      Extrapolation.CLAMP
-    );
-    const borderRadius = interpolate(
-      openProgress.value,
-      [0, 1],
-      [collapsedSize / 2, 28],
-      Extrapolation.CLAMP
-    );
-    return {
-      width,
-      height: navHeight,
-      borderRadius,
-      right: interpolate(openProgress.value, [0, 1], [16, openRight]),
-    };
-  });
-
-  const tabsAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: openProgress.value,
-    transform: [
-      { translateX: interpolate(openProgress.value, [0, 1], [18, 0]) },
-      { scale: interpolate(openProgress.value, [0, 1], [0.95, 1]) },
-    ],
-  }));
-
-  const toggleAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: toggleScale.value }],
-  }));
-
-  const sphereAnimatedStyle = useAnimatedStyle(() => ({
-    left: sphereX.value,
-  }));
-
-  const toggleNav = () => setCollapsed((prev) => !prev);
+  const sphereStyle = useAnimatedStyle(() => ({ left: sphereX.value }));
 
   return (
     <>
-      {/* ── Esfera flutuante ── */}
+      {/* ── Esfera ── */}
       <Animated.View
         pointerEvents="none"
         style={[
-          sphereAnimatedStyle,
+          sphereStyle,
           {
             position: "absolute",
             bottom: sphereBottom,
@@ -338,129 +246,56 @@ export default function NavBar() {
       </Animated.View>
 
       {/* ── Navbar ── */}
-      <Animated.View
-        style={[
-          containerAnimatedStyle,
-          {
-            position: "absolute",
-            bottom: bottomOffset,
-            overflow: "visible",
-            zIndex: 100,
-          },
-        ]}
+      <View
+        style={{
+          position: "absolute",
+          bottom: bottomOffset,
+          left: 0,
+          right: 0,
+          height: navHeight + insets.bottom,
+          overflow: "visible",
+          zIndex: 100,
+          shadowColor: cores.sombra,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          elevation: 10,
+        }}
       >
-        {/* SVG com recorte côncavo */}
         <NavShape
           width={expandedWidth}
-          height={navHeight}
+          height={navHeight + insets.bottom}
           notchCX={notchCX}
           notchR={sphereR + 1}
-          br={28}
+          br={0}
           fill={cores.fundoNav}
+          cores={cores.bordaNav}
         />
 
-        {/* Sombra separada (view opaca atrás) */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            useAnimatedStyle(() => ({
-              width: interpolate(
-                openProgress.value,
-                [0, 1],
-                [collapsedSize, expandedWidth],
-                Extrapolation.CLAMP
-              ),
-              borderRadius: interpolate(
-                openProgress.value,
-                [0, 1],
-                [collapsedSize / 2, 28],
-                Extrapolation.CLAMP
-              ),
-            })),
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              height: navHeight,
-              shadowColor: cores.sombra,
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 16,
-              elevation: 10,
-              backgroundColor: "transparent",
-              zIndex: -1,
-            },
-          ]}
-        />
-
-        {/* Tabs */}
-        <Animated.View
-          style={[
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              flexDirection: "row",
-              alignItems: "center",
-              paddingLeft: horizontalPadding,
-            },
-            tabsAnimatedStyle,
-          ]}
-          pointerEvents={collapsed ? "none" : "auto"}
-        >
-          <View
-            style={{
-              width: tabsAreaWidth,
-              flexDirection: "row",
-              alignItems: "center",
-              height: "100%",
-            }}
-          >
-            {tabs.map((tab, index) => (
-              <TabButton
-                key={tab.href}
-                tab={tab}
-                isActive={index === safeIndex}
-                tabWidth={tabWidth}
-                bumpProgress={bumpValues[index]}
-                cores={cores}
-              />
-            ))}
-          </View>
-        </Animated.View>
-
-        {/* Botão colapsar */}
-        <Pressable
+        <View
           style={{
             position: "absolute",
-            right: 8,
-            top: (navHeight - toggleSize) / 2,
-            height: toggleSize,
-            width: toggleSize,
+            top: 0,
+            left: 0,
+            right: 0,
+            height: navHeight,
+            flexDirection: "row",
             alignItems: "center",
-            justifyContent: "center",
-            borderRadius: toggleSize / 2,
-            zIndex: 5,
-          }}
-          onPress={toggleNav}
-          onPressIn={() => {
-            toggleScale.value = withTiming(0.92, { duration: 90 });
-          }}
-          onPressOut={() => {
-            toggleScale.value = withTiming(1, { duration: 130 });
+            paddingHorizontal: horizontalPadding,
           }}
         >
-          <Animated.View style={toggleAnimatedStyle}>
-            {collapsed ? (
-              <PanelRightOpen color={cores.iconePrimario} size={22} />
-            ) : (
-              <PanelRightClose color={cores.iconeSecundario} size={22} />
-            )}
-          </Animated.View>
-        </Pressable>
-      </Animated.View>
+          {tabs.map((tab, index) => (
+            <TabButton
+              key={tab.href}
+              tab={tab}
+              isActive={index === safeIndex}
+              tabWidth={tabWidth}
+              bumpProgress={bumpValues[index]}
+              cores={cores}
+            />
+          ))}
+        </View>
+      </View>
     </>
   );
 }
