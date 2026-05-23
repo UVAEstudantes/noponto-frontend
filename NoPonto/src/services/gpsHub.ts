@@ -2,8 +2,7 @@ import { config } from "@/src/config/env";
 import { VeiculoTempoReal } from "@/src/types/transporte";
 import * as signalR from "@microsoft/signalr";
 
-const HUB_URL =
-  `${config.API_BASE_URL}${config.GPS_HUB_ROUTE}`;
+const HUB_URL = config.GPS_HUB_URL;
 
 let connection: signalR.HubConnection | null = null;
 const subscribers = new Set<(veiculos: VeiculoTempoReal[]) => void>();
