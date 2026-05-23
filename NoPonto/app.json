@@ -36,7 +36,7 @@
         {
           "image": "./assets/images/icon-semBG.png",
           "backgroundColor": "#0b0b0b",
-          "imageWidth": 300
+          "imageWidth": 250
         }
       ],
       "expo-font",
