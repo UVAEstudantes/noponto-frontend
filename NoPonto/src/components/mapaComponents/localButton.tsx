@@ -37,7 +37,13 @@ export default function LocalButton({
     <Pressable
       onPress={locationUser}
       className=" absolute right-10 bottom-[190px] bg-customBlack p-3 rounded-full"
-      style={{ backgroundColor: cores.fundoNav }}
+      style={{
+              borderRadius: 999, width: 48, height: 48,
+              backgroundColor: cores.fundoPainel,
+              borderWidth: 1, borderColor: cores.borda,
+              alignItems: "center", justifyContent: "center",
+              shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
+            }}
     >
       <LocateFixed color={cores.iconePrimario} size={24} />
     </Pressable>
