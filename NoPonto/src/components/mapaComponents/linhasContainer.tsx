@@ -42,6 +42,9 @@ interface Props {
   aoToggleAberto: () => void;
   modalAtivo?: string | null;
   mostrarBotaoToggle?: boolean;
+  opcoesModal?: { id: string; nome: string }[];
+  modalSelecionadoId?: string | null;
+  aoSelecionarModal?: (modalId: string) => void;
 }
 
 // ─── Utilitários de cor ────────────────────────────────────────────────────
@@ -381,6 +384,9 @@ function LinhasContainer({
   aoToggleAberto,
   modalAtivo,
   mostrarBotaoToggle = true,
+  opcoesModal = [],
+  modalSelecionadoId,
+  aoSelecionarModal,
 }: Props) {
   const { cores, temaAtual } = useTema();
 
@@ -476,12 +482,26 @@ function LinhasContainer({
           <Text style={{ fontWeight: "700", fontSize: 15, color: cores.textoPrimario }}>
             Linhas no Mapa
           </Text>
-          <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, backgroundColor: cores.fundoSecundario }}>
-            <Text style={{ fontSize: 12, fontWeight: "600", color: cores.textoSecundario }}>
-              {linhasSelecionadas.length}/{MAX_LINHAS_VIEW}
-            </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, backgroundColor: cores.fundoSecundario }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: cores.textoSecundario }}>
+                {linhasSelecionadas.length}/{MAX_LINHAS_VIEW}
+              </Text>
+            </View>
+            <Pressable onPress={aoToggleAberto} accessibilityRole="button" accessibilityLabel="Fechar lista de linhas" hitSlop={8} style={{ width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: cores.fundoSecundario }}>
+              <X size={16} color={cores.textoSecundario} />
+            </Pressable>
           </View>
         </View>
+
+        {opcoesModal.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
+            {opcoesModal.map((modal) => {
+              const selecionado = modal.id === modalSelecionadoId;
+              return <Pressable key={modal.id} onPress={() => aoSelecionarModal?.(modal.id)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: selecionado ? cores.fundoPrimario : cores.fundoSecundario, borderWidth: 1, borderColor: selecionado ? cores.fundoPrimario : cores.borda }}><Text style={{ fontSize: 12, fontWeight: "700", color: selecionado ? cores.textoInverso : cores.textoSecundario }}>{modal.nome}</Text></Pressable>;
+            })}
+          </ScrollView>
+        )}
 
         {/* Lista */}
         <ScrollView
