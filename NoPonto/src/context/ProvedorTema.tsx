@@ -17,8 +17,11 @@ import { NomeTema, temas } from "@/src/constants/tema";
 import {
   PreferenciaTema,
   carregarEstiloMapa,
+  carregarPreferenciaLateralidade,
   carregarPreferenciaTema,
+  PreferenciaLateralidade,
   salvarEstiloMapa,
+  salvarPreferenciaLateralidade,
   salvarPreferenciaTema,
 } from "@/src/services/storage";
 
@@ -30,6 +33,8 @@ type TemaContexto = {
   definirTema: (tema: NomeTema) => Promise<void>;
   estiloMapaAtual: EstiloMapaId;
   definirEstiloMapa: (estiloMapa: EstiloMapaId) => Promise<void>;
+  preferenciaLateralidade: PreferenciaLateralidade;
+  definirPreferenciaLateralidade: (preferencia: PreferenciaLateralidade) => Promise<void>;
   carregandoTema: boolean;
 };
 
@@ -41,6 +46,7 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     useState<PreferenciaTema>("sistema");
   const [estiloMapaAtual, setEstiloMapaAtual] =
     useState<EstiloMapaId>(ESTILO_MAPA_PADRAO);
+  const [preferenciaLateralidade, setPreferenciaLateralidade] = useState<PreferenciaLateralidade>("destro");
   const [carregandoTema, setCarregandoTema] = useState(true);
 
   const temaSistema: NomeTema = esquemaSistema === "dark" ? "escuro" : "claro";
@@ -57,9 +63,10 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     let ativo = true;
 
     const iniciar = async () => {
-      const [preferenciaSalva, estiloSalvo] = await Promise.all([
+      const [preferenciaSalva, estiloSalvo, lateralidadeSalva] = await Promise.all([
         carregarPreferenciaTema(),
         carregarEstiloMapa(),
+        carregarPreferenciaLateralidade(),
       ]);
 
       if (!ativo) {
@@ -71,6 +78,7 @@ export function ProvedorTema({ children }: PropsWithChildren) {
       }
 
       setEstiloMapaAtual(validarEstiloMapa(estiloSalvo));
+      setPreferenciaLateralidade(lateralidadeSalva);
 
       setCarregandoTema(false);
     };
@@ -103,6 +111,11 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     await salvarEstiloMapa(estiloValidado);
   }, []);
 
+  const definirPreferenciaLateralidade = useCallback(async (preferencia: PreferenciaLateralidade) => {
+    setPreferenciaLateralidade(preferencia);
+    await salvarPreferenciaLateralidade(preferencia);
+  }, []);
+
   const alternarTema = useCallback(async () => {
     const proximoTema: NomeTema = temaAtual === "claro" ? "escuro" : "claro";
     await definirPreferenciaTema(proximoTema);
@@ -117,6 +130,8 @@ export function ProvedorTema({ children }: PropsWithChildren) {
       definirTema,
       estiloMapaAtual,
       definirEstiloMapa,
+      preferenciaLateralidade,
+      definirPreferenciaLateralidade,
       carregandoTema,
     }),
     [
@@ -127,6 +142,8 @@ export function ProvedorTema({ children }: PropsWithChildren) {
       definirTema,
       estiloMapaAtual,
       definirEstiloMapa,
+      preferenciaLateralidade,
+      definirPreferenciaLateralidade,
       carregandoTema,
     ],
   );

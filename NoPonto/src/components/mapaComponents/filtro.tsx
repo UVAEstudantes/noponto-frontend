@@ -7,6 +7,7 @@ import {
   TriangleAlert,
 } from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
+import { PreferenciaLateralidade } from "@/src/services/storage";
 import React from "react";
 import {
   Pressable,
@@ -42,6 +43,7 @@ interface FiltroProps {
   onSelecionarModal: (modal: string) => void;
   aberto: boolean;
   onToggle: () => void;
+  lateralidade?: PreferenciaLateralidade;
 }
 
 export default function Filtro({
@@ -51,6 +53,7 @@ export default function Filtro({
   onSelecionarModal,
   aberto,
   onToggle,
+  lateralidade = "destro",
 }: FiltroProps) {
   const { cores, temaAtual } = useTema();
   const [risco, setRisco] = React.useState(false);
@@ -83,8 +86,8 @@ export default function Filtro({
         <View
           style={{
             position: "absolute",
-            right: 12,
-            top: 110,
+            [lateralidade === "canhoto" ? "left" : "right"]: 12,
+            top: 68,
             width: 248,
             borderRadius: 16,
             paddingHorizontal: 16,

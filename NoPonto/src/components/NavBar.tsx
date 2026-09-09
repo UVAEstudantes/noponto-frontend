@@ -1,5 +1,5 @@
 import { useTema } from "@/src/hooks/useTema";
-import { Link, usePathname } from "expo-router";
+import { router, usePathname } from "expo-router";
 import {
   Bus,
   LucideIcon,
@@ -61,9 +61,16 @@ function TabButton({
     opacity: interpolate(bumpProgress.value, [0, 0.5, 1], [0.55, 0.1, 0], Extrapolation.CLAMP),
   }));
 
+  const handlePress = () => {
+    if (!isActive) router.replace(tab.href);
+  };
+
   return (
-    <Link href={tab.href} replace asChild>
       <Pressable
+        onPress={handlePress}
+        accessibilityRole="tab"
+        accessibilityLabel={`Ir para ${tab.label}`}
+        accessibilityState={{ selected: isActive }}
         style={{ width: tabWidth, height: "100%", alignItems: "center", justifyContent: "center", gap: 3 }}
       >
         <Animated.View style={iconStyle}>
@@ -73,7 +80,6 @@ function TabButton({
           {tab.label}
         </Animated.Text>
       </Pressable>
-    </Link>
   );
 }
 

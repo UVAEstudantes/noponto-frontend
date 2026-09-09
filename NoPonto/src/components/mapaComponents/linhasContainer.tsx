@@ -41,6 +41,7 @@ interface Props {
   aberto: boolean;
   aoToggleAberto: () => void;
   modalAtivo?: string | null;
+  mostrarBotaoToggle?: boolean;
 }
 
 // ─── Utilitários de cor ────────────────────────────────────────────────────
@@ -379,6 +380,7 @@ function LinhasContainer({
   aberto,
   aoToggleAberto,
   modalAtivo,
+  mostrarBotaoToggle = true,
 }: Props) {
   const { cores, temaAtual } = useTema();
 
@@ -423,6 +425,7 @@ function LinhasContainer({
   return (
     <>
       {/* ── Botão toggle flutuante ─────────────────────────────────────── */}
+      {mostrarBotaoToggle && (
       <Animated.View style={[{ position: "absolute", right: 35, bottom: BASE_BOTTOM, zIndex: 34 }, toggleStyle]}>
         <Pressable onPress={aoToggleAberto} hitSlop={10}>
           <View
@@ -448,6 +451,7 @@ function LinhasContainer({
           </View>
         </Pressable>
       </Animated.View>
+      )}
 
       {/* ── Sheet principal ────────────────────────────────────────────── */}
       <Animated.View

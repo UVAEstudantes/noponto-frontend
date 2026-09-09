@@ -2,7 +2,7 @@ import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { Check, Map, Monitor, Moon, Palette, Sun } from "lucide-react-native";
+import { Check, Hand, Map, Monitor, Moon, Palette, Sun } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const Configuracao = () => {
@@ -12,6 +12,8 @@ const Configuracao = () => {
     definirPreferenciaTema,
     estiloMapaAtual,
     definirEstiloMapa,
+    preferenciaLateralidade,
+    definirPreferenciaLateralidade,
     cores,
   } = useTema();
 
@@ -145,6 +147,11 @@ const Configuracao = () => {
               ? `Seguindo o sistema: ${resumoTemaAtual}`
               : `Tema manual: ${resumoTemaAtual}`}
           </Text>
+        </View>
+
+        <View className="mt-4 rounded-2xl p-4" style={{ backgroundColor: cores.fundoCard, borderColor: cores.borda, borderWidth: 1 }}>
+          <View className="flex-row items-center"><View className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: cores.fundoSecundario }}><Hand size={20} color={cores.iconeSecundario} /></View><View className="ml-3 flex-1"><Text className="text-base font-semibold" style={{ color: cores.textoPrimario }}>Lateralidade</Text><Text className="text-sm" style={{ color: cores.textoSecundario }}>Define o lado dos controles do mapa</Text></View></View>
+          <View className="mt-4 flex-row">{(["destro", "canhoto"] as const).map((opcao, index) => { const selecionado = preferenciaLateralidade === opcao; return <Pressable key={opcao} className="h-12 flex-1 items-center justify-center rounded-xl" style={{ marginRight: index === 0 ? 8 : 0, backgroundColor: selecionado ? cores.fundoPrimario : cores.fundoPainel, borderColor: selecionado ? cores.fundoPrimario : cores.borda, borderWidth: 1 }} onPress={() => definirPreferenciaLateralidade(opcao)} accessibilityRole="radio" accessibilityLabel={`Usar controles no lado ${opcao}`} accessibilityState={{ selected: selecionado }}><Text className="text-sm font-semibold" style={{ color: selecionado ? cores.textoInverso : cores.textoSecundario }}>{opcao === "destro" ? "Destro" : "Canhoto"}</Text></Pressable>; })}</View>
         </View>
 
         <View
