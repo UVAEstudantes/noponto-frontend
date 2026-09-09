@@ -1,23 +1,23 @@
 import {
-    cancelarLinha,
-    conectarGpsHub,
-    iniciarGpsHub,
-    inscreverLinha,
-    removerGpsHubListener,
+  cancelarLinha,
+  conectarGpsHub,
+  iniciarGpsHub,
+  inscreverLinha,
+  removerGpsHubListener,
 } from "@/src/services/gpsHub";
 import {
-    buscarItinerarioLinhaMesclado,
-    buscarVeiculosTempoReal,
-    construirLinhasDisponiveis,
+  buscarItinerarioLinhaMesclado,
+  buscarVeiculosTempoReal,
+  construirLinhasDisponiveis,
 } from "@/src/services/mobilidadeRio";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-    ItinerarioLinha,
-    LinhaTempoReal,
-    ModalApiTransporte,
-    ModoSentido,
-    VeiculoTempoReal,
+  ItinerarioLinha,
+  LinhaTempoReal,
+  ModalApiTransporte,
+  ModoSentido,
+  VeiculoTempoReal,
 } from "@/src/types/transporte";
 
 const INTERVALO_ATUALIZACAO_MS = 60_000;

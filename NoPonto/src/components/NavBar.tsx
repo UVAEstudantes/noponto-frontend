@@ -51,14 +51,31 @@ function TabButton({
   cores: any;
 }) {
   const iconStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(bumpProgress.value, [0, 0.4, 1], [1, 0.1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(
+      bumpProgress.value,
+      [0, 0.4, 1],
+      [1, 0.1, 0],
+      Extrapolation.CLAMP,
+    ),
     transform: [
-      { translateY: interpolate(bumpProgress.value, [0, 1], [0, -6], Extrapolation.CLAMP) },
+      {
+        translateY: interpolate(
+          bumpProgress.value,
+          [0, 1],
+          [0, -6],
+          Extrapolation.CLAMP,
+        ),
+      },
     ],
   }));
 
   const labelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(bumpProgress.value, [0, 0.5, 1], [0.55, 0.1, 0], Extrapolation.CLAMP),
+    opacity: interpolate(
+      bumpProgress.value,
+      [0, 0.5, 1],
+      [0.55, 0.1, 0],
+      Extrapolation.CLAMP,
+    ),
   }));
 
   const handlePress = () => {
@@ -66,20 +83,28 @@ function TabButton({
   };
 
   return (
-      <Pressable
-        onPress={handlePress}
-        accessibilityRole="tab"
-        accessibilityLabel={`Ir para ${tab.label}`}
-        accessibilityState={{ selected: isActive }}
-        style={{ width: tabWidth, height: "100%", alignItems: "center", justifyContent: "center", gap: 3 }}
+    <Pressable
+      onPress={handlePress}
+      accessibilityRole="tab"
+      accessibilityLabel={`Ir para ${tab.label}`}
+      accessibilityState={{ selected: isActive }}
+      style={{
+        width: tabWidth,
+        height: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 3,
+      }}
+    >
+      <Animated.View style={iconStyle}>
+        <tab.Icon color={cores.iconeSecundario} size={20} strokeWidth={2.1} />
+      </Animated.View>
+      <Animated.Text
+        style={[labelStyle, { fontSize: 10, color: cores.textoSecundario }]}
       >
-        <Animated.View style={iconStyle}>
-          <tab.Icon color={cores.iconeSecundario} size={20} strokeWidth={2.1} />
-        </Animated.View>
-        <Animated.Text style={[labelStyle, { fontSize: 10, color: cores.textoSecundario }]}>
-          {tab.label}
-        </Animated.Text>
-      </Pressable>
+        {tab.label}
+      </Animated.Text>
+    </Pressable>
   );
 }
 
@@ -109,39 +134,39 @@ function NavShape({
   const extra = notchR * 0.55;
   const svgH = height + extra;
 
-const animatedProps = useAnimatedProps(() => {
-  const cx = notchCX.value;
-  const r = notchR;
+  const animatedProps = useAnimatedProps(() => {
+    const cx = notchCX.value;
+    const r = notchR;
 
-  const arcSpread = r * 2.2;
-  const arcDepth = r * 1.5;
+    const arcSpread = r * 2.2;
+    const arcDepth = r * 1.5;
 
-  const x1 = cx - arcSpread;
-  const x2 = cx + arcSpread;
+    const x1 = cx - arcSpread;
+    const x2 = cx + arcSpread;
 
-  // quanto as "orelhas" ficam arredondadas
-  const shoulder = arcSpread * 0.5;
+    // quanto as "orelhas" ficam arredondadas
+    const shoulder = arcSpread * 0.5;
 
-  const d = [
-    `M ${br} ${extra}`,
-    `L ${x1} ${extra}`,
-    // entrada suave: linha desce enquanto avança horizontalmente
-    `C ${x1 + shoulder} ${extra}, ${cx - arcSpread * 0.6} ${extra + arcDepth}, ${cx} ${extra + arcDepth}`,
-    // saída suave: sobe de volta
-    `C ${cx + arcSpread * 0.6} ${extra + arcDepth}, ${x2 - shoulder} ${extra}, ${x2} ${extra}`,
-    `L ${width - br} ${extra}`,
-    `Q ${width} ${extra} ${width} ${extra + br}`,
-    `L ${width} ${svgH - br}`,
-    `Q ${width} ${svgH} ${width - br} ${svgH}`,
-    `L ${br} ${svgH}`,
-    `Q 0 ${svgH} 0 ${svgH - br}`,
-    `L 0 ${extra + br}`,
-    `Q 0 ${extra} ${br} ${extra}`,
-    `Z`,
-  ].join(" ");
+    const d = [
+      `M ${br} ${extra}`,
+      `L ${x1} ${extra}`,
+      // entrada suave: linha desce enquanto avança horizontalmente
+      `C ${x1 + shoulder} ${extra}, ${cx - arcSpread * 0.6} ${extra + arcDepth}, ${cx} ${extra + arcDepth}`,
+      // saída suave: sobe de volta
+      `C ${cx + arcSpread * 0.6} ${extra + arcDepth}, ${x2 - shoulder} ${extra}, ${x2} ${extra}`,
+      `L ${width - br} ${extra}`,
+      `Q ${width} ${extra} ${width} ${extra + br}`,
+      `L ${width} ${svgH - br}`,
+      `Q ${width} ${svgH} ${width - br} ${svgH}`,
+      `L ${br} ${svgH}`,
+      `Q 0 ${svgH} 0 ${svgH - br}`,
+      `L 0 ${extra + br}`,
+      `Q 0 ${extra} ${br} ${extra}`,
+      `Z`,
+    ].join(" ");
 
-  return { d };
-});
+    return { d };
+  });
 
   return (
     <Svg
@@ -173,11 +198,11 @@ export default function NavBar() {
   const expandedWidth = screenWidth + 3;
   const navHeight = 54;
   const horizontalPadding = 16;
-  const bottomOffset = - 2;
+  const bottomOffset = -2;
 
   const sphereSize = 50;
   const sphereR = sphereSize / 2;
-  const sphereOverlap = sphereR * 0.7 ;
+  const sphereOverlap = sphereR * 0.7;
   const clampedInset = Math.min(Math.max(insets.bottom, 0), 60);
   const insetOffset = clampedInset * (clampedInset < 25 ? 0 : 0.65);
   const sphereBottom = navHeight + insetOffset - sphereOverlap;
@@ -187,8 +212,7 @@ export default function NavBar() {
   const getNotchCX = (index: number) =>
     horizontalPadding + index * tabWidth + tabWidth / 2;
 
-  const getSphereLeft = (index: number) =>
-    getNotchCX(index) - sphereR;
+  const getSphereLeft = (index: number) => getNotchCX(index) - sphereR;
 
   const notchCX = useSharedValue(getNotchCX(safeIndex));
   const sphereX = useSharedValue(getSphereLeft(safeIndex));
@@ -202,7 +226,7 @@ export default function NavBar() {
   const bumpValues = [bump0, bump1, bump2, bump3];
 
   const springCfg = { damping: 18, stiffness: 200, mass: 0.85 };
-  const bumpCfg   = { damping: 22, stiffness: 320, mass: 0.6  };
+  const bumpCfg = { damping: 22, stiffness: 320, mass: 0.6 };
 
   useEffect(() => {
     const prev = prevIndex.current;
@@ -213,10 +237,10 @@ export default function NavBar() {
     cancelAnimation(sphereX);
     cancelAnimation(notchCX);
 
-    bumpValues[prev].value      = withSpring(0, bumpCfg);
+    bumpValues[prev].value = withSpring(0, bumpCfg);
     bumpValues[safeIndex].value = withSpring(1, bumpCfg);
-    sphereX.value               = withSpring(getSphereLeft(safeIndex), springCfg);
-    notchCX.value               = withSpring(getNotchCX(safeIndex), springCfg);
+    sphereX.value = withSpring(getSphereLeft(safeIndex), springCfg);
+    notchCX.value = withSpring(getNotchCX(safeIndex), springCfg);
 
     prevIndex.current = safeIndex;
   }, [safeIndex]);

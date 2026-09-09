@@ -41,7 +41,13 @@ import {
   requestForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -64,7 +70,8 @@ const normalizarModalNome = (nome?: string | null) =>
     .replace(/[\u0300-\u036f]/g, "");
 
 const Home = () => {
-  const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } = useTema();
+  const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } =
+    useTema();
   const insets = useSafeAreaInsets();
   const {
     itinerariosPorId,
@@ -78,7 +85,9 @@ const Home = () => {
   const [transito, setTransito] = useState(false);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
-  const [modalSelecionadoId, setModalSelecionadoId] = useState<string | null>(null);
+  const [modalSelecionadoId, setModalSelecionadoId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     buscarModais().then((lista) => {
@@ -102,7 +111,9 @@ const Home = () => {
 
   const mapRef = useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
-  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(null);
+  const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
+    null,
+  );
   const [paradaExpandida, setParadaExpandida] = useState(false);
 
   useEffect(() => {
@@ -144,7 +155,11 @@ const Home = () => {
     let subscription: any;
     async function startWatching() {
       subscription = await watchPositionAsync(
-        { accuracy: LocationAccuracy.Highest, timeInterval: 2000, distanceInterval: 5 },
+        {
+          accuracy: LocationAccuracy.Highest,
+          timeInterval: 2000,
+          distanceInterval: 5,
+        },
         (response) => setLocation(response),
       );
     }
@@ -161,7 +176,10 @@ const Home = () => {
 
   const buscaAtiva = buscaAberta && busca !== "" && opcoesBusca.length > 0;
   const fecharBusca = useCallback(() => {
-    setBusca(""); setOpcoesBusca([]); setBuscaAberta(false); Keyboard.dismiss();
+    setBusca("");
+    setOpcoesBusca([]);
+    setBuscaAberta(false);
+    Keyboard.dismiss();
   }, []);
 
   useEffect(() => {
@@ -172,7 +190,10 @@ const Home = () => {
     const id = setTimeout(async () => {
       try {
         const opcoes = await buscarOpcoesPorNome(
-          busca, 1, 20, modalSelecionadoId ?? undefined,
+          busca,
+          1,
+          20,
+          modalSelecionadoId ?? undefined,
         );
         setOpcoesBusca(opcoes);
       } catch (err) {
@@ -185,17 +206,22 @@ const Home = () => {
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
-  const [linhasSelecionadas, setLinhasSelecionadas] = useState<LinhaSelecionadaInfo[]>([]);
+  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
+    LinhaSelecionadaInfo[]
+  >([]);
   const [linhasHidratadas, setLinhasHidratadas] = useState(false);
 
   useEffect(() => {
     let ativo = true;
     carregarLinhasSalvas().then((salvas) => {
       if (!ativo) return;
-      if (Array.isArray(salvas) && salvas.length > 0) setLinhasSelecionadas(salvas);
+      if (Array.isArray(salvas) && salvas.length > 0)
+        setLinhasSelecionadas(salvas);
       setLinhasHidratadas(true);
     });
-    return () => { ativo = false; };
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   const obterParadasLinha = useCallback(
@@ -215,7 +241,9 @@ const Home = () => {
     [itinerariosPorId],
   );
 
-  useEffect(() => { if (linhasHidratadas) salvarLinhas(linhasSelecionadas); }, [linhasHidratadas, linhasSelecionadas]);
+  useEffect(() => {
+    if (linhasHidratadas) salvarLinhas(linhasSelecionadas);
+  }, [linhasHidratadas, linhasSelecionadas]);
 
   useEffect(() => {
     linhasSelecionadas.forEach((l) => {
@@ -230,16 +258,22 @@ const Home = () => {
       const { linha, nomeExibicao } = opcao;
       const linhaCodigo = linha.codigo || linha.nome;
       const modal = ((linha.modalId &&
-        normalizarModalNome(modais.find((m) => m.id === linha.modalId)?.nome)) ||
+        normalizarModalNome(
+          modais.find((m) => m.id === linha.modalId)?.nome,
+        )) ||
         "onibus") as ModalApiTransporte;
 
       setLinhasSelecionadas((prev) => {
-        if (prev.some((l) => l.linhaId === linha.id) || prev.length >= MAX_LINHAS) {
+        if (
+          prev.some((l) => l.linhaId === linha.id) ||
+          prev.length >= MAX_LINHAS
+        ) {
           return prev;
         }
         const cor =
           modal === "trem"
-            ? (corRamalTrem(nomeExibicao) ?? gerarCorAleatoria(prev.map((l) => l.cor)))
+            ? (corRamalTrem(nomeExibicao) ??
+              gerarCorAleatoria(prev.map((l) => l.cor)))
             : gerarCorAleatoria(prev.map((l) => l.cor));
         return [
           ...prev,
@@ -257,16 +291,23 @@ const Home = () => {
       });
 
       try {
-        const itinerario = await garantirItinerario(linha.id, linhaCodigo, modal, false);
+        const itinerario = await garantirItinerario(
+          linha.id,
+          linhaCodigo,
+          modal,
+          false,
+        );
         if (
           itinerario &&
           (itinerario.segmentos[0]?.length ?? 0) > 1 &&
           mapRef.current?.fitToCoordinates
         ) {
-          const coordenadas = itinerario.segmentos[0].map(([latitude, longitude]) => ({
-            latitude,
-            longitude,
-          }));
+          const coordenadas = itinerario.segmentos[0].map(
+            ([latitude, longitude]) => ({
+              latitude,
+              longitude,
+            }),
+          );
           setTimeout(() => mapRef.current?.fitToCoordinates(coordenadas), 350);
         }
       } catch (err) {
@@ -280,18 +321,20 @@ const Home = () => {
     (linhaId: string) => {
       const linha = linhasSelecionadas.find((l) => l.linhaId === linhaId);
       if (linha) removerItinerario(linhaId, linha.linhaCodigo);
-      setLinhasSelecionadas((prev) => prev.filter((l) => l.linhaId !== linhaId));
+      setLinhasSelecionadas((prev) =>
+        prev.filter((l) => l.linhaId !== linhaId),
+      );
     },
     [linhasSelecionadas, removerItinerario],
   );
 
-  const toggleAtiva    = useCallback((linhaId: string) => {
+  const toggleAtiva = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) => (l.linhaId === linhaId ? { ...l, ativa: !l.ativa } : l)),
     );
   }, []);
 
-  const toggleSentido  = useCallback((linhaId: string) => {
+  const toggleSentido = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) =>
         l.linhaId === linhaId
@@ -301,7 +344,7 @@ const Home = () => {
     );
   }, []);
 
-  const toggleParadas  = useCallback((linhaId: string) => {
+  const toggleParadas = useCallback((linhaId: string) => {
     setLinhasSelecionadas((prev) =>
       prev.map((l) =>
         l.linhaId === linhaId ? { ...l, mostrarParadas: !l.mostrarParadas } : l,
@@ -319,7 +362,7 @@ const Home = () => {
 
   const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
     if (!paradaSelecionada) return [];
-    const alvoId   = paradaSelecionada.paradaId;
+    const alvoId = paradaSelecionada.paradaId;
     const alvoNome = normalizarNome(paradaSelecionada.nome);
 
     return linhasSelecionadas
@@ -339,11 +382,18 @@ const Home = () => {
         };
       })
       .filter(Boolean) as LinhaParadaInfo[];
-  }, [paradaSelecionada, linhasSelecionadas, normalizarNome, obterParadasLinha]);
+  }, [
+    paradaSelecionada,
+    linhasSelecionadas,
+    normalizarNome,
+    obterParadasLinha,
+  ]);
 
-  const [chegadasParada, setChegadasParada]         = useState<ChegadaParadaInfo[]>([]);
+  const [chegadasParada, setChegadasParada] = useState<ChegadaParadaInfo[]>([]);
   const [carregandoChegadas, setCarregandoChegadas] = useState(false);
-  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<number | null>(null);
+  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<
+    number | null
+  >(null);
 
   const atualizarChegadas = useCallback(async () => {
     if (!paradaSelecionada) {
@@ -353,8 +403,12 @@ const Home = () => {
     }
     setCarregandoChegadas(true);
     try {
-      const lista = await buscarProximosVeiculosParada(paradaSelecionada.paradaId);
-      const mapaLinhas = new Map(linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]));
+      const lista = await buscarProximosVeiculosParada(
+        paradaSelecionada.paradaId,
+      );
+      const mapaLinhas = new Map(
+        linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]),
+      );
       const filtrados = lista
         .map((v) => {
           const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
@@ -419,8 +473,12 @@ const Home = () => {
     Object.keys(itinerariosPorId).forEach((linhaId) => {
       const itinerario = itinerariosPorId[linhaId];
       if (!itinerario?.itinerarioSentidoMap) return;
-      const ida   = itinerario.itinerarioIdIda   ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]   : undefined;
-      const volta = itinerario.itinerarioIdVolta ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta] : undefined;
+      const ida = itinerario.itinerarioIdIda
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdIda]
+        : undefined;
+      const volta = itinerario.itinerarioIdVolta
+        ? itinerario.itinerarioSentidoMap[itinerario.itinerarioIdVolta]
+        : undefined;
       if (ida || volta) mapa[linhaId] = { ida, volta };
     });
     return mapa;
@@ -429,7 +487,10 @@ const Home = () => {
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
   const modalSelecionadoNome = useMemo(
-    () => normalizarModalNome(modais.find((m) => m.id === modalSelecionadoId)?.nome),
+    () =>
+      normalizarModalNome(
+        modais.find((m) => m.id === modalSelecionadoId)?.nome,
+      ),
     [modais, modalSelecionadoId],
   );
 
@@ -447,18 +508,25 @@ const Home = () => {
         .filter((l) => l.ativa)
         .map((l) => {
           const itinerario = itinerariosPorId[l.linhaId];
-          const segmentos  = itinerario?.segmentos ?? [];
+          const segmentos = itinerario?.segmentos ?? [];
 
           let itinerarioIdFiltro: string | null = null;
-          if (l.modoSentido === "ida")   itinerarioIdFiltro = itinerario?.itinerarioIdIda   ?? null;
-          if (l.modoSentido === "volta") itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
+          if (l.modoSentido === "ida")
+            itinerarioIdFiltro = itinerario?.itinerarioIdIda ?? null;
+          if (l.modoSentido === "volta")
+            itinerarioIdFiltro = itinerario?.itinerarioIdVolta ?? null;
 
-          const veiculos = getVeiculosPorCodigo(l.linhaCodigo, itinerarioIdFiltro);
-          const paradas  = l.mostrarParadas ? obterParadasLinha(l) : [];
+          const veiculos = getVeiculosPorCodigo(
+            l.linhaCodigo,
+            itinerarioIdFiltro,
+          );
+          const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
 
           const itinerarioSegmentoMap: Record<string, number> = {};
-          if (itinerario?.itinerarioIdIda)   itinerarioSegmentoMap[itinerario.itinerarioIdIda]   = 0;
-          if (itinerario?.itinerarioIdVolta) itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
+          if (itinerario?.itinerarioIdIda)
+            itinerarioSegmentoMap[itinerario.itinerarioIdIda] = 0;
+          if (itinerario?.itinerarioIdVolta)
+            itinerarioSegmentoMap[itinerario.itinerarioIdVolta] = 1;
 
           const itinerarioSentidoMap = itinerario?.itinerarioSentidoMap ?? {};
 
@@ -490,7 +558,8 @@ const Home = () => {
                   : undefined,
               timestamp: v.timestamp,
               proximaParadaNome: v.proximaParadaNome ?? null,
-              distanciaProximaParadaMetros: v.distanciaProximaParadaMetros ?? null,
+              distanciaProximaParadaMetros:
+                v.distanciaProximaParadaMetros ?? null,
               status: v.status ?? 0,
               posicaoNaRota: v.posicaoNaRota ?? null,
               comprimentoRotaMetros: v.comprimentoRotaMetros ?? null,
@@ -498,7 +567,12 @@ const Home = () => {
             })),
           };
         }),
-    [linhasSelecionadasFiltradas, itinerariosPorId, getVeiculosPorCodigo, obterParadasLinha],
+    [
+      linhasSelecionadasFiltradas,
+      itinerariosPorId,
+      getVeiculosPorCodigo,
+      obterParadasLinha,
+    ],
   );
 
   const dadosBuscaFormatados = useMemo(
@@ -530,11 +604,63 @@ const Home = () => {
         }}
       />
 
-      {buscaAberta && <BuscaMapa value={busca} onChangeText={setBusca} onClose={fecharBusca} />}
-      {buscaAtiva && <ResultadoBusca data={dadosBuscaFormatados} listaSelecionada={(item) => selecionarOpcao(item._opcao)} className="absolute shadow-lg rounded-2xl z-20" style={{ top: insets.top + 68, left: 12, right: 12 }} maxHeight={400} />}
-      <Filtro transito={transito} clickTransito={() => setTransito((p) => !p)} modalSelecionado={modalSelecionadoNome || "onibus"} onSelecionarModal={(modalNome) => { const modal = modais.find((m) => normalizarModalNome(m.nome) === normalizarModalNome(modalNome)); if (modal) setModalSelecionadoId(modal.id); }} aberto={filtroAberto} onToggle={() => setFiltroAberto(false)} lateralidade={preferenciaLateralidade} />
-      <MapControls lateralidade={preferenciaLateralidade} modalAtivo={modalSelecionadoNome} location={location} mapRef={mapRef} onOpenLines={() => setContainerAberto(true)} onOpenSearch={() => setBuscaAberta(true)} onOpenFilter={() => setFiltroAberto(true)} disabled={filtroAberto || Boolean(paradaSelecionada) || containerAberto} />
-      <LinhasContainer linhasSelecionadas={linhasSelecionadasFiltradas} aoRemoverLinha={removerLinha} aoToggleAtiva={toggleAtiva} aoToggleSentido={toggleSentido} aoToggleParadas={toggleParadas} aoAtualizarCor={atualizarCorLinha} sentidosPorLinha={sentidosPorLinha} aberto={containerAberto} aoToggleAberto={() => setContainerAberto((p) => !p)} modalAtivo={modalSelecionadoNome} mostrarBotaoToggle={false} opcoesModal={modais} modalSelecionadoId={modalSelecionadoId} aoSelecionarModal={setModalSelecionadoId} />
+      {buscaAberta && (
+        <BuscaMapa
+          value={busca}
+          onChangeText={setBusca}
+          onClose={fecharBusca}
+        />
+      )}
+      {buscaAtiva && (
+        <ResultadoBusca
+          data={dadosBuscaFormatados}
+          listaSelecionada={(item) => selecionarOpcao(item._opcao)}
+          className="absolute shadow-lg rounded-2xl z-20"
+          style={{ top: insets.top + 68, left: 12, right: 12 }}
+          maxHeight={400}
+        />
+      )}
+      <Filtro
+        transito={transito}
+        clickTransito={() => setTransito((p) => !p)}
+        modalSelecionado={modalSelecionadoNome || "onibus"}
+        onSelecionarModal={(modalNome) => {
+          const modal = modais.find(
+            (m) =>
+              normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
+          );
+          if (modal) setModalSelecionadoId(modal.id);
+        }}
+        aberto={filtroAberto}
+        onToggle={() => setFiltroAberto(false)}
+        lateralidade={preferenciaLateralidade}
+      />
+      <MapControls
+        lateralidade={preferenciaLateralidade}
+        modalAtivo={modalSelecionadoNome}
+        location={location}
+        mapRef={mapRef}
+        onOpenLines={() => setContainerAberto(true)}
+        onOpenSearch={() => setBuscaAberta(true)}
+        onOpenFilter={() => setFiltroAberto(true)}
+        disabled={filtroAberto || Boolean(paradaSelecionada) || containerAberto}
+      />
+      <LinhasContainer
+        linhasSelecionadas={linhasSelecionadasFiltradas}
+        aoRemoverLinha={removerLinha}
+        aoToggleAtiva={toggleAtiva}
+        aoToggleSentido={toggleSentido}
+        aoToggleParadas={toggleParadas}
+        aoAtualizarCor={atualizarCorLinha}
+        sentidosPorLinha={sentidosPorLinha}
+        aberto={containerAberto}
+        aoToggleAberto={() => setContainerAberto((p) => !p)}
+        modalAtivo={modalSelecionadoNome}
+        mostrarBotaoToggle={false}
+        opcoesModal={modais}
+        modalSelecionadoId={modalSelecionadoId}
+        aoSelecionarModal={setModalSelecionadoId}
+      />
 
       <ParadaSheet
         visivel={!!paradaSelecionada}

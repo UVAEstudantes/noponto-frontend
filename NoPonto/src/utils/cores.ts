@@ -20,7 +20,7 @@ const CORES_DISPONIVEIS = [
 // Função para gerar uma cor aleatória da paleta
 export const gerarCorAleatoria = (coresEmUso: string[] = []): string => {
   const coresDisponiveis = CORES_DISPONIVEIS.filter(
-    (cor) => !coresEmUso.includes(cor)
+    (cor) => !coresEmUso.includes(cor),
   );
 
   if (coresDisponiveis.length === 0) {
@@ -30,9 +30,7 @@ export const gerarCorAleatoria = (coresEmUso: string[] = []): string => {
     ];
   }
 
-  return coresDisponiveis[
-    Math.floor(Math.random() * coresDisponiveis.length)
-  ];
+  return coresDisponiveis[Math.floor(Math.random() * coresDisponiveis.length)];
 };
 
 // Função para obter uma cor específica pelo índice (útil para testes)

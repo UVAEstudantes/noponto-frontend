@@ -34,7 +34,9 @@ type TemaContexto = {
   estiloMapaAtual: EstiloMapaId;
   definirEstiloMapa: (estiloMapa: EstiloMapaId) => Promise<void>;
   preferenciaLateralidade: PreferenciaLateralidade;
-  definirPreferenciaLateralidade: (preferencia: PreferenciaLateralidade) => Promise<void>;
+  definirPreferenciaLateralidade: (
+    preferencia: PreferenciaLateralidade,
+  ) => Promise<void>;
   carregandoTema: boolean;
 };
 
@@ -46,7 +48,8 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     useState<PreferenciaTema>("sistema");
   const [estiloMapaAtual, setEstiloMapaAtual] =
     useState<EstiloMapaId>(ESTILO_MAPA_PADRAO);
-  const [preferenciaLateralidade, setPreferenciaLateralidade] = useState<PreferenciaLateralidade>("destro");
+  const [preferenciaLateralidade, setPreferenciaLateralidade] =
+    useState<PreferenciaLateralidade>("destro");
   const [carregandoTema, setCarregandoTema] = useState(true);
 
   const temaSistema: NomeTema = esquemaSistema === "dark" ? "escuro" : "claro";
@@ -63,11 +66,12 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     let ativo = true;
 
     const iniciar = async () => {
-      const [preferenciaSalva, estiloSalvo, lateralidadeSalva] = await Promise.all([
-        carregarPreferenciaTema(),
-        carregarEstiloMapa(),
-        carregarPreferenciaLateralidade(),
-      ]);
+      const [preferenciaSalva, estiloSalvo, lateralidadeSalva] =
+        await Promise.all([
+          carregarPreferenciaTema(),
+          carregarEstiloMapa(),
+          carregarPreferenciaLateralidade(),
+        ]);
 
       if (!ativo) {
         return;
@@ -111,10 +115,13 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     await salvarEstiloMapa(estiloValidado);
   }, []);
 
-  const definirPreferenciaLateralidade = useCallback(async (preferencia: PreferenciaLateralidade) => {
-    setPreferenciaLateralidade(preferencia);
-    await salvarPreferenciaLateralidade(preferencia);
-  }, []);
+  const definirPreferenciaLateralidade = useCallback(
+    async (preferencia: PreferenciaLateralidade) => {
+      setPreferenciaLateralidade(preferencia);
+      await salvarPreferenciaLateralidade(preferencia);
+    },
+    [],
+  );
 
   const alternarTema = useCallback(async () => {
     const proximoTema: NomeTema = temaAtual === "claro" ? "escuro" : "claro";

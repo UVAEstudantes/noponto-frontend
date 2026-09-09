@@ -1,24 +1,24 @@
 import {
-    CoordenadaMapa,
-    ItinerarioLinha,
-    ItinerarioMapaDto,
-    ItinerarioPorLinhaMapaDto,
-    LinhaDetalhesDto,
-    LinhaSimplesDto,
-    LinhasResponse,
-    LinhaTempoReal,
-    ModalApiTransporte,
-    ModalTransporteDto,
-    OpcaoBusca,
-    Parada,
-    PoiDto,
-    PoiParadaDto,
-    PosicaoVeiculo,
-    ProximoVeiculoParadaDto,
-    SentidoSimples,
-    SentidosResponse,
-    VeiculosLinhaDto,
-    VeiculoTempoReal,
+  CoordenadaMapa,
+  ItinerarioLinha,
+  ItinerarioMapaDto,
+  ItinerarioPorLinhaMapaDto,
+  LinhaDetalhesDto,
+  LinhaSimplesDto,
+  LinhasResponse,
+  LinhaTempoReal,
+  ModalApiTransporte,
+  ModalTransporteDto,
+  OpcaoBusca,
+  Parada,
+  PoiDto,
+  PoiParadaDto,
+  PosicaoVeiculo,
+  ProximoVeiculoParadaDto,
+  SentidoSimples,
+  SentidosResponse,
+  VeiculosLinhaDto,
+  VeiculoTempoReal,
 } from "@/src/types/transporte";
 import { api } from "./api";
 
@@ -110,7 +110,9 @@ export async function buscarOpcoesPorNome(
 ): Promise<OpcaoBusca[]> {
   if (!nome.trim()) return [];
   const linhas = await buscarLinhasDto(nome, page, pageSize);
-  const linhasFiltradas = modalId ? linhas.filter((linha) => linha.modalId === modalId) : linhas;
+  const linhasFiltradas = modalId
+    ? linhas.filter((linha) => linha.modalId === modalId)
+    : linhas;
   return linhasFiltradas.map((linha) => ({
     linha,
     nomeExibicao: linha.codigo

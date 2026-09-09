@@ -43,9 +43,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     const webViewRef = useRef<WebView>(null);
 
     // Guardamos apenas a primeira coordenada válida para impedir "salto" inicial do mapa quando localização vai refinando nos primeiros segundos do GPS.
-    const coordInicialRef = useRef<{ latitude: number; longitude: number } | null>(
-      null,
-    );
+    const coordInicialRef = useRef<{
+      latitude: number;
+      longitude: number;
+    } | null>(null);
 
     if (!coordInicialRef.current && location?.coords) {
       coordInicialRef.current = {
@@ -55,13 +56,20 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
 
     const latInicial =
-      coordInicialRef.current?.latitude ?? location?.coords?.latitude ?? -22.9068;
+      coordInicialRef.current?.latitude ??
+      location?.coords?.latitude ??
+      -22.9068;
     const lngInicial =
-      coordInicialRef.current?.longitude ?? location?.coords?.longitude ?? -43.1729;
+      coordInicialRef.current?.longitude ??
+      location?.coords?.longitude ??
+      -43.1729;
 
     useImperativeHandle(ref, () => ({
       centerOnUser: () => {
-        injectWebViewCommand(webViewRef, `if(window.centerOnUser) window.centerOnUser();`);
+        injectWebViewCommand(
+          webViewRef,
+          `if(window.centerOnUser) window.centerOnUser();`,
+        );
       },
       fitToCoordinates: (coordinates) => {
         injectWebViewCommand(
@@ -82,7 +90,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         );
       },
       limparPoi: () => {
-        injectWebViewCommand(webViewRef, `if(window.limparConexaoPoi) window.limparConexaoPoi();`);
+        injectWebViewCommand(
+          webViewRef,
+          `if(window.limparConexaoPoi) window.limparConexaoPoi();`,
+        );
       },
     }));
 
@@ -105,7 +116,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         estiloMapa,
       };
 
-      injectWebViewCommand(webViewRef, `window.updateMap(${JSON.stringify(data)});`);
+      injectWebViewCommand(
+        webViewRef,
+        `window.updateMap(${JSON.stringify(data)});`,
+      );
 
       // Full map updates are heavy; user movement is handled separately.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,7 +135,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         accuracy: location.coords.accuracy ?? null,
       };
 
-      injectWebViewCommand(webViewRef, `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`);
+      injectWebViewCommand(
+        webViewRef,
+        `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
+      );
     }, [mapReady, location]);
 
     // HTML final memoizado: só recria quando a âncora inicial muda.

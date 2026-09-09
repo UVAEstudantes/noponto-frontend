@@ -19,21 +19,33 @@ import {
 } from "react-native";
 
 const colorsLight = {
-  bus: "#1156EA", busBG: "#D7E2EF",
-  brt: "#038B0F", brtBG: "#D5EBD7",
-  trem: "#D82323", tremBG: "#EAD3D3",
-  metro: "#EA790F", metroBG: "#F2E2D4",
-  transito: "#1E1E1E", transitoBG: "#DEDEDE",
-  risco: "#EEB600", riscoBG: "#F1EAD4",
+  bus: "#1156EA",
+  busBG: "#D7E2EF",
+  brt: "#038B0F",
+  brtBG: "#D5EBD7",
+  trem: "#D82323",
+  tremBG: "#EAD3D3",
+  metro: "#EA790F",
+  metroBG: "#F2E2D4",
+  transito: "#1E1E1E",
+  transitoBG: "#DEDEDE",
+  risco: "#EEB600",
+  riscoBG: "#F1EAD4",
 };
 
 const colorsDark = {
-  bus: "#7AA2FF", busBG: "#1D2F52",
-  brt: "#6BD991", brtBG: "#153B28",
-  trem: "#FF8080", tremBG: "#4A1F25",
-  metro: "#FFC270", metroBG: "#4D3515",
-  transito: "#D5E2F5", transitoBG: "#2A3441",
-  risco: "#FFD166", riscoBG: "#4A3C18",
+  bus: "#7AA2FF",
+  busBG: "#1D2F52",
+  brt: "#6BD991",
+  brtBG: "#153B28",
+  trem: "#FF8080",
+  tremBG: "#4A1F25",
+  metro: "#FFC270",
+  metroBG: "#4D3515",
+  transito: "#D5E2F5",
+  transitoBG: "#2A3441",
+  risco: "#FFD166",
+  riscoBG: "#4A3C18",
 };
 
 interface FiltroProps {
@@ -114,10 +126,34 @@ export default function Filtro({
 
           <View style={{ marginTop: 12 }}>
             {[
-              { id: "onibus", label: "Ônibus",  Icon: BusFront,         cor: colors.bus,   bg: colors.busBG   },
-              { id: "brt",    label: "BRT",      Icon: Bus,              cor: colors.brt,   bg: colors.brtBG   },
-              { id: "trem",   label: "Trem",     Icon: Train,            cor: colors.trem,  bg: colors.tremBG  },
-              { id: "metro",  label: "Metrô",    Icon: TrainFrontTunnel, cor: colors.metro, bg: colors.metroBG },
+              {
+                id: "onibus",
+                label: "Ônibus",
+                Icon: BusFront,
+                cor: colors.bus,
+                bg: colors.busBG,
+              },
+              {
+                id: "brt",
+                label: "BRT",
+                Icon: Bus,
+                cor: colors.brt,
+                bg: colors.brtBG,
+              },
+              {
+                id: "trem",
+                label: "Trem",
+                Icon: Train,
+                cor: colors.trem,
+                bg: colors.tremBG,
+              },
+              {
+                id: "metro",
+                label: "Metrô",
+                Icon: TrainFrontTunnel,
+                cor: colors.metro,
+                bg: colors.metroBG,
+              },
             ].map(({ id, label, Icon, cor, bg }) => (
               <TouchableOpacity
                 key={id}
@@ -137,7 +173,9 @@ export default function Filtro({
                       : "transparent",
                 }}
               >
-                <View style={{ backgroundColor: bg, padding: 8, borderRadius: 50 }}>
+                <View
+                  style={{ backgroundColor: bg, padding: 8, borderRadius: 50 }}
+                >
                   <Icon color={cor} size={20} />
                 </View>
                 <Text
@@ -150,7 +188,10 @@ export default function Filtro({
                   {label}
                 </Text>
                 <Pressable
-                  style={[estiloToggle(modalSelecionado === id), { marginLeft: "auto" }]}
+                  style={[
+                    estiloToggle(modalSelecionado === id),
+                    { marginLeft: "auto" },
+                  ]}
                 >
                   {modalSelecionado === id && (
                     <View

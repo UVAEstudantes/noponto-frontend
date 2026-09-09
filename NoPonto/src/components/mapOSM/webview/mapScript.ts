@@ -8,7 +8,8 @@ export function buildMapWebViewScript(params: {
   filtrosMapaJS: string;
   estiloMapaPadrao: string;
 }) {
-  const { latInicial, lngInicial, estilosJS, filtrosMapaJS, estiloMapaPadrao } = params;
+  const { latInicial, lngInicial, estilosJS, filtrosMapaJS, estiloMapaPadrao } =
+    params;
   return `
 var map,userMarker;
 var linesSourceId='lines-source',linesSolidLayerId='lines-solid',linesDashLayerId='lines-dash';
