@@ -86,6 +86,14 @@ function ActionButton({
 // mostramos a bolha com width explícita = largura medida.
 const LABEL_MAX_WIDTH = 320;
 
+// Folga de segurança somada à largura medida. O onLayout do medidor
+// às vezes reporta uma largura um pouco menor que a que o texto
+// realmente ocupa quando renderizado dentro da bolha final (variação
+// de arredondamento/rasterização de fonte no Android), cortando os
+// últimos 1-2 caracteres. Esse valor cobre essa diferença sem deixar
+// sobra visível nos labels curtos.
+const LABEL_WIDTH_BUFFER = 5;
+
 function Hint({
   label,
   lado,
@@ -126,7 +134,7 @@ function Hint({
   return (
     <View
       style={{
-        width: 48,
+        width: 88,
         height: 48,
         justifyContent: "center",
         alignItems: lado === "right" ? "flex-end" : "flex-start",
@@ -148,7 +156,9 @@ function Hint({
           }}
           onLayout={(e) => {
             const medido = Math.ceil(e.nativeEvent.layout.width);
-            setLargura(Math.min(medido, LABEL_MAX_WIDTH - 20)); // -20 = padding horizontal
+            setLargura(
+              Math.min(medido + LABEL_WIDTH_BUFFER, LABEL_MAX_WIDTH)
+            );
           }}
         >
           {label}

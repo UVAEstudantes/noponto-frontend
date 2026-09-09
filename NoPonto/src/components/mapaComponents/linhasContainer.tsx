@@ -196,6 +196,118 @@ function IconeModal({ modal, cor }: { modal: string; cor: string }) {
   }
 }
 
+// ─── SelectModalLinhas ──────────────────────────────────────────────────────
+// Mesmo padrão visual/animado do SelectTransporte (tela de Linhas): um
+// fundo "pill" que desliza com spring até o item selecionado. Diferente
+// do SelectTransporte, aqui a quantidade de itens é dinâmica (vem de
+// opcoesModal), então cada botão usa flex:1 pra dividir a largura
+// igualmente e o slider é calculado a partir da largura medida do
+// container (onLayout), não de valores fixos.
+function SelectModalLinhas({
+  opcoes,
+  selecionadoId,
+  onSelecionar,
+}: {
+  opcoes: { id: string; nome: string }[];
+  selecionadoId?: string | null;
+  onSelecionar: (id: string) => void;
+}) {
+  const { cores } = useTema();
+  const animLeft = useSharedValue(0);
+  const [containerWidth, setContainerWidth] = React.useState(0);
+  const inicializadoRef = React.useRef(false);
+  const SLIDER_PADDING = 4; // folga interna do slider em relação ao botão
+
+  const qtd = opcoes.length || 1;
+  const btnWidth = containerWidth / qtd;
+  const sliderWidth = Math.max(btnWidth - SLIDER_PADDING * 2, 0);
+
+  const getPos = React.useCallback(
+    (index: number) => index * btnWidth + SLIDER_PADDING,
+    [btnWidth],
+  );
+
+  React.useEffect(() => {
+    if (containerWidth === 0) return;
+    const idxEncontrado = opcoes.findIndex((o) => o.id === selecionadoId);
+    const idx = Math.max(idxEncontrado, 0);
+    const pos = getPos(idx);
+    if (!inicializadoRef.current) {
+      animLeft.value = pos;
+      inicializadoRef.current = true;
+    } else {
+      animLeft.value = withSpring(pos, { damping: 75, stiffness: 680 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecionadoId, containerWidth, opcoes.length]);
+
+  const sliderStyle = useAnimatedStyle(() => ({
+    left: animLeft.value,
+  }));
+
+  if (opcoes.length === 0) return null;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        marginHorizontal: 16,
+        marginBottom: 10,
+        marginTop: 10,
+        padding: 4,
+        borderRadius: 12,
+        backgroundColor: cores.fundoSecundario,
+      }}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    >
+      {containerWidth > 0 && (
+        <Animated.View
+          style={[
+            sliderStyle,
+            {
+              position: "absolute",
+              top: 4,
+              width: sliderWidth,
+              height: "100%",
+              backgroundColor: cores.fundoPrimario,
+              borderRadius: 9,
+            },
+          ]}
+        />
+      )}
+
+      {opcoes.map((modal) => {
+        const selecionado = modal.id === selecionadoId;
+        return (
+          <Pressable
+            key={modal.id}
+            onPress={() => onSelecionar(modal.id)}
+            style={{
+              flex: 1,
+              paddingVertical: 9,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "700",
+                color: selecionado
+                  ? cores.textoInverso
+                  : cores.textoSecundario,
+              }}
+              numberOfLines={1}
+            >
+              {modal.nome}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── LinhaCard ────────────────────────────────────────────────────────────
 interface LinhaCardProps {
   linha: LinhaSelecionadaInfo;
@@ -683,50 +795,13 @@ function LinhasContainer({
           </View>
         </View>
 
+        {/* Seletor de modal — mesmo padrão do SelectTransporte (slider animado) */}
         {opcoesModal.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              gap: 8,
-            }}
-          >
-            {opcoesModal.map((modal) => {
-              const selecionado = modal.id === modalSelecionadoId;
-              return (
-                <Pressable
-                  key={modal.id}
-                  onPress={() => aoSelecionarModal?.(modal.id)}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: selecionado
-                      ? cores.fundoPrimario
-                      : cores.fundoSecundario,
-                    borderWidth: 1,
-                    borderColor: selecionado
-                      ? cores.fundoPrimario
-                      : cores.borda,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: selecionado
-                        ? cores.textoInverso
-                        : cores.textoSecundario,
-                    }}
-                  >
-                    {modal.nome}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <SelectModalLinhas
+            opcoes={opcoesModal}
+            selecionadoId={modalSelecionadoId}
+            onSelecionar={(id) => aoSelecionarModal?.(id)}
+          />
         )}
 
         {/* Lista */}
