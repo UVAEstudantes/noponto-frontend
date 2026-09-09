@@ -2,15 +2,15 @@ import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer, {
   PROXIMO_SENTIDO,
 } from "@/src/components/mapaComponents/linhasContainer";
-import LocalButton from "@/src/components/mapaComponents/localButton";
 import ParadaSheet, {
   ChegadaParadaInfo,
   LinhaParadaInfo,
 } from "@/src/components/mapaComponents/paradaSheet";
-import RotaButton from "@/src/components/mapaComponents/rotaButton";
 import MapaOSM from "@/src/components/mapOSM/mapOSM";
 import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import ResultadoBusca from "@/src/components/resultadoBusca";
+import BuscaMapa from "@/src/components/mapaComponents/buscaMapa";
+import MapControls from "@/src/components/mapaComponents/mapControls";
 import {
   LinhaSelecionadaInfo,
   useMobilidadeRio,
@@ -41,9 +41,9 @@ import {
   requestForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
-import { Search, SlidersHorizontal } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, Pressable, TextInput, View } from "react-native";
+import { Keyboard, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MAX_LINHAS = 10;
 const CORES_RAMAIS_TREM: Record<string, string> = {
@@ -64,7 +64,8 @@ const normalizarModalNome = (nome?: string | null) =>
     .replace(/[\u0300-\u036f]/g, "");
 
 const Home = () => {
-  const { temaAtual, estiloMapaAtual, cores } = useTema();
+  const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } = useTema();
+  const insets = useSafeAreaInsets();
   const {
     itinerariosPorId,
     garantirItinerario,
@@ -155,9 +156,13 @@ const Home = () => {
 
   const [opcoesBusca, setOpcoesBusca] = useState<OpcaoBusca[]>([]);
   const [busca, setBusca] = useState("");
+  const [buscaAberta, setBuscaAberta] = useState(false);
   const [containerAberto, setContainerAberto] = useState(false);
 
-  const buscaAtiva = busca !== "" && opcoesBusca.length > 0;
+  const buscaAtiva = buscaAberta && busca !== "" && opcoesBusca.length > 0;
+  const fecharBusca = useCallback(() => {
+    setBusca(""); setOpcoesBusca([]); setBuscaAberta(false); Keyboard.dismiss();
+  }, []);
 
   useEffect(() => {
     if (!busca.trim()) {
@@ -181,13 +186,16 @@ const Home = () => {
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
   const [linhasSelecionadas, setLinhasSelecionadas] = useState<LinhaSelecionadaInfo[]>([]);
+  const [linhasHidratadas, setLinhasHidratadas] = useState(false);
 
   useEffect(() => {
+    let ativo = true;
     carregarLinhasSalvas().then((salvas) => {
-      if (Array.isArray(salvas) && salvas.length > 0) {
-        setLinhasSelecionadas(salvas);
-      }
+      if (!ativo) return;
+      if (Array.isArray(salvas) && salvas.length > 0) setLinhasSelecionadas(salvas);
+      setLinhasHidratadas(true);
     });
+    return () => { ativo = false; };
   }, []);
 
   const obterParadasLinha = useCallback(
@@ -207,7 +215,7 @@ const Home = () => {
     [itinerariosPorId],
   );
 
-  useEffect(() => { salvarLinhas(linhasSelecionadas); }, [linhasSelecionadas]);
+  useEffect(() => { if (linhasHidratadas) salvarLinhas(linhasSelecionadas); }, [linhasHidratadas, linhasSelecionadas]);
 
   useEffect(() => {
     linhasSelecionadas.forEach((l) => {
@@ -217,9 +225,7 @@ const Home = () => {
 
   const selecionarOpcao = useCallback(
     async (opcao: OpcaoBusca) => {
-      setOpcoesBusca([]);
-      setBusca("");
-      Keyboard.dismiss();
+      fecharBusca();
 
       const { linha, nomeExibicao } = opcao;
       const linhaCodigo = linha.codigo || linha.nome;
@@ -267,7 +273,7 @@ const Home = () => {
         console.error("Erro ao buscar itinerário após seleção:", err);
       }
     },
-    [garantirItinerario, modais, corRamalTrem],
+    [fecharBusca, garantirItinerario, modais, corRamalTrem],
   );
 
   const removerLinha = useCallback(
@@ -524,108 +530,11 @@ const Home = () => {
         }}
       />
 
-      {/* ── Barra de busca integrada ────────────────────────────────────── */}
-      <View
-        style={{
-          position: "absolute",
-          top: 56,
-          left: 12,
-          right: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: cores.fundoInput,
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: cores.borda,
-          height: 48,
-          paddingHorizontal: 14,
-          shadowColor: "#000",
-          shadowOpacity: 0.12,
-          shadowRadius: 8,
-          elevation: 4,
-          zIndex: 10,
-        }}
-      >
-        <Search size={18} color={cores.iconeSecundario} />
-
-        <TextInput
-          style={{
-            flex: 1,
-            marginHorizontal: 10,
-            fontSize: 15,
-            color: cores.textoPrimario,
-          }}
-          placeholder="Buscar linhas ou destinos"
-          placeholderTextColor={cores.textoSecundario}
-          value={busca}
-          onChangeText={setBusca}
-        />
-
-        <View
-          style={{
-            width: 1,
-            height: 22,
-            backgroundColor: cores.borda,
-            marginRight: 10,
-          }}
-        />
-
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            setFiltroAberto((p) => !p);
-          }}
-          hitSlop={8}
-        >
-          <SlidersHorizontal
-            size={18}
-            color={filtroAberto ? cores.iconePrimario : cores.iconeSecundario}
-          />
-        </Pressable>
-      </View>
-
-      {/* ── Resultado da busca ──────────────────────────────────────────── */}
-      {buscaAtiva && (
-        <ResultadoBusca
-          data={dadosBuscaFormatados}
-          listaSelecionada={(item) => selecionarOpcao(item._opcao)}
-          className="absolute shadow-lg rounded-2xl z-20"
-          style={{ top: 112, left: 12, right: 12 }}
-          maxHeight={400}
-        />
-      )}
-
-      {/* ── Filtro ─────────────────────────────────────────────────────── */}
-      <Filtro
-        transito={transito}
-        clickTransito={() => setTransito((p) => !p)}
-        modalSelecionado={modalSelecionadoNome || "onibus"}
-        onSelecionarModal={(modalNome) => {
-          const modal = modais.find(
-            (m) =>
-              normalizarModalNome(m.nome) === normalizarModalNome(modalNome),
-          );
-          if (modal) setModalSelecionadoId(modal.id);
-        }}
-        aberto={filtroAberto}
-        onToggle={() => setFiltroAberto(false)}
-      />
-
-      <RotaButton />
-      <LocalButton location={location} mapRef={mapRef} />
-
-      <LinhasContainer
-        linhasSelecionadas={linhasSelecionadasFiltradas}
-        aoRemoverLinha={removerLinha}
-        aoToggleAtiva={toggleAtiva}
-        aoToggleSentido={toggleSentido}
-        aoToggleParadas={toggleParadas}
-        aoAtualizarCor={atualizarCorLinha}
-        sentidosPorLinha={sentidosPorLinha}
-        aberto={containerAberto}
-        aoToggleAberto={() => setContainerAberto((p) => !p)}
-        modalAtivo={modalSelecionadoNome}
-      />
+      {buscaAberta && <BuscaMapa value={busca} onChangeText={setBusca} onClose={fecharBusca} />}
+      {buscaAtiva && <ResultadoBusca data={dadosBuscaFormatados} listaSelecionada={(item) => selecionarOpcao(item._opcao)} className="absolute shadow-lg rounded-2xl z-20" style={{ top: insets.top + 68, left: 12, right: 12 }} maxHeight={400} />}
+      <Filtro transito={transito} clickTransito={() => setTransito((p) => !p)} modalSelecionado={modalSelecionadoNome || "onibus"} onSelecionarModal={(modalNome) => { const modal = modais.find((m) => normalizarModalNome(m.nome) === normalizarModalNome(modalNome)); if (modal) setModalSelecionadoId(modal.id); }} aberto={filtroAberto} onToggle={() => setFiltroAberto(false)} lateralidade={preferenciaLateralidade} />
+      <MapControls lateralidade={preferenciaLateralidade} modalAtivo={modalSelecionadoNome} location={location} mapRef={mapRef} onOpenLines={() => setContainerAberto(true)} onOpenSearch={() => setBuscaAberta(true)} onOpenFilter={() => setFiltroAberto(true)} disabled={filtroAberto || Boolean(paradaSelecionada) || containerAberto} />
+      <LinhasContainer linhasSelecionadas={linhasSelecionadasFiltradas} aoRemoverLinha={removerLinha} aoToggleAtiva={toggleAtiva} aoToggleSentido={toggleSentido} aoToggleParadas={toggleParadas} aoAtualizarCor={atualizarCorLinha} sentidosPorLinha={sentidosPorLinha} aberto={containerAberto} aoToggleAberto={() => setContainerAberto((p) => !p)} modalAtivo={modalSelecionadoNome} mostrarBotaoToggle={false} opcoesModal={modais} modalSelecionadoId={modalSelecionadoId} aoSelecionarModal={setModalSelecionadoId} />
 
       <ParadaSheet
         visivel={!!paradaSelecionada}

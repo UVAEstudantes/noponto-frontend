@@ -7,11 +7,13 @@ import {
 import { NomeTema } from "@/src/constants/tema";
 
 export type PreferenciaTema = NomeTema | "sistema";
+export type PreferenciaLateralidade = "destro" | "canhoto";
 
 const CHAVE_TEMA = "@temaSelecionado";
 const CHAVE_PREFERENCIA_TEMA = "@preferenciaTema";
 const CHAVE_ESTILO_MAPA = "@estiloMapaSelecionado";
 const CHAVE_MODAL_SELECIONADO = "@modalSelecionado";
+const CHAVE_LATERALIDADE = "@preferenciaLateralidade";
 
 const ehPreferenciaTemaValida = (
     valor: string | null,
@@ -102,6 +104,16 @@ export const carregarEstiloMapa = async (): Promise<EstiloMapaId> => {
         console.error("Erro ao carregar estilo do mapa:", error);
         return ESTILO_MAPA_PADRAO;
     }
+};
+
+export const salvarPreferenciaLateralidade = async (preferencia: PreferenciaLateralidade) => {
+    try { await AsyncStorage.setItem(CHAVE_LATERALIDADE, preferencia); }
+    catch (error) { console.error("Erro ao salvar preferencia de lateralidade:", error); }
+};
+
+export const carregarPreferenciaLateralidade = async (): Promise<PreferenciaLateralidade> => {
+    try { return (await AsyncStorage.getItem(CHAVE_LATERALIDADE)) === "canhoto" ? "canhoto" : "destro"; }
+    catch (error) { console.error("Erro ao carregar preferencia de lateralidade:", error); return "destro"; }
 };
 
 export const salvarModalSelecionado = async (modalId: string) => {
