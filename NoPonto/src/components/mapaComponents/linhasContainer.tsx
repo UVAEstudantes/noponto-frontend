@@ -1,21 +1,25 @@
 import {
+  ArrowLeft,
   ArrowLeftRight,
+  ArrowRight,
   Bus,
   BusFront,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   Eye,
   EyeOff,
   MapPin,
   MapPinOff,
-  MoveRight,
   Train,
   TrainFront,
+  Trash2,
   X,
 } from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
 import { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import { ModoSentido } from "@/src/types/transporte";
+import { apresentarLinhaBusca } from "@/src/services/searchPresentation";
 import React from "react";
 import Animated, {
   useAnimatedStyle,
@@ -42,6 +46,7 @@ interface Props {
   aoRemoverLinha: (linhaId: string) => void;
   aoToggleAtiva: (linhaId: string) => void;
   aoToggleSentido: (linhaId: string) => void;
+  aoSelecionarSentido?: (linhaId: string, modo: ModoSentido) => void;
   aoToggleParadas: (linhaId: string) => void;
   aoAtualizarCor: (linhaId: string, cor: string) => void;
   sentidosPorLinha?: Record<string, { ida?: string; volta?: string }>;
@@ -75,11 +80,6 @@ function misturar(hex: string, fundo: string, alpha: number) {
     c.g * alpha + f.g * (1 - alpha),
     c.b * alpha + f.b * (1 - alpha),
   );
-}
-
-function escurecer(hex: string, p = 0.35) {
-  const { r, g, b } = hexToRgb(hex);
-  return rgbToHex(r * (1 - p), g * (1 - p), b * (1 - p));
 }
 
 function hslToRgb(h: number, s: number, l: number) {
@@ -171,18 +171,6 @@ export const PROXIMO_SENTIDO: Record<ModoSentido, ModoSentido> = {
   ida: "volta",
   volta: "ambos",
 };
-
-function rotuloSentido(
-  modo: ModoSentido,
-  sentido?: { ida?: string; volta?: string },
-) {
-  if (modo === "ida") return sentido?.ida || "Ida";
-  if (modo === "volta") return sentido?.volta || "Volta";
-  const ida = sentido?.ida;
-  const volta = sentido?.volta;
-  if (ida && volta && ida !== volta) return "Ambos";
-  return ida || volta || "Ambos";
-}
 
 // ─── IconeModal ────────────────────────────────────────────────────────────
 function IconeModal({ modal, cor }: { modal: string; cor: string }) {
@@ -329,8 +317,12 @@ function LinhaCard({
 
   const iconeBg = misturar(linha.cor, cores.fundoSecundario, 0.25);
 
-  const codigo = linha.linhaCodigo ?? linha.nomeExibicao;
-  const descricao = linha.nomeExibicao !== codigo ? linha.nomeExibicao : "";
+  const isTrain = linha.modal === "trem";
+  const apresentacaoTrem = isTrain ? apresentarLinhaBusca({ codigo: linha.linhaCodigo,
+    nome: linha.linhaCodigo, modal: "Trem", tipoRota: "train" }, "trem") : null;
+  const codigo = isTrain ? apresentacaoTrem!.displayName : linha.linhaCodigo;
+  const descricao = linha.subtitulo ?? apresentacaoTrem?.displaySubtitle
+    ?? (linha.nomeExibicao !== codigo ? linha.nomeExibicao : "");
 
   // Animação de scale ao pressionar
   const scale = useSharedValue(1);
@@ -387,7 +379,7 @@ function LinhaCard({
               <Text
                 style={{ fontWeight: "700", fontSize: 13, color: cores.perigo }}
               >
-                Remover "{codigo}"?
+                Remover &quot;{codigo}&quot;?
               </Text>
               <Text
                 style={{
@@ -598,9 +590,9 @@ function LinhasContainer({
   aoRemoverLinha,
   aoToggleAtiva,
   aoToggleSentido,
+  aoSelecionarSentido,
   aoToggleParadas,
   aoAtualizarCor,
-  sentidosPorLinha,
   aberto,
   aoToggleAberto,
   modalAtivo,
@@ -615,6 +607,8 @@ function LinhasContainer({
   const highlightAlpha = temaAtual === "escuro" ? 0.28 : 0.22;
 
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
+  const [corAberta, setCorAberta] = React.useState(false);
+  React.useEffect(() => setCorAberta(false), [linhaConfigId]);
 
   const screenHeight = Dimensions.get("window").height;
   const SHEET_HEIGHT = Math.round(screenHeight * 0.52);
@@ -647,14 +641,6 @@ function LinhasContainer({
         : null,
     [linhaConfigId, linhasSelecionadas],
   );
-
-  const sentidoAtual = React.useMemo(() => {
-    if (!linhaConfig) return "";
-    return rotuloSentido(
-      linhaConfig.modoSentido,
-      sentidosPorLinha?.[linhaConfig.linhaId],
-    );
-  }, [linhaConfig, sentidosPorLinha]);
 
   React.useEffect(() => {
     if (linhaConfigId && !linhaConfig) setLinhaConfigId(null);
@@ -865,15 +851,22 @@ function LinhasContainer({
           />
 
           {linhaConfig && (
-            <View
+            <ScrollView
               style={{
                 borderRadius: 20,
-                padding: 16,
+                maxHeight: corAberta ? "90%" : undefined,
+                flexGrow: 0,
+                flexShrink: 1,
                 backgroundColor: cores.fundoPainel,
                 borderWidth: 1,
                 borderColor: cores.borda,
               }}
+              contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+              showsVerticalScrollIndicator={corAberta}
+              keyboardShouldPersistTaps="handled"
             >
+              <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: cores.borda,
+                alignSelf: "center", marginBottom: 12 }} />
               {/* Header do modal */}
               <View
                 style={{
@@ -882,6 +875,11 @@ function LinhasContainer({
                   justifyContent: "space-between",
                 }}
               >
+                <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center",
+                  justifyContent: "center", marginRight: 10,
+                  backgroundColor: misturar(linhaConfig.cor, cores.fundoPainel, 0.18) }}>
+                  <IconeModal modal={linhaConfig.modal} cor={linhaConfig.cor} />
+                </View>
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text
                     style={{
@@ -899,7 +897,7 @@ function LinhasContainer({
                       marginTop: 2,
                     }}
                   >
-                    {linhaConfig.linhaCodigo}
+                    {linhaConfig.subtitulo || "Linha selecionada"}
                   </Text>
                 </View>
                 <Pressable
@@ -919,225 +917,87 @@ function LinhasContainer({
 
               {/* Opções */}
               <View style={{ marginTop: 14, gap: 8 }}>
-                {/* 1. Visibilidade */}
-                <Pressable
-                  onPress={() => aoToggleAtiva(linhaConfig.linhaId)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 12,
-                    backgroundColor: linhaConfig.ativa
-                      ? misturar(linhaConfig.cor, modalBase, highlightAlpha)
-                      : cores.fundoSecundario,
-                    borderWidth: 1,
-                    borderColor: cores.bordaSuave,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {linhaConfig.ativa ? (
-                      <Eye color={linhaConfig.cor} size={16} />
-                    ) : (
-                      <EyeOff color={cores.textoSecundario} size={16} />
-                    )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
-                      Visibilidade
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "600",
-                      color: linhaConfig.ativa
-                        ? linhaConfig.cor
-                        : cores.textoSecundario,
-                    }}
-                  >
-                    {linhaConfig.ativa ? "Visível" : "Oculto"}
-                  </Text>
-                </Pressable>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {[
+                    { title: "Visibilidade", subtitle: "Mostrar no mapa", active: linhaConfig.ativa,
+                      icon: linhaConfig.ativa ? Eye : EyeOff, action: () => aoToggleAtiva(linhaConfig.linhaId) },
+                    { title: "Paradas", subtitle: "Mostrar paradas da linha", active: linhaConfig.mostrarParadas,
+                      icon: linhaConfig.mostrarParadas ? MapPin : MapPinOff,
+                      action: () => aoToggleParadas(linhaConfig.linhaId) },
+                  ].map((tile) => <Pressable key={tile.title} onPress={tile.action} style={{ flex: 1,
+                    minHeight: 96, padding: 12, borderRadius: 14, alignItems: "center", justifyContent: "center",
+                    backgroundColor: tile.active ? misturar(linhaConfig.cor, modalBase, highlightAlpha) : cores.fundoSecundario,
+                    borderWidth: 1, borderColor: tile.active ? linhaConfig.cor : cores.bordaSuave }}>
+                    <tile.icon size={23} color={tile.active ? linhaConfig.cor : cores.textoSecundario} />
+                    <Text style={{ marginTop: 7, fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>{tile.title}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 9, textAlign: "center", color: cores.textoSecundario }}>{tile.subtitle}</Text>
+                  </Pressable>)}
+                </View>
 
-                {/* 2. Sentido */}
-                <Pressable
-                  onPress={() => aoToggleSentido(linhaConfig.linhaId)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 12,
-                    backgroundColor: misturar(
-                      linhaConfig.cor,
-                      modalBase,
-                      highlightAlpha,
-                    ),
-                    borderWidth: 1,
-                    borderColor: cores.bordaSuave,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {linhaConfig.modoSentido === "ambos" ? (
-                      <ArrowLeftRight
-                        color={escurecer(linhaConfig.cor, 0.1)}
-                        size={16}
-                      />
-                    ) : (
-                      <MoveRight
-                        color={escurecer(linhaConfig.cor, 0.1)}
-                        size={16}
-                        style={{
-                          transform: [
-                            {
-                              scaleX:
-                                linhaConfig.modoSentido === "volta" ? -1 : 1,
-                            },
-                          ],
-                        }}
-                      />
-                    )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
-                      Sentido
-                    </Text>
+                <View style={{ marginTop: 4 }}>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                    <ArrowLeftRight size={18} color={linhaConfig.cor} />
+                    <View><Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>Sentido</Text>
+                      <Text style={{ fontSize: 9, color: cores.textoSecundario }}>Selecionar o sentido da linha</Text></View>
                   </View>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: escurecer(linhaConfig.cor, 0.1),
-                    }}
-                  >
-                    {sentidoAtual}
-                  </Text>
-                </Pressable>
-
-                {/* 3. Paradas */}
-                <Pressable
-                  onPress={() => aoToggleParadas(linhaConfig.linhaId)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 12,
-                    backgroundColor: linhaConfig.mostrarParadas
-                      ? misturar(linhaConfig.cor, modalBase, highlightAlpha)
-                      : cores.fundoSecundario,
-                    borderWidth: 1,
-                    borderColor: cores.bordaSuave,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {linhaConfig.mostrarParadas ? (
-                      <MapPin color={linhaConfig.cor} size={16} />
-                    ) : (
-                      <MapPinOff color={cores.textoSecundario} size={16} />
-                    )}
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: "700",
-                        color: cores.textoPrimario,
-                      }}
-                    >
-                      Paradas
-                    </Text>
+                  <View style={{ flexDirection: "row", padding: 3, borderRadius: 12, backgroundColor: cores.fundoSecundario }}>
+                    {(["volta", "ambos", "ida"] as ModoSentido[]).map((modo) => {
+                      const active = linhaConfig.modoSentido === modo;
+                      const label = modo === "ambos" ? "Ambos"
+                        : modo === "volta" ? "Sentido Volta" : "Sentido Ida";
+                      return <Pressable key={modo} onPress={() => aoSelecionarSentido
+                        ? aoSelecionarSentido(linhaConfig.linhaId, modo) : aoToggleSentido(linhaConfig.linhaId)}
+                        accessibilityRole="button" accessibilityLabel={`Selecionar ${label}`}
+                        style={{ flex: 1, minHeight: 52, paddingHorizontal: 4, borderRadius: 10,
+                          alignItems: "center", justifyContent: "center", backgroundColor: active
+                            ? misturar(linhaConfig.cor, modalBase, highlightAlpha) : "transparent",
+                          borderWidth: active ? 1 : 0, borderColor: linhaConfig.cor }}>
+                        {modo === "ambos" ? <ArrowLeftRight size={16} color={active ? linhaConfig.cor : cores.textoSecundario} />
+                          : modo === "volta" ? <ArrowLeft size={16} color={active ? linhaConfig.cor : cores.textoSecundario} />
+                            : <ArrowRight size={16} color={active ? linhaConfig.cor : cores.textoSecundario} />}
+                        <Text numberOfLines={1} style={{ marginTop: 3, fontSize: 9, fontWeight: active ? "700" : "500",
+                          color: active ? linhaConfig.cor : cores.textoPrimario }}>{label}</Text>
+                      </Pressable>;
+                    })}
                   </View>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "600",
-                      color: linhaConfig.mostrarParadas
-                        ? linhaConfig.cor
-                        : cores.textoSecundario,
-                    }}
-                  >
-                    {linhaConfig.mostrarParadas ? "Ativas" : "Ocultas"}
-                  </Text>
-                </Pressable>
+                </View>
 
-                {/* 4. Remover linha */}
-                <Pressable
-                  onPress={() => {
-                    setLinhaConfigId(null);
-                    aoRemoverLinha(linhaConfig.linhaId);
-                  }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 12,
-                    backgroundColor: cores.fundoSecundario,
-                    borderWidth: 1,
-                    borderColor: cores.bordaSuave,
-                  }}
-                >
-                  <X color={cores.perigo} size={16} />
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: cores.perigo,
-                    }}
-                  >
-                    Remover linha
-                  </Text>
-                </Pressable>
               </View>
 
               {/* ColorWheel */}
-              <View style={{ marginTop: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "700",
-                    color: cores.textoPrimario,
-                    marginBottom: 8,
-                  }}
-                >
-                  Cor da linha
-                </Text>
-                <ColorWheel
-                  cor={linhaConfig.cor}
-                  onChange={(cor) => aoAtualizarCor(linhaConfig.linhaId, cor)}
-                />
+              <View style={{ marginTop: 10, borderRadius: 12, backgroundColor: cores.fundoSecundario,
+                borderWidth: 1, borderColor: cores.bordaSuave, overflow: "hidden" }}>
+                <Pressable onPress={() => setCorAberta((value) => !value)} style={{ padding: 12,
+                  flexDirection: "row", alignItems: "center", gap: 9 }}>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: linhaConfig.cor }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>Cor da linha</Text>
+                    <Text style={{ fontSize: 10, color: cores.textoSecundario }}>{linhaConfig.cor.toUpperCase()}</Text>
+                  </View>
+                  {corAberta ? <ChevronUp size={16} color={cores.textoSecundario} />
+                    : <ChevronDown size={16} color={cores.textoSecundario} />}
+                </Pressable>
+                {corAberta && <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: cores.bordaSuave }}>
+                  <ColorWheel cor={linhaConfig.cor}
+                    onChange={(cor) => aoAtualizarCor(linhaConfig.linhaId, cor)} />
+                  <Text style={{ marginTop: 12, marginBottom: 8, fontSize: 10, fontWeight: "700",
+                    color: cores.textoSecundario }}>Cores sugeridas</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                    {["#10B981", "#2563EB", "#EF4444", "#F59E0B", "#F97316", "#7C3AED", "#0891B2", "#475569"]
+                      .map((cor) => <Pressable key={cor} onPress={() => aoAtualizarCor(linhaConfig.linhaId, cor)}
+                        accessibilityLabel={`Usar cor ${cor}`} style={{ width: 25, height: 25, borderRadius: 13,
+                          backgroundColor: cor, borderWidth: linhaConfig.cor.toUpperCase() === cor ? 3 : 1,
+                          borderColor: linhaConfig.cor.toUpperCase() === cor ? cores.textoPrimario : cores.borda }} />)}
+                  </View>
+                </View>}
               </View>
-            </View>
+              <Pressable onPress={() => { setLinhaConfigId(null); aoRemoverLinha(linhaConfig.linhaId); }}
+                style={{ marginTop: 10, minHeight: 46, borderRadius: 12, flexDirection: "row", gap: 8,
+                  alignItems: "center", justifyContent: "center", backgroundColor: "rgba(239,68,68,.10)" }}>
+                <Trash2 color={cores.perigo} size={17} />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: cores.perigo }}>Remover linha</Text>
+              </Pressable>
+            </ScrollView>
           )}
         </View>
       </Modal>
@@ -1145,4 +1005,4 @@ function LinhasContainer({
   );
 }
 
-export default LinhasContainer;
+export default React.memo(LinhasContainer);

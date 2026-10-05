@@ -1,23 +1,32 @@
 import { useTema } from "@/src/hooks/useTema";
 import { Search, X } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Pressable, TextInput } from "react-native";
+import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAnimatedPlaceholder } from "@/src/hooks/useAnimatedPlaceholder";
 
 interface BuscaMapaProps {
   value: string;
   onChangeText: (value: string) => void;
   onClose: () => void;
+  placeholder?: string;
+  placeholderSuggestions?: string[];
+  embedded?: boolean;
 }
 
 export default function BuscaMapa({
   value,
   onChangeText,
   onClose,
+  placeholder = "Buscar linhas ou destinos",
+  placeholderSuggestions = [],
+  embedded = false,
 }: BuscaMapaProps) {
   const { cores } = useTema();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
+  const animatedPlaceholder = useAnimatedPlaceholder(placeholderSuggestions, value.length === 0);
 
   useEffect(() => {
     const focusTimeout = setTimeout(() => {
@@ -28,22 +37,24 @@ export default function BuscaMapa({
   }, []);
 
   return (
-    <View
+    <Animated.View
+      entering={FadeInDown.duration(180)}
+      exiting={FadeOutUp.duration(140)}
       style={{
-        position: "absolute",
-        top: insets.top + 12,
-        left: 12,
-        right: 12,
+        position: embedded ? "relative" : "absolute",
+        top: embedded ? 0 : insets.top + 12,
+        left: embedded ? 0 : 12,
+        right: embedded ? 0 : 12,
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: cores.fundoInput,
-        borderRadius: 999,
-        borderWidth: 1,
+        backgroundColor: embedded ? "transparent" : cores.fundoInput,
+        borderRadius: embedded ? 16 : 999,
+        borderWidth: embedded ? 0 : 1,
         borderColor: cores.borda,
         height: 48,
         paddingHorizontal: 14,
         shadowColor: "#000",
-        shadowOpacity: 0.12,
+        shadowOpacity: embedded ? 0 : 0.12,
         shadowRadius: 8,
         elevation: 4,
         zIndex: 20,
@@ -59,8 +70,14 @@ export default function BuscaMapa({
           marginHorizontal: 10,
           fontSize: 15,
           color: cores.textoPrimario,
+          backgroundColor: "transparent",
+          borderWidth: 0,
+          outlineWidth: 0,
+          elevation: 0,
+          paddingVertical: 0,
         }}
-        placeholder="Buscar linhas ou destinos"
+        underlineColorAndroid="transparent"
+        placeholder={animatedPlaceholder || placeholder}
         placeholderTextColor={cores.textoSecundario}
         value={value}
         onChangeText={onChangeText}
@@ -74,6 +91,6 @@ export default function BuscaMapa({
       >
         <X size={20} color={cores.iconeSecundario} />
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }

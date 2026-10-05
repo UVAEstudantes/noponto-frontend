@@ -12,6 +12,7 @@ import React, {
 import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
+import { adaptarRailParaMapa } from "@/src/services/veiculosMapa";
 
 // IDs de estilo/filtros serializados para consumo dentro do script da WebView.
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
@@ -37,10 +38,44 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       showTraffic = false,
       estiloMapa = ESTILO_MAPA_PADRAO,
       onStopPress,
+      railVehicles = [],
     },
     ref,
   ) => {
     const webViewRef = useRef<WebView>(null);
+    const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullBytes: 0, realtimeBytes: 0 });
+    const railVehiclesForMap = useMemo(
+      () => railVehicles.map(adaptarRailParaMapa),
+      [railVehicles],
+    );
+    const structureSignature = linhasParaMostrar.map((linha) => linha.structureKey
+      ?? `${linha.nome}:${linha.cor}:${linha.modoSentido}:${linha.mostrarParadas}`).join("|");
+    const structuralCacheRef = useRef<{ signature: string; linhas: typeof linhasParaMostrar }>({
+      signature: "", linhas: [],
+    });
+    if (structuralCacheRef.current.signature !== structureSignature) {
+      if (__DEV__) console.log("[MapaEstrutural]", {
+        anterior: structuralCacheRef.current.signature,
+        atual: structureSignature,
+        linhas: linhasParaMostrar.map((linha) => linha.structureKey ?? linha.nome),
+      });
+      structuralCacheRef.current = {
+        signature: structureSignature,
+        linhas: linhasParaMostrar.map((linha) => ({ ...linha, posicoes: [] })),
+      };
+    }
+    const realtimeLines = useMemo(() => linhasParaMostrar.map((linha) => ({
+      structureKey: linha.structureKey, nome: linha.nome, modal: linha.modal,
+      posicoes: linha.posicoes ?? [],
+    })), [linhasParaMostrar]);
+
+    useEffect(() => {
+      const diagnostics = diagnosticsRef.current;
+      if (__DEV__) console.log("[MapaOSM] mount");
+      return () => {
+        if (__DEV__) console.log("[MapaOSM] unmount", diagnostics);
+      };
+    }, []);
 
     // Guardamos apenas a primeira coordenada válida para impedir "salto" inicial do mapa quando localização vai refinando nos primeiros segundos do GPS.
     const coordInicialRef = useRef<{
@@ -110,20 +145,42 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           : null,
         heading: location?.coords?.heading ?? null,
         accuracy: location?.coords?.accuracy ?? null,
-        linhas: linhasParaMostrar,
+        linhas: structuralCacheRef.current.linhas,
         darkMode,
         showTraffic,
         estiloMapa,
+        railVehicles: [],
       };
-
+      const serialized = JSON.stringify(data);
+      diagnosticsRef.current.fullUpdates++;
+      diagnosticsRef.current.fullBytes += serialized.length;
       injectWebViewCommand(
         webViewRef,
-        `window.updateMap(${JSON.stringify(data)});`,
+        `window.updateMap(${serialized});`,
       );
 
       // Full map updates are heavy; user movement is handled separately.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mapReady, linhasParaMostrar, darkMode, showTraffic, estiloMapa]);
+    }, [
+      mapReady,
+      structureSignature,
+      darkMode,
+      showTraffic,
+      estiloMapa,
+    ]);
+
+    useEffect(() => {
+      if (!mapReady) return;
+      const data = { linhas: realtimeLines, railVehicles: railVehiclesForMap };
+      const serialized = JSON.stringify(data);
+      diagnosticsRef.current.realtimeUpdates++;
+      diagnosticsRef.current.realtimeBytes += serialized.length;
+      if (__DEV__ && diagnosticsRef.current.realtimeUpdates % 25 === 0) {
+        console.log("[MapaOSM] métricas", diagnosticsRef.current);
+      }
+      injectWebViewCommand(webViewRef,
+        `if(window.updateRealtime) window.updateRealtime(${serialized});`);
+    }, [mapReady, realtimeLines, railVehiclesForMap]);
 
     // Update "leve" e frequente: posição do usuário + heading/acurácia.
     useEffect(() => {
@@ -176,6 +233,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
             const payload = JSON.parse(raw);
             if (payload?.type === "stop_click" && payload.parada) {
               onStopPress?.(payload.parada);
+            }
+            if (__DEV__ && payload?.type === "realtime_metrics") {
+              console.log("[MapaRealtime]", payload.metrics);
             }
           } catch {
             // Ignora mensagens não-JSON para manter tolerância com logs/strings soltas.

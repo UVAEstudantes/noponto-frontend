@@ -26,6 +26,225 @@ var mapReady=false;
 var drInterval=null;
 var lastDrLog=0;
 var userLastUpdate=0;
+var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=0,railLastUiTick=0;
+var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
+var lastMapData=null;
+var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
+
+var railBranchColors={
+  'santa cruz':'#64a70b','deodoro':'#ba0c2f','japeri':'#92c1e9',
+  'saracuruna':'#de7c00','belford roxo':'#5c068c','paracambi':'#00a3e0',
+  'guapimirim':'#f1b500','vila inhomirim':'#c4b000'
+};
+function railVisual(run){
+  var name=(run.lineName||'').toLowerCase(),color='#59636e';
+  Object.keys(railBranchColors).some(function(key){if(name.indexOf(key)>=0){color=railBranchColors[key];return true}return false});
+  var status=run.operationalStatus||'Estimated';
+  return{color:color,status:status,opacity:status==='Scheduled'?.72:status==='Estimated'?.88:1};
+}
+function applyRailMarkerVisual(el,run){
+  var visual=railVisual(run);
+  el.classList.remove('rail-status-live','rail-status-estimated','rail-status-scheduled');
+  el.classList.add('rail-status-'+visual.status.toLowerCase());
+  el.style.opacity=visual.opacity;
+  var blob=el.querySelector('.bus-blob');if(blob)blob.style.background=visual.color;
+}
+function railMarkerElement(run,identity){
+  // Preserve the original rail marker: .train-marker > .bus-inner > .bus-blob.
+  var visual=railVisual(run),el=busIcon(visual.color,0,'trem');
+  el.setAttribute('data-rail-id',identity);
+  applyRailMarkerVisual(el,run);
+  el.addEventListener('click',function(event){
+    event.preventDefault();event.stopPropagation();
+    var current=railRuns[identity];
+    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c)openRailPopup(current,c)}
+  });
+  return el;
+}
+
+function railHaversine(a,b){
+  var r=6371008.8,toRad=Math.PI/180;
+  var lat1=a[1]*toRad,lat2=b[1]*toRad,dLat=lat2-lat1,dLng=(b[0]-a[0])*toRad;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2*r*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+
+function prepareRailGeometry(coords){
+  var cumulative=[0],segments=[],total=0;
+  for(var i=1;i<coords.length;i++){var d=railHaversine(coords[i-1],coords[i]);segments.push(d);total+=d;cumulative.push(total)}
+  return{coords:coords,segments:segments,cumulative:cumulative,total:total};
+}
+
+function railCoordinateAtDistance(g,distance){
+  if(!g||!g.coords.length)return null;
+  if(distance<=0)return g.coords[0];
+  if(distance>=g.total)return g.coords[g.coords.length-1];
+  var low=0,high=g.segments.length-1;
+  while(low<high){var mid=Math.floor((low+high)/2);if(g.cumulative[mid+1]<distance)low=mid+1;else high=mid}
+  var length=g.segments[low],ratio=length>0?(distance-g.cumulative[low])/length:0,a=g.coords[low],b=g.coords[low+1];
+  return[a[0]+ratio*(b[0]-a[0]),a[1]+ratio*(b[1]-a[1])];
+}
+
+function railBearing(a,b){
+  if(!a||!b)return null;
+  var toRad=Math.PI/180,lat1=a[1]*toRad,lat2=b[1]*toRad,dLng=(b[0]-a[0])*toRad;
+  var y=Math.sin(dLng)*Math.cos(lat2);
+  var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);
+  if(Math.abs(x)<1e-12&&Math.abs(y)<1e-12)return null;
+  return(Math.atan2(y,x)/toRad+360)%360;
+}
+
+function railHeadingAtDistance(g,distance){
+  if(!g||g.total<=0)return null;
+  var delta=Math.min(20,Math.max(3,g.total*.001));
+  var before=railCoordinateAtDistance(g,Math.max(0,distance-delta));
+  var after=railCoordinateAtDistance(g,Math.min(g.total,distance+delta));
+  return railBearing(before,after);
+}
+
+function applyRailHeading(marker,key,run,distance){
+  var heading=railHeadingAtDistance(run&&run._geometry,distance);
+  if(typeof heading==='number'&&isFinite(heading))railHeadings[key]=heading;
+  else heading=railHeadings[key];
+  if(typeof heading==='number')setHeading(marker,heading);
+}
+
+function railDistanceNow(run,now){
+  var authoritative;
+  if(run.state!=='InSegment')authoritative=run.distanceAtReferenceMetres;
+  else if(now>Date.parse(run.freshUntilUtc))authoritative=typeof run._lastDistance==='number'?run._lastDistance:run.distanceAtReferenceMetres;
+  else{
+  var reference=Date.parse(run.referenceTimeUtc),target=Date.parse(run.targetTimeUtc);
+    if(!isFinite(reference)||!isFinite(target)||target<=reference)authoritative=run.distanceAtReferenceMetres;
+    else{
+      var progress=Math.max(0,Math.min(1,(now-reference)/(target-reference)));
+      var eased=progress*progress*(3-2*progress);
+      authoritative=run.distanceAtReferenceMetres+eased*(run.targetDistanceMetres-run.distanceAtReferenceMetres);
+    }
+  }
+  if(typeof run._visualStartDistance==='number'&&now<run._visualBlendUntil){
+    var blend=Math.max(0,Math.min(1,(now-run._visualReceivedAt)/(run._visualBlendUntil-run._visualReceivedAt)));
+    blend=blend*blend*(3-2*blend);
+    authoritative=run._visualStartDistance+blend*(authoritative-run._visualStartDistance);
+  }
+  run._lastDistance=authoritative;
+  return authoritative;
+}
+
+function setRailRuns(values){
+  var next={};
+  var receivedAt=Date.now();
+  (values||[]).forEach(function(run){
+    var coords=run.geometry&&run.geometry.coordinates;
+    var identity=run.idVisual||run.railVehicleId||run.railRunId;
+    if(!identity||!Array.isArray(coords)||coords.length<2)return;
+    var prepared=prepareRailGeometry(coords),previous=railRuns[identity];
+    if(prepared.total>0&&run.targetDistanceMetres>prepared.total*1.05){
+      console.warn('[Rail] backend distance exceeds frontend geometry length',identity,run.targetDistanceMetres,prepared.total);
+    }
+    var nextRun={...run,_geometry:prepared};
+    if(previous&&previous.padraoVersaoId===run.padraoVersaoId){
+      var rendered=railDistanceNow(previous,receivedAt);
+      nextRun._lastDistance=rendered;
+      nextRun._visualStartDistance=rendered;
+      nextRun._visualReceivedAt=receivedAt;
+      nextRun._visualBlendUntil=receivedAt+1200;
+    }
+    next[identity]=nextRun;
+  });
+  railRuns=next;
+}
+
+function updateRailVehicles(now){
+  var source=map&&map.getSource('rail-vehicles');if(!source||!source.setData)return;
+  var features=[];
+  Object.keys(railRuns).forEach(function(key){
+    var run=railRuns[key],distance=railDistanceNow(run,now),coord=railCoordinateAtDistance(run._geometry,distance);
+    if(!coord)return;
+    var marker=railMarkers[key];
+    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker}
+    else{marker.setLngLat(coord);applyRailMarkerVisual(marker.getElement(),run)}
+    applyRailHeading(marker,key,run,distance);
+    if(activeRailPopupIdentity===key)openRailPopup(run,coord);
+    features.push({type:'Feature',id:key,geometry:{type:'Point',coordinates:coord},properties:{
+      railRunId:key,trainCode:run.trainCode||'',destination:run.destination||'',state:run.state,
+      trainType:run.trainType||'',platform:run.platform||'',statusFonte:run.statusFonte||'Indisponível',
+      lastRealtimeEvidenceUtc:run.lastRealtimeEvidenceUtc||'',
+      positionSource:run.positionSource||'',positionQuality:run.positionQuality||'',
+      isEstimated:true,isClamped:Boolean(run.isClamped),stale:now>Date.parse(run.freshUntilUtc)
+    }});
+  });
+  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key]}});
+  if(now-railLastUiTick>=1000){
+    document.querySelectorAll('[data-rail-evidence]').forEach(function(el){el.textContent='Atualizado '+railElapsed(el.getAttribute('data-rail-evidence'))});
+    document.querySelectorAll('[data-rail-departure]').forEach(function(el){var at=Date.parse(el.getAttribute('data-rail-departure')),s=Math.max(0,Math.ceil((at-now)/1000));el.textContent=s===0?'Saindo agora':'Saída em '+Math.max(1,Math.ceil(s/60))+' min'});
+    railLastUiTick=now;
+  }
+  source.setData({type:'FeatureCollection',features:features});
+}
+
+function openRailPopup(run,coord){
+  if(!run||!coord)return;
+  var identity=run.idVisual||run.railVehicleId||run.railRunId;
+  var status=run.statusFonte||({Live:'Ao vivo',Estimated:'Estimado',Scheduled:'Programado'}[run.operationalStatus]||'Indisponível');
+  var statusClass=status==='Ao vivo'?'live':status==='Estimado'?'estimated':'scheduled';
+  var title=run.lineName||'Trem';
+  var service=run.trainType?String(run.trainType).trim():'';
+  var platform=run.platformLabel||run.platform;
+  var heading=title+(service?' • '+service:'');
+  var destination=run.destinationName&&!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(run.destinationName)?run.destinationName:null;
+  var departure=run.secondsToDeparture;
+  var primary='';
+  if(run.isAtOriginTerminal){primary=departure===0?'Saindo agora':typeof departure==='number'?'Saída em '+Math.max(1,Math.ceil(departure/60))+' min':'No terminal'}
+  else if(run.nextStationName){primary='Próxima: '+run.nextStationName+(typeof run.secondsToNextStation==='number'?' · '+Math.max(1,Math.ceil(run.secondsToNextStation/60))+' min':'')}
+  var railSeconds=typeof run.secondsToNextStation==='number'?run.secondsToNextStation:
+    (isFinite(Date.parse(run.targetTimeUtc))?Math.max(0,(Date.parse(run.targetTimeUtc)-Date.now())/1000):null);
+  var railMinutes=railSeconds===null?'':Math.max(1,Math.ceil(railSeconds/60))+' min';
+  var railDistance=(typeof run.targetDistanceMetres==='number'&&typeof run.distanceAtReferenceMetres==='number')
+    ?Math.max(0,run.targetDistanceMetres-run.distanceAtReferenceMetres):null;
+  var railDistanceLabel=railDistance===null?'-':railDistance>=1000?(railDistance/1000).toFixed(1).replace('.',',')+' km':Math.round(railDistance)+' m';
+  var railDetailsId='rail_details_'+safeId(identity);
+  var html='<div class="popup-card"><div class="popup-header"><div class="popup-indicator" style="--c:'+railVisual(run).color+'">'+modalIconSvg('trem')+'</div><div class="popup-main">'+
+    '<div class="popup-title-row"><div class="popup-title">'+escapeHtml(heading)+'</div><span class="rail-status-badge '+statusClass+'">'+escapeHtml(status)+'</span>'+
+    (platform?'<span class="popup-platform">'+escapeHtml(platform)+'</span>':'')+'</div>'+
+    (destination?'<div class="popup-sub">Sentido: '+escapeHtml(destination)+'</div>':'')+
+    (run.lastRealtimeEvidenceUtc&&status!=='Programado'?'<span class="popup-time" data-rail-evidence="'+escapeHtml(run.lastRealtimeEvidenceUtc)+'">Atualizado '+railElapsed(run.lastRealtimeEvidenceUtc)+'</span>':'')+
+    (run.trainCode?'<span class="popup-train-code">'+escapeHtml(run.trainCode)+'</span>':'')+'</div></div>'+
+    '<div class="popup-toggle" data-target="'+railDetailsId+'" onclick="toggleDetails(this)"><span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>'+
+    '<div class="popup-details" id="'+railDetailsId+'"><div class="popup-stats">'+
+    '<div class="popup-stat"><i data-lucide="clock-3"></i><div class="popup-stat-value">'+escapeHtml(run.isAtOriginTerminal&&typeof departure==='number'?Math.max(1,Math.ceil(departure/60))+' min':railMinutes)+'</div><div class="popup-stat-label">Tempo estimado</div></div>'+
+    '<div class="popup-stat"><i data-lucide="map-pin"></i><div class="popup-stat-value">'+escapeHtml(railDistanceLabel)+'</div><div class="popup-stat-label">Distância</div></div>'+
+    '<div class="popup-stat"><i data-lucide="flag"></i><div class="popup-stat-value">'+escapeHtml(run.nextStationName||destination||'-')+'</div><div class="popup-stat-label">Próxima estação</div></div></div>'+
+    (status==='Programado'?'<div class="popup-time">Viagem prevista pela grade e ainda não confirmada em tempo real.</div>':'')+'</div></div>';
+  var signature=[status,title,destination,primary,run.platformLabel||run.platform||'',run.lastRealtimeEvidenceUtc||'',run.trainCode||''].join('|');
+  if(activeRailPopup&&activeRailPopupIdentity===identity){
+    activeRailPopup.setLngLat(coord);
+    if(activeRailPopupSignature!==signature){activeRailPopup.setHTML(html);activeRailPopupSignature=signature}
+    return;
+  }
+  if(activeRailPopup)activeRailPopup.remove();
+  var popup=new maplibregl.Popup({offset:14,closeButton:false,closeOnClick:true});
+  if(popup.on)popup.on('open',refreshIcons);
+  activeRailPopup=popup;activeRailPopupIdentity=identity;activeRailPopupSignature=signature;
+  if(railMarkers[identity])railMarkers[identity].getElement().classList.add('rail-selected');
+  popup.on('close',function(){if(activeRailPopup===popup){
+    if(activeRailPopupIdentity&&railMarkers[activeRailPopupIdentity])railMarkers[activeRailPopupIdentity].getElement().classList.remove('rail-selected');
+    activeRailPopup=null;activeRailPopupIdentity=null;activeRailPopupSignature=null;
+  }});
+  popup.setLngLat(coord).setHTML(html).addTo(map);
+}
+
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]})}
+function railElapsed(value){var seconds=Math.max(0,Math.floor((Date.now()-Date.parse(value))/1000));if(seconds<5)return'agora';if(seconds<60)return'há '+seconds+'s';var minutes=Math.floor(seconds/60),rest=seconds%60;return'há '+minutes+'min'+(rest?' '+rest+'s':'')}
+
+function startRailAnimation(){
+  if(railAnimation)cancelAnimationFrame(railAnimation);
+  function frame(ts){
+    if(ts-railLastFrame>=75){updateRailVehicles(Date.now());railLastFrame=ts}
+    railAnimation=requestAnimationFrame(frame);
+  }
+  railAnimation=requestAnimationFrame(frame);
+}
 
 // ── Dead reckoning ────────────────────────────────────────────────────────────
 // drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
@@ -156,11 +375,15 @@ function animateTo(key,marker,dest,ms){
   var start=marker.getLngLat();
   var dx=start.lng-dest.lng,dy=start.lat-dest.lat;
   if(Math.sqrt(dx*dx+dy*dy)<0.000005){marker.setLngLat([dest.lng,dest.lat]);return}
+  // Saltos incompatíveis com movimento contínuo devem corrigir posição, não
+  // atravessar visualmente bairros inteiros entre duas amostras.
+  if(distanceMeters(start.lat,start.lng,dest.lat,dest.lng)>1500){marker.setLngLat([dest.lng,dest.lat]);return}
   var t0=performance.now();
   function step(ts){
     var p=Math.min((ts-t0)/ms,1);
-    var lat=start.lat+(dest.lat-start.lat)*p;
-    var lng=start.lng+(dest.lng-start.lng)*p;
+    var eased=p*p*(3-2*p);
+    var lat=start.lat+(dest.lat-start.lat)*eased;
+    var lng=start.lng+(dest.lng-start.lng)*eased;
     marker.setLngLat([lng,lat]);
     if(p<1)animFrames[key]=requestAnimationFrame(step);else delete animFrames[key];
   }
@@ -292,13 +515,25 @@ function setHeading(marker,heading){
   var inner=el.querySelector('.bus-inner');
   var bearing=(map&&map.getBearing)?map.getBearing():0;
   var adjusted=heading-bearing;
-  if(inner)inner.style.setProperty('--h',adjusted+'deg');
+  if(inner){
+    var previous=parseFloat(inner.getAttribute('data-heading-adjusted'));
+    if(isFinite(previous)){
+      while(adjusted-previous>180)adjusted-=360;
+      while(adjusted-previous< -180)adjusted+=360;
+    }
+    inner.setAttribute('data-heading-adjusted',String(adjusted));
+    inner.style.setProperty('--h',adjusted+'deg');
+  }
 }
 
 function refreshVehicleHeadings(){
   Object.keys(vehicleMarkers).forEach(function(k){
     var h=vehicleHeadings[k];
     if(typeof h==='number')setHeading(vehicleMarkers[k],h);
+  });
+  Object.keys(railMarkers).forEach(function(k){
+    var h=railHeadings[k];
+    if(typeof h==='number')setHeading(railMarkers[k],h);
   });
 }
 
@@ -366,19 +601,19 @@ function buildPopup(linha,p,vid,heading){
   var tsMs=tsRaw||null;
   var sentido=null;
   if(p.sentidoNome)sentido=p.sentidoNome;
-  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSentidoMap&&linha.itinerarioSentidoMap[p.itinerarioId]){
-    sentido=linha.itinerarioSentidoMap[p.itinerarioId];
+  if(!sentido&&p.padraoVersaoId&&linha&&linha.itinerarioSentidoMap&&linha.itinerarioSentidoMap[p.padraoVersaoId]){
+    sentido=linha.itinerarioSentidoMap[p.padraoVersaoId];
   }
-  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSegmentoMap){
-    var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
-    if(segIdx===0)sentido='Ida';
-    else if(segIdx===1)sentido='Volta';
+  if(!sentido&&p.padraoVersaoId&&linha&&linha.itinerarioSegmentoMap){
+    var segIdx=linha.itinerarioSegmentoMap[p.padraoVersaoId];
+    if(segIdx===0)sentido='Sentido 1';
+    else if(segIdx===1)sentido='Sentido 2';
   }
   if(sentido&&linha&&linha.nome&&sentido===linha.nome)sentido=null;
   if(!sentido&&linha&&linha.modoSentido){
-    if(linha.modoSentido==='ida')sentido='Ida';
-    else if(linha.modoSentido==='volta')sentido='Volta';
-    else if(linha.modoSentido==='ambos')sentido='Ida/Volta';
+    if(linha.modoSentido==='ida')sentido='Sentido 1';
+    else if(linha.modoSentido==='volta')sentido='Sentido 2';
+    else if(linha.modoSentido==='ambos')sentido='Todos os sentidos';
   }
   var sentidoLabel=sentido||'-';
   var color=linha.cor||null;
@@ -393,35 +628,35 @@ function buildPopup(linha,p,vid,heading){
   var prox=p.proximaParadaNome?p.proximaParadaNome:'-';
   var dist=p.distanciaProximaParadaMetros!=null?Math.round(p.distanciaProximaParadaMetros)+' m':'-';
   var iconSvg=modalIconSvg(linha.modal);
+  var roadStats='';
+  if(speed!==null)roadStats+='<div class="popup-stat"><i data-lucide="gauge"></i><div class="popup-stat-value">'+speedHtml+'</div><div class="popup-stat-label">Velocidade</div></div>';
+  if(p.distanciaProximaParadaMetros!=null)roadStats+='<div class="popup-stat"><i data-lucide="map-pin"></i><div class="popup-stat-value">'+dist+'</div><div class="popup-stat-label">Distância</div></div>';
+  if(p.proximaParadaNome)roadStats+='<div class="popup-stat"><i data-lucide="bus-front"></i><div class="popup-stat-value">'+escapeHtml(prox)+'</div><div class="popup-stat-label">Próxima parada</div></div>';
   var html='<div class="popup-card" id="'+popupId+'">';
   html+='<div class="popup-header">';
   html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';
   html+='<div class="popup-main">';
-  html+='<div class="popup-title">'+linha.nome+'</div>';
-  html+='<div class="popup-sub">Sentido: '+sentidoLabel+'</div>';
-  html+='<div class="popup-sub">Ordem: '+ordemLabel+'</div>';
-  html+='<div class="popup-time">Atualizado ha '+tempoHtml+'</div>';
+  html+='<div class="popup-title-row"><div class="popup-title">'+escapeHtml(linha.nome)+'</div><span class="popup-vehicle" style="--c:'+corFinal+'">'+escapeHtml(ordemLabel)+'</span></div>';
+  html+='<div class="popup-sub">'+escapeHtml(linha.descricao||('Sentido: '+sentidoLabel))+'</div>';
   html+='</div>';
   html+='</div>';
+  html+='<div class="popup-meta"><span class="popup-status">Ao vivo</span><span class="popup-time">Atualizado há '+tempoHtml+'</span></div>';
   html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">'+
         '<span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>';
   html+='<div class="popup-details" id="'+detailsId+'">';
-  html+='<div class="popup-row"><span class="popup-label">Vel. media:</span>'+speedHtml+'</div>';
-  html+='<div class="popup-row"><span class="popup-label">Prox. parada:</span>'+prox+'</div>';
-  html+='<div class="popup-row"><span class="popup-label">Distancia:</span>'+dist+'</div>';
+  html+='<div class="popup-stats">'+roadStats+'</div>';
   html+='</div>';
   html+='</div>';
   return html;
 }
 
-function buildStopPopup(parada){
+function buildStopPopup(parada,modal){
   var nome=(parada&&parada.nome)?parada.nome:'Parada';
   var ordem=(parada&&parada.ordem!=null)?('Parada #'+parada.ordem):'';
-  var html='<div class="stop-popup">';
-  html+='<div class="stop-title">'+nome+'</div>';
-  if(ordem)html+='<div class="stop-sub">'+ordem+'</div>';
-  html+='<div class="stop-hint">Toque para detalhes</div>';
-  html+='</div>';
+  var html='<div class="stop-popup"><div class="stop-popup-icon"><i data-lucide="'+((modal||'').toLowerCase()==='trem'?'train-front':'bus-front')+'"></i></div><div class="stop-popup-copy">';
+  html+='<div class="stop-title">'+escapeHtml(nome)+'</div>';
+  if(ordem)html+='<div class="stop-sub">'+escapeHtml(ordem)+'</div>';
+  html+='</div><div class="stop-chevron">›</div></div>';
   return html;
 }
 
@@ -529,7 +764,8 @@ function updateStopMarkers(){
     var el=stopIcon(stop.color,stop.modal);
     applyStopStyle(el,zoom,stop.modal);
     var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([stop.lng,stop.lat]);
-    var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada));
+    var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada,stop.modal));
+    if(popup.on)popup.on('open',refreshIcons);
     marker.setPopup(popup);
     el.addEventListener('click',function(){
       if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
@@ -691,6 +927,14 @@ function updateUser(data){
 function focusOnVehicle(payload){
   if(!map||!payload)return;
   var target=null;
+  var railIdentity=payload.idVisual||
+    (payload.railVehicleId?'rail:'+payload.railVehicleId:null)||
+    (payload.railRunId?'rail:'+payload.railRunId:null);
+  if(railIdentity&&railRuns[railIdentity]){
+    var railRun=railRuns[railIdentity];
+    var railCoord=railCoordinateAtDistance(railRun._geometry,railDistanceNow(railRun,Date.now()));
+    if(railCoord){target={lat:railCoord[1],lng:railCoord[0]};openRailPopup(railRun,railCoord)}
+  }
   var ordem=payload.ordem||payload.id||null;
   if(ordem&&vehicleIndexByOrder[ordem]&&vehicleMarkers[vehicleIndexByOrder[ordem]]){
     var key=vehicleIndexByOrder[ordem];
@@ -745,6 +989,18 @@ window.onload=function(){
     mapReady=true;
     map.getCanvas().style.transition='filter .25s ease';
     ensureLayers();
+    if(!map.getSource('rail-vehicles'))map.addSource('rail-vehicles',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    if(!map.getLayer('rail-vehicles-layer'))map.addLayer({id:'rail-vehicles-layer',type:'circle',source:'rail-vehicles',paint:{
+      'circle-radius':16,'circle-opacity':0
+    }});
+    map.on('click','rail-vehicles-layer',function(e){
+      var feature=e.features&&e.features[0];if(!feature)return;
+      var key=feature.properties&&feature.properties.railRunId;
+      var run=key&&railRuns[key];
+      if(run)openRailPopup(run,feature.geometry.coordinates);
+    });
+    map.on('mouseenter','rail-vehicles-layer',function(){map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave','rail-vehicles-layer',function(){map.getCanvas().style.cursor=''});
     userMarker=new maplibregl.Marker({element:userIcon(),anchor:'center'}).setLngLat([${lngInicial},${latInicial}]).addTo(map);
     setMapStyle('${estiloMapaPadrao}');
     setDark(false);
@@ -756,6 +1012,7 @@ window.onload=function(){
     map.on('rotate',function(){refreshVehicleHeadings()});
 
     startDR();
+    startRailAnimation();
     setInterval(updateTimeAgo,1000);
 
     if(window.pendingData)window.updateMap(window.pendingData);
@@ -784,6 +1041,8 @@ window.fitToCoordinates=function(coords){
 
 window.updateMap=function(data){
   if(!map||!mapReady){window.pendingData=data;return}
+  var structuralUpdate=!data.realtimeOnly;
+  if(structuralUpdate)lastMapData=data;
 
   setMapStyle(data.estiloMapa);
   setDark(Boolean(data.darkMode));
@@ -791,12 +1050,13 @@ window.updateMap=function(data){
   setLineOpacity(Boolean(data.darkMode));
 
   if(data.userLocation)updateUser(data);
+  setRailRuns(data.railVehicles||[]);
 
   var lineFeatures=[];
   vehicleIndexByOrder={};
 
   if(!Array.isArray(data.linhas)||data.linhas.length===0){
-    setLinesData(lineFeatures);
+    if(structuralUpdate)setLinesData(lineFeatures);
     clearVehicles();
     stopCache=[];
     stopCacheKey='';
@@ -804,8 +1064,8 @@ window.updateMap=function(data){
     return;
   }
 
-  var stopSig=stopSignature(data.linhas,Boolean(data.darkMode));
-  if(stopSig!==stopCacheKey){
+  var stopSig=structuralUpdate?stopSignature(data.linhas,Boolean(data.darkMode)):stopCacheKey;
+  if(structuralUpdate&&stopSig!==stopCacheKey){
     stopCacheKey=stopSig;
     rebuildStopCache(data.linhas,Boolean(data.darkMode));
     clearStops();
@@ -813,6 +1073,7 @@ window.updateMap=function(data){
   }
 
   var visibleKeys={};
+  var createdNow=0,updatedNow=0,removedNow=0,snapshotNow=0;
 
   data.linhas.forEach(function(linha){
     var color=linha.cor||(data.darkMode?'#4FC3F7':'#2196F3');
@@ -833,7 +1094,7 @@ window.updateMap=function(data){
     segmentos.forEach(function(seg,idx){
       if(!Array.isArray(seg)||seg.length<2)return;
       var coords=seg.map(function(c){return[c[1],c[0]]});
-      lineFeatures.push({
+      if(structuralUpdate)lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
         properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
@@ -851,6 +1112,7 @@ window.updateMap=function(data){
       var vid=rawId?String(rawId).trim():linha.nome+'-'+idx;
       var vKey=(linha.modal||'m')+':'+linha.nome+':'+vid;
       visibleKeys[vKey]=true;
+      snapshotNow++;
       vehicleIndexByOrder[vid]=vKey;
 
       var dest={lat:lat,lng:lng};
@@ -863,10 +1125,10 @@ window.updateMap=function(data){
       var distStop=parseNum(p.distanciaProximaParadaMetros);
       var decelFactor=(distStop!==null&&distStop<300)?Math.max(0.72,0.95-(300-distStop)/1200):1;
 
-      // Escolhe o segmento correto baseado no itinerarioId do veículo
+      // Escolhe a geometria pela identidade estrutural oficial da versão.
       var lineCoordsDR=segmentos[0]||null;
-      if(p.itinerarioId&&linha.itinerarioSegmentoMap){
-        var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
+      if(p.padraoVersaoId&&linha.itinerarioSegmentoMap){
+        var segIdx=linha.itinerarioSegmentoMap[p.padraoVersaoId];
         if(typeof segIdx==='number'&&segmentos[segIdx]){
           lineCoordsDR=segmentos[segIdx];
         }
@@ -893,6 +1155,7 @@ window.updateMap=function(data){
         marker.setPopup(popup);
         marker.addTo(map);
         vehicleMarkers[vKey]=marker;
+        createdNow++;
         vehiclePopups[vKey]=popup;
         if(typeof heading==='number')vehicleHeadings[vKey]=heading;
         drState[vKey]={
@@ -906,6 +1169,7 @@ window.updateMap=function(data){
         };
         return;
       }
+      updatedNow++;
 
       var markerEl=marker.getElement();
       if(markerEl){
@@ -973,7 +1237,7 @@ window.updateMap=function(data){
     });
   });
 
-  setLinesData(lineFeatures);
+  if(structuralUpdate)setLinesData(lineFeatures);
 
   // Remove veículos que não vieram neste update
   Object.keys(vehicleMarkers).forEach(function(k){
@@ -982,10 +1246,31 @@ window.updateMap=function(data){
       vehicleMarkers[k].remove();
       if(vehiclePopups[k])vehiclePopups[k].remove();
       delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];delete vehiclePopups[k];
+      removedNow++;
     }
   });
 
   refreshIcons();
+  if(!structuralUpdate){
+    realtimeMetric.updates++;realtimeMetric.snapshot=snapshotNow;
+    realtimeMetric.created+=createdNow;realtimeMetric.updated+=updatedNow;realtimeMetric.removed+=removedNow;
+    if(realtimeMetric.updates%25===0&&window.ReactNativeWebView){
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'realtime_metrics',metrics:realtimeMetric}));
+      realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
+    }
+  }
+};
+
+window.updateRealtime=function(data){
+  if(!lastMapData){return}
+  var updates={};
+  (data.linhas||[]).forEach(function(linha){updates[linha.structureKey||((linha.modal||'')+':'+linha.nome)]=linha.posicoes||[]});
+  var linhas=(lastMapData.linhas||[]).map(function(linha){
+    var key=linha.structureKey||((linha.modal||'')+':'+linha.nome);
+    return Object.assign({},linha,{posicoes:updates[key]||[]});
+  });
+  window.updateMap(Object.assign({},lastMapData,{linhas:linhas,
+    railVehicles:data.railVehicles||[],realtimeOnly:true}));
 };
 
 window.updateUser=updateUser;

@@ -2,6 +2,7 @@ import { useTema } from "@/src/hooks/useTema";
 import { LucideIcon } from "lucide-react-native";
 import React from "react";
 import { TextInput, View } from "react-native";
+import { useAnimatedPlaceholder } from "@/src/hooks/useAnimatedPlaceholder";
 
 interface Props {
   icon?: LucideIcon;
@@ -9,25 +10,35 @@ interface Props {
   className?: string;
   value?: string;
   onChangeText?: (text: string) => void;
+  accessibilityLabel?: string;
+  placeholderSuggestions?: string[];
+  embedded?: boolean;
 }
 
 export default function InputBusca(props: Props) {
   const { cores } = useTema();
+  const animatedPlaceholder = useAnimatedPlaceholder(props.placeholderSuggestions ?? [],
+    Boolean(props.placeholderSuggestions?.length) && !props.value);
 
   return (
     <View className={`w-full ${props.className}`}>
       <TextInput
-        className="rounded-3xl h-12 w-full px-12 mr-12 shadow-md"
+        className={`${props.embedded ? "rounded-none" : "rounded-3xl"} h-12 w-full px-12 mr-12`}
         style={{
-          backgroundColor: cores.fundoInput,
+          backgroundColor: props.embedded ? "transparent" : cores.fundoInput,
           color: cores.textoPrimario,
-          borderColor: cores.borda,
-          borderWidth: 1,
+          borderColor: "transparent",
+          borderWidth: 0,
+          outlineWidth: 0,
+          elevation: 0,
         }}
-        placeholder={props.placeholder}
+        underlineColorAndroid="transparent"
+        placeholder={animatedPlaceholder || props.placeholder}
         placeholderTextColor={cores.textoSecundario}
         value={props.value}
         onChangeText={props.onChangeText}
+        accessibilityLabel={props.accessibilityLabel ?? props.placeholder}
+        returnKeyType="search"
       />
 
       {props.icon && (

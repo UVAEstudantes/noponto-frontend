@@ -5,9 +5,9 @@ import {
   LucideIcon,
   MapPinned,
   Settings,
-  Star,
+  Repeat2,
 } from "lucide-react-native";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -20,17 +20,18 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
-import { Text } from "react-native";
 
 type TabRoute = "/favoritos" | "/linhas" | "/" | "/configuracao";
 type TabItem = { href: TabRoute; label: string; Icon: LucideIcon };
 
 const tabs: TabItem[] = [
-  { href: "/favoritos", label: "Favoritos", Icon: Star },
+  { href: "/favoritos", label: "Rotinas", Icon: Repeat2 },
   { href: "/linhas", label: "Linhas", Icon: Bus },
   { href: "/", label: "Mapa", Icon: MapPinned },
   { href: "/configuracao", label: "Mais", Icon: Settings },
 ];
+const SPRING_CONFIG = { damping: 18, stiffness: 200, mass: 0.85 };
+const BUMP_CONFIG = { damping: 22, stiffness: 320, mass: 0.6 };
 
 function routeMatches(href: TabRoute, pathname: string) {
   if (href === "/") return pathname === "/";
@@ -79,7 +80,7 @@ function TabButton({
   }));
 
   const handlePress = () => {
-    if (!isActive) router.replace(tab.href);
+    if (!isActive) router.navigate(tab.href);
   };
 
   return (
@@ -223,10 +224,8 @@ export default function NavBar() {
   const bump1 = useSharedValue(safeIndex === 1 ? 1 : 0);
   const bump2 = useSharedValue(safeIndex === 2 ? 1 : 0);
   const bump3 = useSharedValue(safeIndex === 3 ? 1 : 0);
-  const bumpValues = [bump0, bump1, bump2, bump3];
-
-  const springCfg = { damping: 18, stiffness: 200, mass: 0.85 };
-  const bumpCfg = { damping: 22, stiffness: 320, mass: 0.6 };
+  const bumpValues = useMemo(() => [bump0, bump1, bump2, bump3],
+    [bump0, bump1, bump2, bump3]);
 
   useEffect(() => {
     const prev = prevIndex.current;
@@ -237,13 +236,14 @@ export default function NavBar() {
     cancelAnimation(sphereX);
     cancelAnimation(notchCX);
 
-    bumpValues[prev].value = withSpring(0, bumpCfg);
-    bumpValues[safeIndex].value = withSpring(1, bumpCfg);
-    sphereX.value = withSpring(getSphereLeft(safeIndex), springCfg);
-    notchCX.value = withSpring(getNotchCX(safeIndex), springCfg);
+    bumpValues[prev].value = withSpring(0, BUMP_CONFIG);
+    bumpValues[safeIndex].value = withSpring(1, BUMP_CONFIG);
+    const targetNotch = horizontalPadding + safeIndex * tabWidth + tabWidth / 2;
+    sphereX.value = withSpring(targetNotch - sphereR, SPRING_CONFIG);
+    notchCX.value = withSpring(targetNotch, SPRING_CONFIG);
 
     prevIndex.current = safeIndex;
-  }, [safeIndex]);
+  }, [safeIndex, tabWidth, sphereR, bumpValues, notchCX, sphereX]);
 
   const sphereStyle = useAnimatedStyle(() => ({ left: sphereX.value }));
 

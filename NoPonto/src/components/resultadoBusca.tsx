@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, Text, ViewStyle } from "react-native";
-import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useTema } from "@/src/hooks/useTema";
 
 interface ItemResultadoBusca {
@@ -14,6 +14,7 @@ interface Props<T extends ItemResultadoBusca> {
   className?: string;
   style?: ViewStyle;
   maxHeight?: number;
+  onSelectionStart?: () => void;
 }
 
 export default function ResultadoBusca<T extends ItemResultadoBusca>(
@@ -26,8 +27,9 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
 
   return (
     <Animated.View
-      entering={FadeInUp.duration(400).springify()}
-      layout={LinearTransition}
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(120)}
+      layout={LinearTransition.duration(180)}
       className={props.className}
       style={[
         {
@@ -47,7 +49,11 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
         {props.data.map((item) => (
           <Pressable
             key={item.id}
+            onPressIn={props.onSelectionStart}
             onPress={() => props.listaSelecionada(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.nome}, ${item.sentido}`}
+            hitSlop={4}
             className="p-4"
             style={{
               borderBottomColor: cores.bordaSuave,
