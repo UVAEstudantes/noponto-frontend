@@ -2,22 +2,24 @@
   "expo": {
     "name": "No Ponto",
     "slug": "NoPonto",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/ios-icon-default.png",
+
+    "icon": "./assets/images/iconeNovo.png",
+
     "scheme": "noponto",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
 
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/images/ios-icon-default.png"
+      "icon": "./assets/images/iconeNovo.png"
     },
 
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png"
+        "foregroundImage": "./assets/images/iconeNovoSemFundo.png",
+        "backgroundColor": "#0B0B0B"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -26,7 +28,7 @@
 
     "web": {
       "output": "static",
-      "favicon": "./assets/images/ios-icon-default.png"
+      "favicon": "./assets/images/iconeNovo.png"
     },
 
     "plugins": [
@@ -34,8 +36,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/icon-semBG.png",
-          "backgroundColor": "#0b0b0b",
+          "image": "./assets/images/iconeNovoSemFundo.png",
+          "backgroundColor": "#0B0B0B",
           "imageWidth": 250
         }
       ],

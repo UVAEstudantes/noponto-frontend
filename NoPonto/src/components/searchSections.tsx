@@ -54,7 +54,7 @@ export default function SearchSections({ recentes, resultados, carregando = fals
   ) : null;
   return <Animated.View entering={FadeIn.duration(140)} exiting={FadeOut.duration(100)}
     layout={LinearTransition.duration(140)} style={[{ backgroundColor: cores.fundoCard,
-      borderColor: cores.borda, borderWidth: embedded ? 0 : 1, borderTopWidth: embedded ? 1 : undefined,
+      borderColor: cores.borda, borderWidth: embedded ? 0 : 1,
       borderRadius: embedded ? 0 : 16, overflow: "hidden" }, style]}>
     <ScrollView style={{ maxHeight }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
       {section("Buscas recentes", recentes, true)}

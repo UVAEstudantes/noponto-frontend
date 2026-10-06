@@ -516,7 +516,8 @@ const ParadaSheet = ({
                   const itemOpacity = isAssinada ? 1 : 0.55;
                   const isRealtime = c.qualidade === "Ao vivo";
                   const isEstimated = c.qualidade === "Estimado";
-                  const fundoCard = cores.fundoSecundario;
+                  const fundoCard = misturar(cores.textoPrimario, cores.fundoPainel,
+                    temaAtual === "escuro" ? 0.035 : 0.025);
                   const fundoStatus = isRealtime
                     ? misturar("#10B981", cores.fundoCard, temaAtual === "escuro" ? 0.20 : 0.12)
                     : isEstimated
