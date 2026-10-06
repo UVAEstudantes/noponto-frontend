@@ -1,5 +1,5 @@
-import { Pressable, ScrollView, Text } from "react-native";
-import Animated, { FadeInUp, LinearTransition } from "react-native-reanimated";
+import { Pressable, ScrollView, Text, ViewStyle } from "react-native";
+import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useTema } from "@/src/hooks/useTema";
 
 interface ItemResultadoBusca {
@@ -12,7 +12,9 @@ interface Props<T extends ItemResultadoBusca> {
   data: T[];
   listaSelecionada: (item: T) => void;
   className?: string;
+  style?: ViewStyle;
   maxHeight?: number;
+  onSelectionStart?: () => void;
 }
 
 export default function ResultadoBusca<T extends ItemResultadoBusca>(
@@ -20,20 +22,24 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
 ) {
   const { cores } = useTema();
   const maxHeight = props.maxHeight || 400;
-  const itemHeight = 72; // altura aproximada de cada item (p-4 + texto)
+  const itemHeight = 72;
   const calculatedHeight = Math.min(props.data.length * itemHeight, maxHeight);
 
   return (
     <Animated.View
-      entering={FadeInUp.duration(400).springify()}
-      layout={LinearTransition}
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(120)}
+      layout={LinearTransition.duration(180)}
       className={props.className}
-      style={{
-        height: calculatedHeight,
-        backgroundColor: cores.fundoCard,
-        borderColor: cores.borda,
-        borderWidth: 1,
-      }}
+      style={[
+        {
+          height: calculatedHeight,
+          backgroundColor: cores.fundoCard,
+          borderColor: cores.borda,
+          borderWidth: 1,
+        },
+        props.style,
+      ]}
     >
       <ScrollView
         nestedScrollEnabled={true}
@@ -43,7 +49,11 @@ export default function ResultadoBusca<T extends ItemResultadoBusca>(
         {props.data.map((item) => (
           <Pressable
             key={item.id}
+            onPressIn={props.onSelectionStart}
             onPress={() => props.listaSelecionada(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.nome}, ${item.sentido}`}
+            hitSlop={4}
             className="p-4"
             style={{
               borderBottomColor: cores.bordaSuave,

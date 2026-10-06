@@ -16,28 +16,8 @@ export interface LinhaTempoReal {
   tarifa: number;
 }
 
-export interface VeiculoTempoReal {
-  id: string;
-  modal: ModalApiTransporte;
-  /** Código da linha em maiúsculas, ex: "838" */
-  linha: string;
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-  velocidade: number;
-  velocidadeMedia?: number | null;
-  direcao: number | null;
-  sentido?: string;
-  trajeto?: string;
-  // Novos campos do backend
-  posicaoNaRota?: number | null;
-  comprimentoRotaMetros?: number | null;
-  itinerarioId?: string | null;
-  proximaParadaNome?: string | null;
-  distanciaProximaParadaMetros?: number | null;
-  /** 0 = Ativo, 1 = SemSinal, 2 = Inativo */
-  status?: number;
-}
+export type VeiculoTempoReal =
+  import("@/src/services/veiculosMapa").VeiculoMapaRodoviario;
 
 export interface ItinerarioLinha {
   linha: string;
@@ -59,6 +39,18 @@ export interface ItinerarioLinha {
   itinerarioSentidoMap?: Record<string, string>;
   /** Indica se as paradas vieram no payload */
   incluiParadas?: boolean;
+  /** Estruturas V2 carregadas sem reduzir sentidos/padrões a ida/volta. */
+  padroesV2?: PadraoLinhaV2[];
+}
+
+export interface PadraoLinhaV2 {
+  sentidoId: string;
+  sentidoNome: string;
+  padraoOperacionalId: string;
+  padraoVersaoId: string;
+  rotulo: string;
+  segmentoIndice: number;
+  paradas: Parada[];
 }
 
 // ===== Backend API Response Types =====
@@ -76,10 +68,14 @@ export interface LinhaSimplesDto {
   nome: string;
   codigo: string;
   modalId: string;
+  tipoRota?: string;
+  modal?: string;
+  consorcio?: string | null;
+  terminalA?: string | null;
+  terminalB?: string | null;
 }
 
-export interface LinhasResponse extends PaginatedResponse<LinhaSimplesDto> {}
-
+export type LinhasResponse = PaginatedResponse<LinhaSimplesDto>;
 
 export interface ModalTransporteDto {
   id: string;
@@ -93,7 +89,7 @@ export interface SentidoSimples {
   linhaNome: string;
 }
 
-export interface SentidosResponse extends PaginatedResponse<SentidoSimples> {}
+export type SentidosResponse = PaginatedResponse<SentidoSimples>;
 
 export interface TarifaAtualDto {
   tarifa: number;
@@ -167,6 +163,9 @@ export interface OpcaoBusca {
   linha: LinhaSimplesDto;
   /** Nome de exibição, ex: "838 - Terminal Campo Grande" */
   nomeExibicao: string;
+  displayName: string;
+  displaySubtitle: string;
+  searchTokens: string[];
 }
 
 export interface ParadaProximaDto {
@@ -206,6 +205,19 @@ export interface PosicaoVeiculo {
   latitudeAnterior?: number | null;
   longitudeAnterior?: number | null;
   timestampAnterior?: string | null;
+  linhaId?: string | null;
+  sentidoId?: string | null;
+  padraoOperacionalId?: string | null;
+  padraoVersaoId?: string | null;
+  topologiaPadrao?: string | null;
+  proximaOcorrenciaParadaPadraoId?: string | null;
+  posicaoNaRota?: number | null;
+  comprimentoRotaMetros?: number | null;
+  bearing?: number | null;
+  proximaParadaNome?: string | null;
+  distanciaProximaParadaMetros?: number | null;
+  velocidadeMedia?: number | null;
+  status?: number;
 }
 
 export interface VeiculosLinhaDto {

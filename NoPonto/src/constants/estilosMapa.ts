@@ -21,16 +21,14 @@ export const estilosMapaDisponiveis: EstiloMapa[] = [
     nome: "Padrão",
     descricao: "Balanceado para leitura no claro e no escuro.",
     filtroLight: "none",
-    filtroDark:
-      "brightness(0.58) contrast(1.8) saturate(1) hue-rotate(125deg)",
+    filtroDark: "brightness(0.58) contrast(1.8) saturate(1) hue-rotate(125deg)",
   },
   {
     id: "aurora-urbana",
     nome: "Aurora Urbana",
     descricao: "Tons frios com contraste leve para rotas e vias.",
     filtroLight: "contrast(1.04) saturate(1.07) hue-rotate(6deg)",
-    filtroDark:
-      "brightness(0.62) contrast(1.2) saturate(1) hue-rotate(220deg)",
+    filtroDark: "brightness(0.62) contrast(1.2) saturate(1) hue-rotate(220deg)",
   },
   {
     id: "grafite-suave",

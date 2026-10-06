@@ -3,16 +3,16 @@ import { useContext } from "react";
 import { useColorScheme as useRNColorScheme } from "react-native";
 
 export function useColorScheme() {
-	const temaContexto = useContext(TemaContext);
-	const esquemaSistema = useRNColorScheme();
+  const temaContexto = useContext(TemaContext);
+  const esquemaSistema = useRNColorScheme();
 
-	if (temaContexto?.temaAtual === "escuro") {
-		return "dark";
-	}
+  if (temaContexto?.temaAtual === "escuro") {
+    return "dark";
+  }
 
-	if (temaContexto?.temaAtual === "claro") {
-		return "light";
-	}
+  if (temaContexto?.temaAtual === "claro") {
+    return "light";
+  }
 
-	return esquemaSistema;
+  return esquemaSistema;
 }

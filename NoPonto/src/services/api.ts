@@ -5,6 +5,7 @@ const API_URL = config.API_BASE_URL;
 interface RequestOptions {
   headers?: Record<string, string>;
   params?: Record<string, string | number | boolean>;
+  signal?: AbortSignal;
 }
 
 interface ApiResponse<T = any> {
@@ -64,6 +65,7 @@ export const api = {
           "Content-Type": "application/json",
           ...options?.headers,
         },
+        signal: options?.signal,
       });
       return handleResponse<T>(response);
     } catch (error) {

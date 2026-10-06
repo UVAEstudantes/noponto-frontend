@@ -6,6 +6,7 @@ export interface CoresTema {
   fundoCard: string;
   fundoInput: string;
   fundoNav: string;
+  bordaNav: string;
   fundoSecundario: string;
   fundoPrimario: string;
   textoPrimario: string;
@@ -34,8 +35,9 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       fundoApp: "#F2F4F7",
       fundoPainel: "#FFFFFF",
       fundoCard: "#FFFFFF",
-      fundoInput: "#FFFFFF",
-      fundoNav: "#1E1E1E",
+      fundoInput: "rgba(255,255,255,0.8)",
+      fundoNav: "rgba(255,255,255,1)",
+      bordaNav: "rgba(0,0,0,0.1)",
       fundoSecundario: "#E4E4E4",
       fundoPrimario: "#FFC107",
       textoPrimario: "#1E1E1E",
@@ -58,8 +60,9 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       fundoApp: "#111315",
       fundoPainel: "#1A1D21",
       fundoCard: "#1E1E1E",
-      fundoInput: "#24262B",
-      fundoNav: "#0F1114",
+      fundoInput: "rgba(36,38,43,0.8)",
+      fundoNav: "rgba(30, 30, 30, 1)",
+      bordaNav: "rgba(255,255,255,0.1)",
       fundoSecundario: "#2C3036",
       fundoPrimario: "#FFC107",
       textoPrimario: "#F2F4F7",

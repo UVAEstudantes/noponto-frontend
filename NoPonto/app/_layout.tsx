@@ -2,7 +2,7 @@ import NavBar from "@/src/components/NavBar";
 import { ProvedorTema } from "@/src/context/ProvedorTema";
 import { useTema } from "@/src/hooks/useTema";
 import { StatusBar } from "expo-status-bar";
-import { Stack } from "expo-router";
+import { Tabs } from "expo-router";
 import React from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -20,21 +20,20 @@ const ConteudoLayout = () => {
     <>
       <StatusBar style={temaAtual === "escuro" ? "light" : "dark"} />
 
-      <Stack
+      <Tabs
+        tabBar={() => null}
+        backBehavior="history"
         screenOptions={{
           headerShown: false,
-          animation: "fade_from_bottom",
-          animationDuration: 280,
-          gestureEnabled: true,
-          fullScreenGestureEnabled: true,
-          contentStyle: { backgroundColor: cores.fundoApp },
+          animation: "fade",
+          sceneStyle: { backgroundColor: cores.fundoApp },
         }}
       >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="favoritos" />
-        <Stack.Screen name="linhas" />
-        <Stack.Screen name="configuracao" />
-      </Stack>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="favoritos" />
+        <Tabs.Screen name="linhas" />
+        <Tabs.Screen name="configuracao" />
+      </Tabs>
 
       <NavBar />
     </>

@@ -1,323 +1,16 @@
-import {
-  ESTILO_MAPA_PADRAO,
-  EstiloMapaId,
-  estilosMapaDisponiveis,
-} from "@/src/constants/estilosMapa";
-import { Parada } from "@/src/types/transporte";
-import React, {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
-import { WebView } from "react-native-webview";
-
-// Atualiza a interface LinhaParaMostrar para incluir mapeamento itinerarioId -> segmento
-export interface LinhaParaMostrar {
-  nome: string;
-  cor?: string;
-  modal?: string;
-  segmentos?: [number, number][][];
-  coordenadas?: [number, number][];
-  paradas?: Parada[];
-  mostrarParadas?: boolean;
-  modoSentido?: string;
-  /**
-   * Mapeamento de itinerarioId -> índice do segmento.
-   * Permite o dead reckoning usar o segmento correto para cada veículo.
-   * ex: { "uuid-ida": 0, "uuid-volta": 1 }
-   */
-  itinerarioSegmentoMap?: Record<string, number>;
-  /**
-   * Mapeamento de itinerarioId -> nome do sentido.
-   * ex: { "uuid-ida": "Terminal Campo Grande" }
-   */
-  itinerarioSentidoMap?: Record<string, string>;
-  posicoes?: {
-    id?: string;
-    ordem?: string;
-    codigo?: string;
-    latitude?: number | string;
-    longitude?: number | string;
-    direcao?: number | string | null;
-    velocidade?: number | string;
-    velocidadeMedia?: number | null;
-    sentidoNome?: string;
-    timestamp?: number | string;
-    proximaParadaNome?: string | null;
-    distanciaProximaParadaMetros?: number | null;
-    status?: number;
-    posicaoNaRota?: number | null;
-    comprimentoRotaMetros?: number | null;
-    itinerarioId?: string | null; // ← garante que está na interface
-  }[];
-}
-
-interface MapaOSMProps {
-  location: any;
-  linhasParaMostrar: LinhaParaMostrar[];
-  darkMode?: boolean;
-  showTraffic?: boolean;
-  estiloMapa?: EstiloMapaId;
-  onStopPress?: (parada: Parada) => void;
-}
-
-export interface MapaOSMRef {
-  centerOnUser: () => void;
-  fitToCoordinates: (
-    coordinates: { latitude: number; longitude: number }[],
-  ) => void;
-  focarVeiculo: (payload: {
-    ordem?: string;
-    latitude?: number;
-    longitude?: number;
-    zoom?: number;
-  }) => void;
-  mostrarPoi: (payload: {
-    poi: { lat: number; lng: number; nome?: string };
-    parada?: { lat: number; lng: number; nome?: string } | null;
-    distancia?: number | null;
-    icone?: string;
-    cor?: string;
-  }) => void;
-  limparPoi: () => void;
-}
-
-const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
-
-const filtrosMapaJS = estilosMapaDisponiveis
-  .map((e) => `"${e.id}":{light:"${e.filtroLight}",dark:"${e.filtroDark}"}`)
-  .join(",");
-
-const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
-  (
-    {
-      location,
-      linhasParaMostrar,
-      darkMode = false,
-      showTraffic = false,
-      estiloMapa = ESTILO_MAPA_PADRAO,
-      onStopPress,
-    },
-    ref,
-  ) => {
-    const webViewRef = useRef<WebView>(null);
-    const coordInicialRef = useRef<{
-      latitude: number;
-      longitude: number;
-    } | null>(null);
-
-    if (!coordInicialRef.current && location?.coords) {
-      coordInicialRef.current = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-    }
-
-    const latInicial =
-      coordInicialRef.current?.latitude ??
-      location?.coords?.latitude ??
-      -22.9068;
-    const lngInicial =
-      coordInicialRef.current?.longitude ??
-      location?.coords?.longitude ??
-      -43.1729;
-
-    useImperativeHandle(ref, () => ({
-      centerOnUser: () => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.centerOnUser) window.centerOnUser();`,
-        );
-      },
-      fitToCoordinates: (coordinates) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.fitToCoordinates) window.fitToCoordinates(${JSON.stringify(coordinates)});`,
-        );
-      },
-      focarVeiculo: (payload) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.focusOnVehicle) window.focusOnVehicle(${JSON.stringify(payload)});`,
-        );
-      },
-      mostrarPoi: (payload) => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.mostrarConexaoPoi) window.mostrarConexaoPoi(${JSON.stringify(payload)});`,
-        );
-      },
-      limparPoi: () => {
-        webViewRef.current?.injectJavaScript(
-          `if(window.limparConexaoPoi) window.limparConexaoPoi();`,
-        );
-      },
-    }));
-
-    const [mapReady, setMapReady] = React.useState(false);
-
-    useEffect(() => {
-      if (!mapReady) return;
-
-      const data = {
-        userLocation: location?.coords
-          ? [location.coords.latitude, location.coords.longitude]
-          : null,
-        heading: location?.coords?.heading ?? null,
-        accuracy: location?.coords?.accuracy ?? null,
-        linhas: linhasParaMostrar,
-        darkMode,
-        showTraffic,
-        estiloMapa,
-      };
-
-      webViewRef.current?.injectJavaScript(
-        `window.updateMap(${JSON.stringify(data)});`,
-      );
-      // Full map updates are heavy; user movement is handled separately.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mapReady, linhasParaMostrar, darkMode, showTraffic, estiloMapa]);
-
-    useEffect(() => {
-      if (!mapReady || !location?.coords) return;
-
-      const data = {
-        userLocation: [location.coords.latitude, location.coords.longitude],
-        heading: location.coords.heading ?? null,
-        accuracy: location.coords.accuracy ?? null,
-      };
-
-      webViewRef.current?.injectJavaScript(
-        `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
-      );
-    }, [mapReady, location]);
-
-    const mapHTML = useMemo(
-      () => `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet"/>
-  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <style>
-    html,body{height:100%;width:100%;margin:0;padding:0;background:#f0f0f0}
-    #map{height:100%;width:100%;position:absolute;top:0;left:0}
-    .maplibregl-canvas{outline:none}
-    .maplibregl-marker{cursor:pointer}
-    .maplibregl-popup-content{font-size:12px;line-height:1.4;min-width:200px;margin:0;padding:8px 10px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.2);background:#fff;color:#111}
-    .maplibregl-popup-close-button{display:none}
-
-    .user-container{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
-    .user-dot{width:12px;height:12px;background:#38bdf8;border:2.5px solid rgba(255,255,255,.95);border-radius:50%;box-shadow:0 0 0 6px rgba(56,189,248,.14),0 2px 8px rgba(0,0,0,.35);z-index:2}
-    .user-arrow{display:none;
-      position:absolute;left:50%;top:50%;width:0;height:0;
-      border-left:6px solid transparent;border-right:6px solid transparent;
-      border-bottom:9px solid #38bdf8;
-      transform:translate(-50%,-50%) rotate(var(--h,0deg)) translateY(-15px);
-      transform-origin:50% 50%;transition:transform .2s ease-out;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))
-    }
-
-    .bus-marker{background:transparent;border:none}
-    .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg))}
-    /* onibus = gota */
-    .bus-blob{
-      position:relative;width:16px;height:16px;
-      border-radius:50% 50% 50% 0;
-      transform:rotate(135deg);
-      border:2px solid rgba(255,255,255,.95);
-      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14)
-    }
-    .bus-blob:after{
-      content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;border-radius:50%;
-      background:rgba(255,255,255,.34)
-    }
-    .bus-arrow{display:none}
-
-    /* ── BRT marker: formato máscara SVG (sino com olhos) ── */
-    .brt-marker .bus-blob{display:none}
-    .brt-mask{
-      position:relative;
-      width:14px;height:21px;
-      display:flex;align-items:center;justify-content:center;
-    }
-    .brt-mask svg{
-      width:14px;height:21px;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));
-      overflow:visible;
-    }
-    /* BRT: pinça aponta para trás — rotaciona o inner 180° + heading */
-    .brt-marker .bus-inner{
-      transform:rotate(calc(var(--h,0deg) + 180deg));
-    }
-
-    .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
-    .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-inner{width:34px;height:34px;transform:rotate(calc(var(--h,0deg) - 90deg))}
-    /* trem = pilula fina: frente arredondada, traseira reta */
-    .train-marker .bus-blob{
-      width:24px;height:10px;transform:none;
-      border-radius:3px 9px 9px 3px;
-      box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -2px 0 rgba(0,0,0,.16)
-    }
-    .train-marker .bus-blob:after{
-      content:'';position:absolute;right:2px;top:2px;width:8px;height:6px;border-radius:5px;
-      background:rgba(255,255,255,.32)
-    }
-    .train-marker .bus-arrow{display:none}
-    .stop-pin{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.9);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 4px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;position:relative;transform:scale(var(--stop-scale,1));transform-origin:50% 50%;transition:transform .12s ease,opacity .12s ease}
-    .stop-core{width:4px;height:4px;border-radius:50%;background:var(--stop-color,#2196F3)}
-    .stop-pin:after{content:'';position:absolute;left:50%;top:50%;width:12px;height:12px;border-radius:50%;border:1px solid var(--stop-color,#2196F3);transform:translate(-50%,-50%);opacity:.25;animation:stopPulse 3.2s ease-out infinite}
-    @keyframes stopPulse{0%{transform:translate(-50%,-50%) scale(.5);opacity:.2}70%{transform:translate(-50%,-50%) scale(1.35);opacity:0}100%{opacity:0}}
-    @keyframes iconPulse{0%{transform:translate(-50%,-50%) scale(.8);opacity:.5}70%{transform:translate(-50%,-50%) scale(1.9);opacity:0}100%{opacity:0}}
-
-    .popup-card{display:flex;flex-direction:column;gap:6px}
-    .popup-header{display:flex;align-items:center;gap:8px}
-    .popup-indicator{width:28px;height:28px;position:relative;flex:0 0 28px;border-radius:10px;background:#fff;border:1.5px solid currentColor;color:var(--c,#2196F3);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.18)}
-    .popup-indicator:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid currentColor;transform:translate(-50%,-50%);opacity:.45;animation:iconPulse 2.6s ease-out infinite}
-    .popup-indicator svg{width:16px;height:16px;stroke:currentColor;stroke-width:2;fill:none}
-    .popup-title{font-weight:700;font-size:14px;color:#111}
-    .popup-sub{font-size:12px;color:#555}
-    .popup-time{font-size:12px;color:#666}
-    .popup-main{display:flex;flex-direction:column;gap:2px}
-    .popup-toggle{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:#f3f4f6;color:#1f2937;font-weight:600;font-size:12px;cursor:pointer;user-select:none;align-self:flex-start;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    .popup-toggle .toggle-chevron{width:8px;height:8px;border:2px solid currentColor;border-left:0;border-top:0;transform:rotate(45deg);transition:transform .2s ease}
-    .popup-toggle.open .toggle-chevron{transform:rotate(-135deg)}
-    .popup-details{max-height:0;opacity:0;overflow:hidden;border-top:1px dashed #e5e7eb;padding-top:0;margin-top:2px;transition:max-height .25s ease,opacity .2s ease,padding-top .2s ease}
-    .popup-details.open{max-height:160px;opacity:1;padding-top:8px}
-    .popup-row{display:flex;gap:6px;color:#555}
-    .popup-label{font-weight:600;color:#333;min-width:86px}
-
-    .stop-popup{min-width:180px}
-    .stop-title{font-weight:700;font-size:14px;color:#111}
-    .stop-sub{font-size:11px;color:#666;margin-top:2px}
-    .stop-hint{font-size:11px;color:#6b7280;margin-top:6px}
-
-    .poi-marker{width:28px;height:28px;border-radius:12px;background:#fff;border:1.5px solid var(--c,#f59e0b);display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.25);position:relative}
-    .poi-marker:after{content:'';position:absolute;left:50%;top:50%;width:26px;height:26px;border-radius:12px;border:2px solid var(--c,#f59e0b);transform:translate(-50%,-50%);opacity:.35;animation:iconPulse 2.4s ease-out infinite}
-    .poi-marker svg{width:16px;height:16px;stroke:var(--c,#f59e0b);stroke-width:2;fill:none}
-    .poi-distance{padding:4px 10px;border-radius:999px;background:#111;color:#fff;font-size:11px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap;display:inline-block;min-width:46px;text-align:center}
-
-    #map.dark-mode .maplibregl-popup-content{background:#1b1f24;color:#e5e7eb}
-    #map.dark-mode .maplibregl-popup-tip{border-top-color:#1b1f24}
-    #map.dark-mode .popup-title{color:#f3f4f6}
-    #map.dark-mode .popup-sub,#map.dark-mode .popup-time,#map.dark-mode .popup-row{color:#cbd5e1}
-    #map.dark-mode .popup-label{color:#e5e7eb}
-    #map.dark-mode .popup-toggle{background:#2a2f35;color:#e5e7eb}
-    #map.dark-mode .popup-details{border-top-color:#3b4047}
-    #map.dark-mode .popup-indicator{background:#1b1f24;box-shadow:0 2px 8px rgba(0,0,0,.45)}
-    #map.dark-mode .stop-title{color:#f8fafc}
-    #map.dark-mode .stop-sub{color:#cbd5e1}
-    #map.dark-mode .stop-hint{color:#94a3b8}
-    #map.dark-mode .stop-pin{background:rgba(15,23,42,.9);border-color:rgba(148,163,184,.45);box-shadow:0 1px 6px rgba(0,0,0,.65)}
-    #map.dark-mode .stop-core{background:var(--stop-color,#38bdf8)}
-    #map.dark-mode .stop-pin:after{opacity:.18}
-    #map.dark-mode .user-dot{background:#7dd3fc;border-color:rgba(226,232,240,.85);box-shadow:0 0 0 7px rgba(125,211,252,.18),0 2px 10px rgba(0,0,0,.65)}
-    #map.dark-mode .user-arrow{border-bottom-color:#7dd3fc;filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))}
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script>
+// Responsabilidade: script que roda dentro da WebView e controla MapLibre,
+// markers, animações e integração com React Native via postMessage.
+// usadas pelo host React Native e por fluxos realtime/dead reckoning.
+export function buildMapWebViewScript(params: {
+  latInicial: number;
+  lngInicial: number;
+  estilosJS: string;
+  filtrosMapaJS: string;
+  estiloMapaPadrao: string;
+}) {
+  const { latInicial, lngInicial, estilosJS, filtrosMapaJS, estiloMapaPadrao } =
+    params;
+  return `
 var map,userMarker;
 var linesSourceId='lines-source',linesSolidLayerId='lines-solid',linesDashLayerId='lines-dash';
 var trafficSourceId='traffic-source',trafficLayerId='traffic-layer';
@@ -325,7 +18,7 @@ var poiLineSourceId='poi-line-source',poiLineLayerId='poi-line-layer';
 var stopMarkersByKey={},stopCache=[],stopCacheKey='',poiMarker=null,poiDistanceMarker=null;
 var estilos=[${estilosJS}];
 var filtrosMapa={${filtrosMapaJS}};
-var currentStyleId='${ESTILO_MAPA_PADRAO}';
+var currentStyleId='${estiloMapaPadrao}';
 var isDark=false;
 var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={},vehicleIndexByOrder={};
 var autoFollow=true,internalMove=false;
@@ -333,6 +26,225 @@ var mapReady=false;
 var drInterval=null;
 var lastDrLog=0;
 var userLastUpdate=0;
+var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=0,railLastUiTick=0;
+var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
+var lastMapData=null;
+var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
+
+var railBranchColors={
+  'santa cruz':'#64a70b','deodoro':'#ba0c2f','japeri':'#92c1e9',
+  'saracuruna':'#de7c00','belford roxo':'#5c068c','paracambi':'#00a3e0',
+  'guapimirim':'#f1b500','vila inhomirim':'#c4b000'
+};
+function railVisual(run){
+  var name=(run.lineName||'').toLowerCase(),color='#59636e';
+  Object.keys(railBranchColors).some(function(key){if(name.indexOf(key)>=0){color=railBranchColors[key];return true}return false});
+  var status=run.operationalStatus||'Estimated';
+  return{color:color,status:status,opacity:status==='Scheduled'?.72:status==='Estimated'?.88:1};
+}
+function applyRailMarkerVisual(el,run){
+  var visual=railVisual(run);
+  el.classList.remove('rail-status-live','rail-status-estimated','rail-status-scheduled');
+  el.classList.add('rail-status-'+visual.status.toLowerCase());
+  el.style.opacity=visual.opacity;
+  var blob=el.querySelector('.bus-blob');if(blob)blob.style.background=visual.color;
+}
+function railMarkerElement(run,identity){
+  // Preserve the original rail marker: .train-marker > .bus-inner > .bus-blob.
+  var visual=railVisual(run),el=busIcon(visual.color,0,'trem');
+  el.setAttribute('data-rail-id',identity);
+  applyRailMarkerVisual(el,run);
+  el.addEventListener('click',function(event){
+    event.preventDefault();event.stopPropagation();
+    var current=railRuns[identity];
+    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c)openRailPopup(current,c)}
+  });
+  return el;
+}
+
+function railHaversine(a,b){
+  var r=6371008.8,toRad=Math.PI/180;
+  var lat1=a[1]*toRad,lat2=b[1]*toRad,dLat=lat2-lat1,dLng=(b[0]-a[0])*toRad;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return 2*r*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+
+function prepareRailGeometry(coords){
+  var cumulative=[0],segments=[],total=0;
+  for(var i=1;i<coords.length;i++){var d=railHaversine(coords[i-1],coords[i]);segments.push(d);total+=d;cumulative.push(total)}
+  return{coords:coords,segments:segments,cumulative:cumulative,total:total};
+}
+
+function railCoordinateAtDistance(g,distance){
+  if(!g||!g.coords.length)return null;
+  if(distance<=0)return g.coords[0];
+  if(distance>=g.total)return g.coords[g.coords.length-1];
+  var low=0,high=g.segments.length-1;
+  while(low<high){var mid=Math.floor((low+high)/2);if(g.cumulative[mid+1]<distance)low=mid+1;else high=mid}
+  var length=g.segments[low],ratio=length>0?(distance-g.cumulative[low])/length:0,a=g.coords[low],b=g.coords[low+1];
+  return[a[0]+ratio*(b[0]-a[0]),a[1]+ratio*(b[1]-a[1])];
+}
+
+function railBearing(a,b){
+  if(!a||!b)return null;
+  var toRad=Math.PI/180,lat1=a[1]*toRad,lat2=b[1]*toRad,dLng=(b[0]-a[0])*toRad;
+  var y=Math.sin(dLng)*Math.cos(lat2);
+  var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);
+  if(Math.abs(x)<1e-12&&Math.abs(y)<1e-12)return null;
+  return(Math.atan2(y,x)/toRad+360)%360;
+}
+
+function railHeadingAtDistance(g,distance){
+  if(!g||g.total<=0)return null;
+  var delta=Math.min(20,Math.max(3,g.total*.001));
+  var before=railCoordinateAtDistance(g,Math.max(0,distance-delta));
+  var after=railCoordinateAtDistance(g,Math.min(g.total,distance+delta));
+  return railBearing(before,after);
+}
+
+function applyRailHeading(marker,key,run,distance){
+  var heading=railHeadingAtDistance(run&&run._geometry,distance);
+  if(typeof heading==='number'&&isFinite(heading))railHeadings[key]=heading;
+  else heading=railHeadings[key];
+  if(typeof heading==='number')setHeading(marker,heading);
+}
+
+function railDistanceNow(run,now){
+  var authoritative;
+  if(run.state!=='InSegment')authoritative=run.distanceAtReferenceMetres;
+  else if(now>Date.parse(run.freshUntilUtc))authoritative=typeof run._lastDistance==='number'?run._lastDistance:run.distanceAtReferenceMetres;
+  else{
+  var reference=Date.parse(run.referenceTimeUtc),target=Date.parse(run.targetTimeUtc);
+    if(!isFinite(reference)||!isFinite(target)||target<=reference)authoritative=run.distanceAtReferenceMetres;
+    else{
+      var progress=Math.max(0,Math.min(1,(now-reference)/(target-reference)));
+      var eased=progress*progress*(3-2*progress);
+      authoritative=run.distanceAtReferenceMetres+eased*(run.targetDistanceMetres-run.distanceAtReferenceMetres);
+    }
+  }
+  if(typeof run._visualStartDistance==='number'&&now<run._visualBlendUntil){
+    var blend=Math.max(0,Math.min(1,(now-run._visualReceivedAt)/(run._visualBlendUntil-run._visualReceivedAt)));
+    blend=blend*blend*(3-2*blend);
+    authoritative=run._visualStartDistance+blend*(authoritative-run._visualStartDistance);
+  }
+  run._lastDistance=authoritative;
+  return authoritative;
+}
+
+function setRailRuns(values){
+  var next={};
+  var receivedAt=Date.now();
+  (values||[]).forEach(function(run){
+    var coords=run.geometry&&run.geometry.coordinates;
+    var identity=run.idVisual||run.railVehicleId||run.railRunId;
+    if(!identity||!Array.isArray(coords)||coords.length<2)return;
+    var prepared=prepareRailGeometry(coords),previous=railRuns[identity];
+    if(prepared.total>0&&run.targetDistanceMetres>prepared.total*1.05){
+      console.warn('[Rail] backend distance exceeds frontend geometry length',identity,run.targetDistanceMetres,prepared.total);
+    }
+    var nextRun={...run,_geometry:prepared};
+    if(previous&&previous.padraoVersaoId===run.padraoVersaoId){
+      var rendered=railDistanceNow(previous,receivedAt);
+      nextRun._lastDistance=rendered;
+      nextRun._visualStartDistance=rendered;
+      nextRun._visualReceivedAt=receivedAt;
+      nextRun._visualBlendUntil=receivedAt+1200;
+    }
+    next[identity]=nextRun;
+  });
+  railRuns=next;
+}
+
+function updateRailVehicles(now){
+  var source=map&&map.getSource('rail-vehicles');if(!source||!source.setData)return;
+  var features=[];
+  Object.keys(railRuns).forEach(function(key){
+    var run=railRuns[key],distance=railDistanceNow(run,now),coord=railCoordinateAtDistance(run._geometry,distance);
+    if(!coord)return;
+    var marker=railMarkers[key];
+    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker}
+    else{marker.setLngLat(coord);applyRailMarkerVisual(marker.getElement(),run)}
+    applyRailHeading(marker,key,run,distance);
+    if(activeRailPopupIdentity===key)openRailPopup(run,coord);
+    features.push({type:'Feature',id:key,geometry:{type:'Point',coordinates:coord},properties:{
+      railRunId:key,trainCode:run.trainCode||'',destination:run.destination||'',state:run.state,
+      trainType:run.trainType||'',platform:run.platform||'',statusFonte:run.statusFonte||'Indisponível',
+      lastRealtimeEvidenceUtc:run.lastRealtimeEvidenceUtc||'',
+      positionSource:run.positionSource||'',positionQuality:run.positionQuality||'',
+      isEstimated:true,isClamped:Boolean(run.isClamped),stale:now>Date.parse(run.freshUntilUtc)
+    }});
+  });
+  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key]}});
+  if(now-railLastUiTick>=1000){
+    document.querySelectorAll('[data-rail-evidence]').forEach(function(el){el.textContent='Atualizado '+railElapsed(el.getAttribute('data-rail-evidence'))});
+    document.querySelectorAll('[data-rail-departure]').forEach(function(el){var at=Date.parse(el.getAttribute('data-rail-departure')),s=Math.max(0,Math.ceil((at-now)/1000));el.textContent=s===0?'Saindo agora':'Saída em '+Math.max(1,Math.ceil(s/60))+' min'});
+    railLastUiTick=now;
+  }
+  source.setData({type:'FeatureCollection',features:features});
+}
+
+function openRailPopup(run,coord){
+  if(!run||!coord)return;
+  var identity=run.idVisual||run.railVehicleId||run.railRunId;
+  var status=run.statusFonte||({Live:'Ao vivo',Estimated:'Estimado',Scheduled:'Programado'}[run.operationalStatus]||'Indisponível');
+  var statusClass=status==='Ao vivo'?'live':status==='Estimado'?'estimated':'scheduled';
+  var title=run.lineName||'Trem';
+  var service=run.trainType?String(run.trainType).trim():'';
+  var platform=run.platformLabel||run.platform;
+  var heading=title+(service?' • '+service:'');
+  var destination=run.destinationName&&!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(run.destinationName)?run.destinationName:null;
+  var departure=run.secondsToDeparture;
+  var primary='';
+  if(run.isAtOriginTerminal){primary=departure===0?'Saindo agora':typeof departure==='number'?'Saída em '+Math.max(1,Math.ceil(departure/60))+' min':'No terminal'}
+  else if(run.nextStationName){primary='Próxima: '+run.nextStationName+(typeof run.secondsToNextStation==='number'?' · '+Math.max(1,Math.ceil(run.secondsToNextStation/60))+' min':'')}
+  var railSeconds=typeof run.secondsToNextStation==='number'?run.secondsToNextStation:
+    (isFinite(Date.parse(run.targetTimeUtc))?Math.max(0,(Date.parse(run.targetTimeUtc)-Date.now())/1000):null);
+  var railMinutes=railSeconds===null?'':Math.max(1,Math.ceil(railSeconds/60))+' min';
+  var railDistance=(typeof run.targetDistanceMetres==='number'&&typeof run.distanceAtReferenceMetres==='number')
+    ?Math.max(0,run.targetDistanceMetres-run.distanceAtReferenceMetres):null;
+  var railDistanceLabel=railDistance===null?'-':railDistance>=1000?(railDistance/1000).toFixed(1).replace('.',',')+' km':Math.round(railDistance)+' m';
+  var railDetailsId='rail_details_'+safeId(identity);
+  var html='<div class="popup-card"><div class="popup-header"><div class="popup-indicator" style="--c:'+railVisual(run).color+'">'+modalIconSvg('trem')+'</div><div class="popup-main">'+
+    '<div class="popup-title-row"><div class="popup-title">'+escapeHtml(heading)+'</div><span class="rail-status-badge '+statusClass+'">'+escapeHtml(status)+'</span>'+
+    (platform?'<span class="popup-platform">'+escapeHtml(platform)+'</span>':'')+'</div>'+
+    (destination?'<div class="popup-sub">Sentido: '+escapeHtml(destination)+'</div>':'')+
+    (run.lastRealtimeEvidenceUtc&&status!=='Programado'?'<span class="popup-time" data-rail-evidence="'+escapeHtml(run.lastRealtimeEvidenceUtc)+'">Atualizado '+railElapsed(run.lastRealtimeEvidenceUtc)+'</span>':'')+
+    (run.trainCode?'<span class="popup-train-code">'+escapeHtml(run.trainCode)+'</span>':'')+'</div></div>'+
+    '<div class="popup-toggle" data-target="'+railDetailsId+'" onclick="toggleDetails(this)"><span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>'+
+    '<div class="popup-details" id="'+railDetailsId+'"><div class="popup-stats">'+
+    '<div class="popup-stat"><i data-lucide="clock-3"></i><div class="popup-stat-value">'+escapeHtml(run.isAtOriginTerminal&&typeof departure==='number'?Math.max(1,Math.ceil(departure/60))+' min':railMinutes)+'</div><div class="popup-stat-label">Tempo estimado</div></div>'+
+    '<div class="popup-stat"><i data-lucide="map-pin"></i><div class="popup-stat-value">'+escapeHtml(railDistanceLabel)+'</div><div class="popup-stat-label">Distância</div></div>'+
+    '<div class="popup-stat"><i data-lucide="flag"></i><div class="popup-stat-value">'+escapeHtml(run.nextStationName||destination||'-')+'</div><div class="popup-stat-label">Próxima estação</div></div></div>'+
+    (status==='Programado'?'<div class="popup-time">Viagem prevista pela grade e ainda não confirmada em tempo real.</div>':'')+'</div></div>';
+  var signature=[status,title,destination,primary,run.platformLabel||run.platform||'',run.lastRealtimeEvidenceUtc||'',run.trainCode||''].join('|');
+  if(activeRailPopup&&activeRailPopupIdentity===identity){
+    activeRailPopup.setLngLat(coord);
+    if(activeRailPopupSignature!==signature){activeRailPopup.setHTML(html);activeRailPopupSignature=signature}
+    return;
+  }
+  if(activeRailPopup)activeRailPopup.remove();
+  var popup=new maplibregl.Popup({offset:14,closeButton:false,closeOnClick:true});
+  if(popup.on)popup.on('open',refreshIcons);
+  activeRailPopup=popup;activeRailPopupIdentity=identity;activeRailPopupSignature=signature;
+  if(railMarkers[identity])railMarkers[identity].getElement().classList.add('rail-selected');
+  popup.on('close',function(){if(activeRailPopup===popup){
+    if(activeRailPopupIdentity&&railMarkers[activeRailPopupIdentity])railMarkers[activeRailPopupIdentity].getElement().classList.remove('rail-selected');
+    activeRailPopup=null;activeRailPopupIdentity=null;activeRailPopupSignature=null;
+  }});
+  popup.setLngLat(coord).setHTML(html).addTo(map);
+}
+
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]})}
+function railElapsed(value){var seconds=Math.max(0,Math.floor((Date.now()-Date.parse(value))/1000));if(seconds<5)return'agora';if(seconds<60)return'há '+seconds+'s';var minutes=Math.floor(seconds/60),rest=seconds%60;return'há '+minutes+'min'+(rest?' '+rest+'s':'')}
+
+function startRailAnimation(){
+  if(railAnimation)cancelAnimationFrame(railAnimation);
+  function frame(ts){
+    if(ts-railLastFrame>=75){updateRailVehicles(Date.now());railLastFrame=ts}
+    railAnimation=requestAnimationFrame(frame);
+  }
+  railAnimation=requestAnimationFrame(frame);
+}
 
 // ── Dead reckoning ────────────────────────────────────────────────────────────
 // drState[vKey] = { marker, posicaoNaRota, comprimentoMetros, velocidade, lineCoords }
@@ -463,11 +375,15 @@ function animateTo(key,marker,dest,ms){
   var start=marker.getLngLat();
   var dx=start.lng-dest.lng,dy=start.lat-dest.lat;
   if(Math.sqrt(dx*dx+dy*dy)<0.000005){marker.setLngLat([dest.lng,dest.lat]);return}
+  // Saltos incompatíveis com movimento contínuo devem corrigir posição, não
+  // atravessar visualmente bairros inteiros entre duas amostras.
+  if(distanceMeters(start.lat,start.lng,dest.lat,dest.lng)>1500){marker.setLngLat([dest.lng,dest.lat]);return}
   var t0=performance.now();
   function step(ts){
     var p=Math.min((ts-t0)/ms,1);
-    var lat=start.lat+(dest.lat-start.lat)*p;
-    var lng=start.lng+(dest.lng-start.lng)*p;
+    var eased=p*p*(3-2*p);
+    var lat=start.lat+(dest.lat-start.lat)*eased;
+    var lng=start.lng+(dest.lng-start.lng)*eased;
     marker.setLngLat([lng,lat]);
     if(p<1)animFrames[key]=requestAnimationFrame(step);else delete animFrames[key];
   }
@@ -599,13 +515,25 @@ function setHeading(marker,heading){
   var inner=el.querySelector('.bus-inner');
   var bearing=(map&&map.getBearing)?map.getBearing():0;
   var adjusted=heading-bearing;
-  if(inner)inner.style.setProperty('--h',adjusted+'deg');
+  if(inner){
+    var previous=parseFloat(inner.getAttribute('data-heading-adjusted'));
+    if(isFinite(previous)){
+      while(adjusted-previous>180)adjusted-=360;
+      while(adjusted-previous< -180)adjusted+=360;
+    }
+    inner.setAttribute('data-heading-adjusted',String(adjusted));
+    inner.style.setProperty('--h',adjusted+'deg');
+  }
 }
 
 function refreshVehicleHeadings(){
   Object.keys(vehicleMarkers).forEach(function(k){
     var h=vehicleHeadings[k];
     if(typeof h==='number')setHeading(vehicleMarkers[k],h);
+  });
+  Object.keys(railMarkers).forEach(function(k){
+    var h=railHeadings[k];
+    if(typeof h==='number')setHeading(railMarkers[k],h);
   });
 }
 
@@ -673,19 +601,19 @@ function buildPopup(linha,p,vid,heading){
   var tsMs=tsRaw||null;
   var sentido=null;
   if(p.sentidoNome)sentido=p.sentidoNome;
-  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSentidoMap&&linha.itinerarioSentidoMap[p.itinerarioId]){
-    sentido=linha.itinerarioSentidoMap[p.itinerarioId];
+  if(!sentido&&p.padraoVersaoId&&linha&&linha.itinerarioSentidoMap&&linha.itinerarioSentidoMap[p.padraoVersaoId]){
+    sentido=linha.itinerarioSentidoMap[p.padraoVersaoId];
   }
-  if(!sentido&&p.itinerarioId&&linha&&linha.itinerarioSegmentoMap){
-    var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
-    if(segIdx===0)sentido='Ida';
-    else if(segIdx===1)sentido='Volta';
+  if(!sentido&&p.padraoVersaoId&&linha&&linha.itinerarioSegmentoMap){
+    var segIdx=linha.itinerarioSegmentoMap[p.padraoVersaoId];
+    if(segIdx===0)sentido='Sentido 1';
+    else if(segIdx===1)sentido='Sentido 2';
   }
   if(sentido&&linha&&linha.nome&&sentido===linha.nome)sentido=null;
   if(!sentido&&linha&&linha.modoSentido){
-    if(linha.modoSentido==='ida')sentido='Ida';
-    else if(linha.modoSentido==='volta')sentido='Volta';
-    else if(linha.modoSentido==='ambos')sentido='Ida/Volta';
+    if(linha.modoSentido==='ida')sentido='Sentido 1';
+    else if(linha.modoSentido==='volta')sentido='Sentido 2';
+    else if(linha.modoSentido==='ambos')sentido='Todos os sentidos';
   }
   var sentidoLabel=sentido||'-';
   var color=linha.cor||null;
@@ -700,35 +628,35 @@ function buildPopup(linha,p,vid,heading){
   var prox=p.proximaParadaNome?p.proximaParadaNome:'-';
   var dist=p.distanciaProximaParadaMetros!=null?Math.round(p.distanciaProximaParadaMetros)+' m':'-';
   var iconSvg=modalIconSvg(linha.modal);
+  var roadStats='';
+  if(speed!==null)roadStats+='<div class="popup-stat"><i data-lucide="gauge"></i><div class="popup-stat-value">'+speedHtml+'</div><div class="popup-stat-label">Velocidade</div></div>';
+  if(p.distanciaProximaParadaMetros!=null)roadStats+='<div class="popup-stat"><i data-lucide="map-pin"></i><div class="popup-stat-value">'+dist+'</div><div class="popup-stat-label">Distância</div></div>';
+  if(p.proximaParadaNome)roadStats+='<div class="popup-stat"><i data-lucide="bus-front"></i><div class="popup-stat-value">'+escapeHtml(prox)+'</div><div class="popup-stat-label">Próxima parada</div></div>';
   var html='<div class="popup-card" id="'+popupId+'">';
   html+='<div class="popup-header">';
   html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';
   html+='<div class="popup-main">';
-  html+='<div class="popup-title">'+linha.nome+'</div>';
-  html+='<div class="popup-sub">Sentido: '+sentidoLabel+'</div>';
-  html+='<div class="popup-sub">Ordem: '+ordemLabel+'</div>';
-  html+='<div class="popup-time">Atualizado ha '+tempoHtml+'</div>';
+  html+='<div class="popup-title-row"><div class="popup-title">'+escapeHtml(linha.nome)+'</div><span class="popup-vehicle" style="--c:'+corFinal+'">'+escapeHtml(ordemLabel)+'</span></div>';
+  html+='<div class="popup-sub">'+escapeHtml(linha.descricao||('Sentido: '+sentidoLabel))+'</div>';
   html+='</div>';
   html+='</div>';
+  html+='<div class="popup-meta"><span class="popup-status">Ao vivo</span><span class="popup-time">Atualizado há '+tempoHtml+'</span></div>';
   html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">'+
         '<span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>';
   html+='<div class="popup-details" id="'+detailsId+'">';
-  html+='<div class="popup-row"><span class="popup-label">Vel. media:</span>'+speedHtml+'</div>';
-  html+='<div class="popup-row"><span class="popup-label">Prox. parada:</span>'+prox+'</div>';
-  html+='<div class="popup-row"><span class="popup-label">Distancia:</span>'+dist+'</div>';
+  html+='<div class="popup-stats">'+roadStats+'</div>';
   html+='</div>';
   html+='</div>';
   return html;
 }
 
-function buildStopPopup(parada){
+function buildStopPopup(parada,modal){
   var nome=(parada&&parada.nome)?parada.nome:'Parada';
   var ordem=(parada&&parada.ordem!=null)?('Parada #'+parada.ordem):'';
-  var html='<div class="stop-popup">';
-  html+='<div class="stop-title">'+nome+'</div>';
-  if(ordem)html+='<div class="stop-sub">'+ordem+'</div>';
-  html+='<div class="stop-hint">Toque para detalhes</div>';
-  html+='</div>';
+  var html='<div class="stop-popup"><div class="stop-popup-icon"><i data-lucide="'+((modal||'').toLowerCase()==='trem'?'train-front':'bus-front')+'"></i></div><div class="stop-popup-copy">';
+  html+='<div class="stop-title">'+escapeHtml(nome)+'</div>';
+  if(ordem)html+='<div class="stop-sub">'+escapeHtml(ordem)+'</div>';
+  html+='</div><div class="stop-chevron">›</div></div>';
   return html;
 }
 
@@ -836,7 +764,8 @@ function updateStopMarkers(){
     var el=stopIcon(stop.color,stop.modal);
     applyStopStyle(el,zoom,stop.modal);
     var marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([stop.lng,stop.lat]);
-    var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada));
+    var popup=new maplibregl.Popup({offset:16,closeButton:false}).setHTML(buildStopPopup(stop.parada,stop.modal));
+    if(popup.on)popup.on('open',refreshIcons);
     marker.setPopup(popup);
     el.addEventListener('click',function(){
       if(window.ReactNativeWebView&&window.ReactNativeWebView.postMessage){
@@ -916,7 +845,7 @@ function showPoi(payload){
 }
 
 function normEstilo(id){
-  return(typeof id==='string'&&estilos.indexOf(id)>=0)?id:'${ESTILO_MAPA_PADRAO}';
+  return(typeof id==='string'&&estilos.indexOf(id)>=0)?id:'${estiloMapaPadrao}';
 }
 
 function applyMapFilter(){
@@ -998,6 +927,14 @@ function updateUser(data){
 function focusOnVehicle(payload){
   if(!map||!payload)return;
   var target=null;
+  var railIdentity=payload.idVisual||
+    (payload.railVehicleId?'rail:'+payload.railVehicleId:null)||
+    (payload.railRunId?'rail:'+payload.railRunId:null);
+  if(railIdentity&&railRuns[railIdentity]){
+    var railRun=railRuns[railIdentity];
+    var railCoord=railCoordinateAtDistance(railRun._geometry,railDistanceNow(railRun,Date.now()));
+    if(railCoord){target={lat:railCoord[1],lng:railCoord[0]};openRailPopup(railRun,railCoord)}
+  }
   var ordem=payload.ordem||payload.id||null;
   if(ordem&&vehicleIndexByOrder[ordem]&&vehicleMarkers[vehicleIndexByOrder[ordem]]){
     var key=vehicleIndexByOrder[ordem];
@@ -1052,8 +989,20 @@ window.onload=function(){
     mapReady=true;
     map.getCanvas().style.transition='filter .25s ease';
     ensureLayers();
+    if(!map.getSource('rail-vehicles'))map.addSource('rail-vehicles',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    if(!map.getLayer('rail-vehicles-layer'))map.addLayer({id:'rail-vehicles-layer',type:'circle',source:'rail-vehicles',paint:{
+      'circle-radius':16,'circle-opacity':0
+    }});
+    map.on('click','rail-vehicles-layer',function(e){
+      var feature=e.features&&e.features[0];if(!feature)return;
+      var key=feature.properties&&feature.properties.railRunId;
+      var run=key&&railRuns[key];
+      if(run)openRailPopup(run,feature.geometry.coordinates);
+    });
+    map.on('mouseenter','rail-vehicles-layer',function(){map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave','rail-vehicles-layer',function(){map.getCanvas().style.cursor=''});
     userMarker=new maplibregl.Marker({element:userIcon(),anchor:'center'}).setLngLat([${lngInicial},${latInicial}]).addTo(map);
-    setMapStyle('${ESTILO_MAPA_PADRAO}');
+    setMapStyle('${estiloMapaPadrao}');
     setDark(false);
 
     map.on('movestart',function(){if(!internalMove)autoFollow=false});
@@ -1063,6 +1012,7 @@ window.onload=function(){
     map.on('rotate',function(){refreshVehicleHeadings()});
 
     startDR();
+    startRailAnimation();
     setInterval(updateTimeAgo,1000);
 
     if(window.pendingData)window.updateMap(window.pendingData);
@@ -1091,6 +1041,8 @@ window.fitToCoordinates=function(coords){
 
 window.updateMap=function(data){
   if(!map||!mapReady){window.pendingData=data;return}
+  var structuralUpdate=!data.realtimeOnly;
+  if(structuralUpdate)lastMapData=data;
 
   setMapStyle(data.estiloMapa);
   setDark(Boolean(data.darkMode));
@@ -1098,12 +1050,13 @@ window.updateMap=function(data){
   setLineOpacity(Boolean(data.darkMode));
 
   if(data.userLocation)updateUser(data);
+  setRailRuns(data.railVehicles||[]);
 
   var lineFeatures=[];
   vehicleIndexByOrder={};
 
   if(!Array.isArray(data.linhas)||data.linhas.length===0){
-    setLinesData(lineFeatures);
+    if(structuralUpdate)setLinesData(lineFeatures);
     clearVehicles();
     stopCache=[];
     stopCacheKey='';
@@ -1111,8 +1064,8 @@ window.updateMap=function(data){
     return;
   }
 
-  var stopSig=stopSignature(data.linhas,Boolean(data.darkMode));
-  if(stopSig!==stopCacheKey){
+  var stopSig=structuralUpdate?stopSignature(data.linhas,Boolean(data.darkMode)):stopCacheKey;
+  if(structuralUpdate&&stopSig!==stopCacheKey){
     stopCacheKey=stopSig;
     rebuildStopCache(data.linhas,Boolean(data.darkMode));
     clearStops();
@@ -1120,6 +1073,7 @@ window.updateMap=function(data){
   }
 
   var visibleKeys={};
+  var createdNow=0,updatedNow=0,removedNow=0,snapshotNow=0;
 
   data.linhas.forEach(function(linha){
     var color=linha.cor||(data.darkMode?'#4FC3F7':'#2196F3');
@@ -1140,7 +1094,7 @@ window.updateMap=function(data){
     segmentos.forEach(function(seg,idx){
       if(!Array.isArray(seg)||seg.length<2)return;
       var coords=seg.map(function(c){return[c[1],c[0]]});
-      lineFeatures.push({
+      if(structuralUpdate)lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
         properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
@@ -1158,6 +1112,7 @@ window.updateMap=function(data){
       var vid=rawId?String(rawId).trim():linha.nome+'-'+idx;
       var vKey=(linha.modal||'m')+':'+linha.nome+':'+vid;
       visibleKeys[vKey]=true;
+      snapshotNow++;
       vehicleIndexByOrder[vid]=vKey;
 
       var dest={lat:lat,lng:lng};
@@ -1170,10 +1125,10 @@ window.updateMap=function(data){
       var distStop=parseNum(p.distanciaProximaParadaMetros);
       var decelFactor=(distStop!==null&&distStop<300)?Math.max(0.72,0.95-(300-distStop)/1200):1;
 
-      // Escolhe o segmento correto baseado no itinerarioId do veículo
+      // Escolhe a geometria pela identidade estrutural oficial da versão.
       var lineCoordsDR=segmentos[0]||null;
-      if(p.itinerarioId&&linha.itinerarioSegmentoMap){
-        var segIdx=linha.itinerarioSegmentoMap[p.itinerarioId];
+      if(p.padraoVersaoId&&linha.itinerarioSegmentoMap){
+        var segIdx=linha.itinerarioSegmentoMap[p.padraoVersaoId];
         if(typeof segIdx==='number'&&segmentos[segIdx]){
           lineCoordsDR=segmentos[segIdx];
         }
@@ -1200,6 +1155,7 @@ window.updateMap=function(data){
         marker.setPopup(popup);
         marker.addTo(map);
         vehicleMarkers[vKey]=marker;
+        createdNow++;
         vehiclePopups[vKey]=popup;
         if(typeof heading==='number')vehicleHeadings[vKey]=heading;
         drState[vKey]={
@@ -1213,6 +1169,7 @@ window.updateMap=function(data){
         };
         return;
       }
+      updatedNow++;
 
       var markerEl=marker.getElement();
       if(markerEl){
@@ -1280,7 +1237,7 @@ window.updateMap=function(data){
     });
   });
 
-  setLinesData(lineFeatures);
+  if(structuralUpdate)setLinesData(lineFeatures);
 
   // Remove veículos que não vieram neste update
   Object.keys(vehicleMarkers).forEach(function(k){
@@ -1289,51 +1246,34 @@ window.updateMap=function(data){
       vehicleMarkers[k].remove();
       if(vehiclePopups[k])vehiclePopups[k].remove();
       delete vehicleMarkers[k];delete vehicleHeadings[k];delete drState[k];delete vehiclePopups[k];
+      removedNow++;
     }
   });
 
   refreshIcons();
+  if(!structuralUpdate){
+    realtimeMetric.updates++;realtimeMetric.snapshot=snapshotNow;
+    realtimeMetric.created+=createdNow;realtimeMetric.updated+=updatedNow;realtimeMetric.removed+=removedNow;
+    if(realtimeMetric.updates%25===0&&window.ReactNativeWebView){
+      window.ReactNativeWebView.postMessage(JSON.stringify({type:'realtime_metrics',metrics:realtimeMetric}));
+      realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
+    }
+  }
+};
+
+window.updateRealtime=function(data){
+  if(!lastMapData){return}
+  var updates={};
+  (data.linhas||[]).forEach(function(linha){updates[linha.structureKey||((linha.modal||'')+':'+linha.nome)]=linha.posicoes||[]});
+  var linhas=(lastMapData.linhas||[]).map(function(linha){
+    var key=linha.structureKey||((linha.modal||'')+':'+linha.nome);
+    return Object.assign({},linha,{posicoes:updates[key]||[]});
+  });
+  window.updateMap(Object.assign({},lastMapData,{linhas:linhas,
+    railVehicles:data.railVehicles||[],realtimeOnly:true}));
 };
 
 window.updateUser=updateUser;
 window.focusOnVehicle=focusOnVehicle;
-</script>
-</body>
-</html>`,
-      [latInicial, lngInicial],
-    );
-
-    return (
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ html: mapHTML }}
-        style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#f0f0f0" }}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        onLoadEnd={() => {
-          webViewRef.current?.injectJavaScript(`if(map) map.resize();`);
-        }}
-        onMessage={(event) => {
-          const raw = event.nativeEvent.data;
-          if (raw === "map_ready") {
-            setMapReady(true);
-            return;
-          }
-          try {
-            const payload = JSON.parse(raw);
-            if (payload?.type === "stop_click" && payload.parada) {
-              onStopPress?.(payload.parada);
-            }
-          } catch {
-            // ignora mensagens nao JSON
-          }
-        }}
-      />
-    );
-  },
-);
-
-MapaOSM.displayName = "MapaOSM";
-
-export default MapaOSM;
+`;
+}

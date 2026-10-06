@@ -1,26 +1,29 @@
 import {
-    CoordenadaMapa,
-    ItinerarioLinha,
-    ItinerarioMapaDto,
-    ItinerarioPorLinhaMapaDto,
-    LinhaDetalhesDto,
-    LinhaSimplesDto,
-    LinhasResponse,
-    LinhaTempoReal,
-    ModalApiTransporte,
-    ModalTransporteDto,
-    OpcaoBusca,
-    Parada,
-    PoiDto,
-    PoiParadaDto,
-    PosicaoVeiculo,
-    ProximoVeiculoParadaDto,
-    SentidoSimples,
-    SentidosResponse,
-    VeiculosLinhaDto,
-    VeiculoTempoReal,
+  CoordenadaMapa,
+  ItinerarioLinha,
+  ItinerarioMapaDto,
+  ItinerarioPorLinhaMapaDto,
+  LinhaDetalhesDto,
+  LinhaSimplesDto,
+  LinhaTempoReal,
+  ModalApiTransporte,
+  ModalTransporteDto,
+  OpcaoBusca,
+  Parada,
+  PoiDto,
+  PoiParadaDto,
+  ProximoVeiculoParadaDto,
+  SentidoSimples,
+  SentidosResponse,
+  VeiculosLinhaDto,
+  VeiculoTempoReal,
 } from "@/src/types/transporte";
 import { api } from "./api";
+import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
+import { listarLinhasV2, type FiltrosLinhasV2 } from "./estruturaV2";
+import { adaptarPosicaoRodoviariaV2 } from "./veiculosMapa";
+import { apresentarLinhaBusca, apresentarResultadosBackend } from "./searchPresentation";
+import type { CategoriaTransporteV2 } from "@/src/types/estruturaV2";
 
 const TARIFA_PADRAO = 4.7;
 const INTERVALO_PADRAO = "~20 min";
@@ -44,12 +47,20 @@ export async function buscarLinhasDto(
   nome?: string,
   page: number = 1,
   pageSize: number = 50,
+  filtros: FiltrosLinhasV2 = {},
 ): Promise<LinhaSimplesDto[]> {
-  const response = await api.get<LinhasResponse>("/linhas", {
-    params: { nome: nome || "", page, pageSize },
-  });
-  if (!response.ok || !response.data) return [];
-  return response.data.itens;
+  const linhas = await listarLinhasV2(nome, page, pageSize, filtros);
+  return linhas.map((linha) => ({
+    id: linha.linhaId,
+    nome: linha.nome,
+    codigo: linha.codigo,
+    modalId: linha.modalId,
+    tipoRota: linha.tipoRota,
+    modal: linha.modal,
+    consorcio: linha.consorcio,
+    terminalA: linha.terminalA,
+    terminalB: linha.terminalB,
+  }));
 }
 
 export async function buscarDetalhesLinha(
@@ -106,20 +117,43 @@ export async function buscarOpcoesPorNome(
   nome: string,
   page: number = 1,
   pageSize: number = 20,
-  modalId?: string,
+  categoria?: string,
+  signal?: AbortSignal,
 ): Promise<OpcaoBusca[]> {
   if (!nome.trim()) return [];
-  const linhas = await buscarLinhasDto(nome, page, pageSize);
-  const linhasFiltradas = modalId ? linhas.filter((linha) => linha.modalId === modalId) : linhas;
-  return linhasFiltradas.map((linha) => ({
+  const cat = categoria as CategoriaTransporteV2 | undefined;
+  const filtros = cat ? await filtrosBuscaCategoria(cat) : {};
+  const linhas = await buscarLinhasDto(nome, page, pageSize, { ...filtros, signal });
+  return apresentarResultadosBackend(linhas, cat ?? "onibus").map(({ linha, ...presentation }) => {
+    const linhaCategoria = cat ?? categoriaLinhaV2({ tipoRota: linha.tipoRota ?? "", modal: linha.modal ?? "" });
+    const resolvedPresentation = cat ? presentation : apresentarLinhaBusca(linha, linhaCategoria);
+    return {
     linha,
-    nomeExibicao: linha.codigo
-      ? `${linha.codigo} - ${linha.nome
-          .replace(linha.codigo, "")
-          .replace(/^[-\s]+/, "")
-          .trim()}`
-      : linha.nome,
-  }));
+    nomeExibicao: resolvedPresentation.displayName,
+    ...resolvedPresentation,
+  }});
+}
+
+let modaisBuscaPromise: Promise<ModalTransporteDto[]> | undefined;
+async function filtrosBuscaCategoria(categoria: CategoriaTransporteV2): Promise<FiltrosLinhasV2> {
+  modaisBuscaPromise ??= buscarModais();
+  const modais = await modaisBuscaPromise;
+  const nomeAlvo = categoria === "trem" ? "trem" : categoria === "metro" ? "metro" : "onibus";
+  const modalId = modais.find((modal) => normalizarModalBusca(modal.nome).includes(nomeAlvo))?.id;
+  return {
+    modalId,
+    tipoRota: categoria === "brt" ? "brt" : undefined,
+    excluirTipoRota: categoria === "onibus" ? "brt" : undefined,
+  };
+}
+
+const normalizarModalBusca = (value: string) => value.toLowerCase().normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "");
+
+export async function buscarSugestoesBusca(categoria: CategoriaTransporteV2, limite = 4) {
+  const linhas = await buscarLinhasDto("", 1, limite, await filtrosBuscaCategoria(categoria));
+  return linhas.map((linha) =>
+    apresentarLinhaBusca(linha, categoria).displayName);
 }
 
 // ─── Itinerário mesclado (ida + volta) ─────────────────────────────────────
@@ -329,38 +363,8 @@ export async function buscarVeiculosPorLinha(
     `/veiculos/linha/${codigoLinha}`,
   );
   if (!response.ok || !response.data) return [];
-  return response.data.posicoes.map(converterPosicao);
-}
-
-function converterPosicao(v: PosicaoVeiculo): VeiculoTempoReal {
-  return {
-    id: v.ordem,
-    modal: "onibus",
-    linha: v.codigoLinha.trim().toUpperCase(),
-    latitude: v.latitude,
-    longitude: v.longitude,
-    timestamp: new Date(v.timestampGps).getTime(),
-    velocidade: v.velocidade,
-    direcao: calcularDirecao(v),
-  };
-}
-
-function calcularDirecao(v: PosicaoVeiculo): number | null {
-  if (v.latitudeAnterior == null || v.longitudeAnterior == null) return null;
-  if (
-    Math.abs(v.latitude - v.latitudeAnterior) < 1e-5 &&
-    Math.abs(v.longitude - v.longitudeAnterior) < 1e-5
-  )
-    return null;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLon = toRad(v.longitude - v.longitudeAnterior);
-  const y = Math.sin(dLon) * Math.cos(toRad(v.latitude));
-  const x =
-    Math.cos(toRad(v.latitudeAnterior)) * Math.sin(toRad(v.latitude)) -
-    Math.sin(toRad(v.latitudeAnterior)) *
-      Math.cos(toRad(v.latitude)) *
-      Math.cos(dLon);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return response.data.posicoes
+    .map((posicao) => adaptarPosicaoRodoviariaV2(posicao));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -404,6 +408,8 @@ export function construirLinhasDisponiveis(
 }
 
 export async function buscarVeiculosTempoReal(): Promise<VeiculoTempoReal[]> {
+  // LEGADO/REMOVÍVEL: nunca forneceu fallback real. Mantido exportado apenas
+  // para não quebrar consumidores externos durante a transição.
   return [];
 }
 

@@ -7,7 +7,7 @@ interface Props {
   //icon?: LucideIcon;
   placeholder?: string;
   className?: string;
-  options?: string[];
+  options?: (string | { label: string; value: string })[];
   value?: string | null;
   onChange?: (value: string) => void;
 }
@@ -20,6 +20,12 @@ export default function InputBusca(props: Props) {
   // essas opções são baseadas no q for escrito no input de busca, tem q pegar o destino e final da linha
 
   const IconComponent = open ? ArrowLeftRight : ArrowRightLeft;
+  const selectedOption = props.options?.find((option) =>
+    (typeof option === "string" ? option : option.value) === props.value,
+  );
+  const selectedLabel = typeof selectedOption === "string"
+    ? selectedOption
+    : selectedOption?.label;
 
   return (
     <View className={`w-full ${props.className}`}>
@@ -45,7 +51,7 @@ export default function InputBusca(props: Props) {
             color: props.value ? cores.textoPrimario : cores.textoSecundario,
           }}
         >
-          {props.value ? props.value : props.placeholder}
+          {props.value ? (selectedLabel ?? props.value) : props.placeholder}
         </Text>
       </Pressable>
 
@@ -58,11 +64,14 @@ export default function InputBusca(props: Props) {
             borderWidth: 1,
           }}
         >
-          {props.options?.map((option) => (
+          {props.options?.map((option) => {
+            const value = typeof option === "string" ? option : option.value;
+            const label = typeof option === "string" ? option : option.label;
+            return (
             <Pressable
-              key={option}
+              key={value}
               onPress={() => {
-                props.onChange?.(option);
+                props.onChange?.(value);
                 setOpen(false);
               }}
               className="p-4"
@@ -71,9 +80,10 @@ export default function InputBusca(props: Props) {
                 borderBottomWidth: 1,
               }}
             >
-              <Text style={{ color: cores.textoPrimario }}>{option}</Text>
+              <Text style={{ color: cores.textoPrimario }}>{label}</Text>
             </Pressable>
-          ))}
+            );
+          })}
         </View>
       )}
     </View>
