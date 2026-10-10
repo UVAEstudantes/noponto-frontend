@@ -9,6 +9,47 @@ import * as signalR from "@microsoft/signalr";
 const HUB_URL = config.GPS_HUB_URL;
 
 let connection: signalR.HubConnection | null = null;
+const donosInscricoes = new Map<symbol, Set<string>>();
+const inscritas = new Set<string>();
+let sincronizacao: Promise<void> = Promise.resolve();
+let conexaoPendente: Promise<void> | null = null;
+let geracaoConexao = 0;
+
+// Um único hub e união das inscrições dos consumidores ativos. Reconciliar serialmente evita
+// que uma resposta atrasada reinscreva uma linha removida enquanto o invoke estava em andamento.
+export function atualizarInscricoesGps(dono: symbol, codigos: readonly string[]): Promise<void> {
+  if (codigos.length) donosInscricoes.set(dono, new Set(codigos));
+  else donosInscricoes.delete(dono);
+  return reconciliarInscricoesGps();
+}
+export function reconciliarInscricoesGps(): Promise<void> {
+  sincronizacao = sincronizacao.catch(() => undefined).then(async () => {
+    await conectarGpsHub();
+    if (!await aguardarConexao()) return;
+    const desejadas = () => new Set([...donosInscricoes.values()].flatMap((ids) => [...ids]));
+    for (const codigo of [...inscritas]) {
+      if (!desejadas().has(codigo)) {
+        const geracao = geracaoConexao;
+        try {
+          await connection!.invoke("CancelarLinha", codigo);
+          if (geracao === geracaoConexao) inscritas.delete(codigo);
+        }
+        catch (error) { console.warn("Falha ao cancelar inscrição GPS", error); }
+      }
+    }
+    for (const codigo of desejadas()) {
+      if (inscritas.has(codigo) || !desejadas().has(codigo)) continue;
+      const geracao = geracaoConexao;
+      try {
+        await connection!.invoke("InscreverseLinha", codigo);
+        if (geracao === geracaoConexao) inscritas.add(codigo);
+      }
+      catch (error) { console.warn("Falha ao inscrever linha GPS", error); }
+    }
+  });
+  return sincronizacao;
+}
+
 const subscribers = new Set<(veiculos: VeiculoMapaRodoviario[]) => void>();
 
 export function obterDiagnosticoGpsHub() {
@@ -40,8 +81,8 @@ export function iniciarGpsHub(
   });
 
   connection.onreconnecting(() => console.log("🔄 reconectando SignalR..."));
-  connection.onreconnected(() => console.log("✅ reconectado"));
-  connection.onclose(() => console.log("❌ conexão encerrada"));
+  connection.onreconnected(() => { geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); console.log("✅ reconectado"); });
+  connection.onclose(() => { geracaoConexao++; inscritas.clear(); console.log("❌ conexão encerrada"); });
 
   return connection;
 }
@@ -63,12 +104,11 @@ export async function conectarGpsHub(): Promise<void> {
     return;
   }
 
-  try {
-    await connection.start();
-    console.log("✅ SignalR conectado");
-  } catch (err) {
-    console.error("Erro ao conectar SignalR", err);
-  }
+  conexaoPendente ??= connection.start().then(() => {
+    geracaoConexao++; inscritas.clear(); console.log("✅ SignalR conectado");
+  }).catch((err) => { console.error("Erro ao conectar SignalR", err); })
+    .finally(() => { conexaoPendente = null; });
+  await conexaoPendente;
 }
 
 async function aguardarConexao(timeoutMs: number = 4000): Promise<boolean> {

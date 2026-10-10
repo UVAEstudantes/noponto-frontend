@@ -122,7 +122,7 @@ export async function buscarOpcoesPorNome(
   signal?: AbortSignal,
 ): Promise<OpcaoBusca[]> {
   if (!nome.trim()) return [];
-  const cat = categoria as CategoriaTransporteV2 | undefined;
+  const cat = (categoria === "todos" ? undefined : categoria) as CategoriaTransporteV2 | undefined;
   const filtros: FiltrosLinhasV2 = cat ? await filtrosBuscaCategoria(cat) : {};
   const linhas = await buscarLinhasDto(nome, page, pageSize, { ...filtros, signal });
   return linhas.filter((linha) => !filtros.modalId || linha.modalId === filtros.modalId).map((linha) => {
@@ -138,11 +138,11 @@ export async function buscarOpcoesPorNome(
 
 const filtrosBuscaCategoria = criarFiltroModalBusca(buscarModais);
 
-export async function buscarSugestoesBusca(categoria: CategoriaTransporteV2, limite = 4) {
+export async function buscarSugestoesBusca(categoria: CategoriaTransporteV2 | "todos", limite = 4) {
   try {
-    const filtros = await filtrosBuscaCategoria(categoria);
+    const filtros = categoria === "todos" ? {} : await filtrosBuscaCategoria(categoria);
     const linhas = await buscarLinhasDto("", 1, limite, filtros);
-    return linhas.filter((linha) => linha.modalId === filtros.modalId).map((linha) =>
+    return linhas.filter((linha) => !("modalId" in filtros) || linha.modalId === filtros.modalId).map((linha) =>
       apresentarLinhaBusca(linha, categoriaLinhaV2({ tipoRota: linha.tipoRota ?? "", modal: linha.modal ?? "" })).displayName);
   } catch (error) {
     console.warn("Não foi possível carregar sugestões de busca:", error);

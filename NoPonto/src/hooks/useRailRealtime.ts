@@ -11,6 +11,8 @@ import { AppState } from "react-native";
 interface RailRealtimeArgs {
   enabled: boolean;
   linhaId?: string;
+  linhaIds?: readonly string[];
+  permitirDemo?: boolean;
   sentidoId?: string;
   demoPadraoVersaoIds?: string[];
 }
@@ -102,10 +104,13 @@ export function useRailRealtime({
   enabled,
   linhaId,
   sentidoId,
+  linhaIds,
+  permitirDemo = true,
   demoPadraoVersaoIds = [],
 }: RailRealtimeArgs) {
   const [vehicles, setVehicles] = useState<RailVehicleForMap[]>([]);
   const demoStart = useRef(Date.now());
+  const chaveLinhas = linhaIds ? [...linhaIds].sort().join("\n") : undefined;
   const demoPadraoVersaoId = demoPadraoVersaoIds[0];
 
   useEffect(() => {
@@ -113,32 +118,39 @@ export function useRailRealtime({
       setVehicles([]);
       return;
     }
+    setVehicles([]);
+    const ids = chaveLinhas === undefined ? null : new Set(chaveLinhas.split("\n"));
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       if (!active || AppState.currentState !== "active") return schedule();
-      const snapshot = await fetchRailSnapshot({ linhaId, sentidoId });
-      let values = snapshot?.vehicles ?? [];
-      if (values.length === 0 && config.RAIL_DEMO && demoPadraoVersaoId) {
-        const geometry = await getRailGeometry(demoPadraoVersaoId);
-        if (geometry)
-          values = [
-            demoVehicle(
-              demoPadraoVersaoId,
-              geometry.totalLengthMetres,
-              demoStart.current,
-            ),
-          ];
-      }
-      const hydrated = await Promise.all(
-        values.map(async (vehicle) => {
-          const geometry = await getRailGeometry(vehicle.padraoVersaoId);
-          return geometry ? { ...vehicle, geometry } : null;
-        }),
-      );
-      if (active)
-        setVehicles(hydrated.filter((x): x is RailVehicleForMap => x !== null));
-      schedule();
+      try {
+        const snapshot = await fetchRailSnapshot({ linhaId, sentidoId });
+        let values = (snapshot?.vehicles ?? []).filter((vehicle) => !ids || ids.has(vehicle.linhaId));
+        if (values.length === 0 && permitirDemo && config.RAIL_DEMO && demoPadraoVersaoId) {
+          const geometry = await getRailGeometry(demoPadraoVersaoId);
+          if (geometry)
+            values = [
+              demoVehicle(
+                demoPadraoVersaoId,
+                geometry.totalLengthMetres,
+                demoStart.current,
+              ),
+            ];
+        }
+        const unicos = new Map(values.map((vehicle) => [vehicle.railVehicleId || vehicle.railRunId, vehicle]));
+        const hydrated = await Promise.all(
+          [...unicos.values()].map(async (vehicle) => {
+            const geometry = await getRailGeometry(vehicle.padraoVersaoId);
+            return geometry ? { ...vehicle, geometry } : null;
+          }),
+        );
+        if (active)
+          setVehicles(hydrated.filter((x): x is RailVehicleForMap => x !== null));
+      } catch (error) {
+        if (active) setVehicles([]);
+        console.warn("Snapshot ferroviário temporariamente indisponível", error);
+      } finally { schedule(); }
     };
     const schedule = () => {
       if (active) timer = setTimeout(poll, config.RAIL_POLL_INTERVAL_MS);
@@ -148,7 +160,7 @@ export function useRailRealtime({
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [enabled, linhaId, sentidoId, demoPadraoVersaoId]);
+  }, [enabled, linhaId, sentidoId, chaveLinhas, permitirDemo, demoPadraoVersaoId]);
 
   return vehicles;
 }

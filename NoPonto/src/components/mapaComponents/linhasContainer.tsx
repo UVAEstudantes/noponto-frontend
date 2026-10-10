@@ -1,3 +1,7 @@
+import BotaoFavorito from "@/src/components/botaoFavorito";
+import EstadoFavoritos from "@/src/components/estadoFavoritos";
+import { useFavoritos } from "@/src/hooks/useFavoritos";
+import { identidadeModalMapa } from "@/src/constants/modaisMapa";
 import {
   ArrowLeft,
   ArrowLeftRight,
@@ -12,6 +16,7 @@ import {
   MapPin,
   MapPinOff,
   Plus,
+  Star,
   Train,
   TrainFront,
   Trash2,
@@ -44,6 +49,12 @@ const MAX_LINHAS_VIEW = 10;
 
 interface Props {
   linhasSelecionadas: LinhaSelecionadaInfo[];
+  todasLinhasSelecionadas?: LinhaSelecionadaInfo[];
+  visualizacaoFavoritos?: boolean;
+  favoritasConfiguradas?: LinhaSelecionadaInfo[];
+  favoritasVisiveisIds?: ReadonlySet<string>;
+  aoEscolherVisibilidadeFavorita?: (id: string) => void;
+  aoAdicionarFavorita?: (id: string) => void;
   aoRemoverLinha: (linhaId: string) => void;
   aoToggleAtiva: (linhaId: string) => void;
   aoToggleSentido: (linhaId: string) => void;
@@ -189,115 +200,41 @@ function IconeModal({ modal, cor }: { modal: string; cor: string }) {
 }
 
 // ─── SelectModalLinhas ──────────────────────────────────────────────────────
-// Mesmo padrão visual/animado do SelectTransporte (tela de Linhas): um
-// fundo "pill" que desliza com spring até o item selecionado. Diferente
-// do SelectTransporte, aqui a quantidade de itens é dinâmica (vem de
-// opcoesModal), então cada botão usa flex:1 pra dividir a largura
-// igualmente e o slider é calculado a partir da largura medida do
-// container (onLayout), não de valores fixos.
-function SelectModalLinhas({
-  opcoes,
-  selecionadoId,
-  onSelecionar,
-}: {
-  opcoes: { id: string; nome: string }[];
-  selecionadoId?: string | null;
-  onSelecionar: (id: string) => void;
+// Botões com largura mínima e rolagem horizontal para incluir Favoritos sem truncar nomes.
+function SelectModalLinhas({ opcoes, selecionadoId, onSelecionar }: {
+  opcoes: { id: string; nome: string }[]; selecionadoId?: string | null; onSelecionar: (id: string) => void;
 }) {
   const { cores } = useTema();
-  const animLeft = useSharedValue(0);
-  const [containerWidth, setContainerWidth] = React.useState(0);
-  const inicializadoRef = React.useRef(false);
-  const SLIDER_PADDING = 4; // folga interna do slider em relação ao botão
-
-  const qtd = opcoes.length || 1;
-  const btnWidth = containerWidth / qtd;
-  const sliderWidth = Math.max(btnWidth - SLIDER_PADDING * 2, 0);
-
-  const getPos = React.useCallback(
-    (index: number) => index * btnWidth + SLIDER_PADDING,
-    [btnWidth],
-  );
-
+  const [largura, setLargura] = React.useState(0);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const itemWidth = Math.max(104, (largura - 8) / Math.max(1, opcoes.length));
+  const animLeft = useSharedValue(4);
+  const idx = Math.max(0, opcoes.findIndex((item) => item.id === selecionadoId));
   React.useEffect(() => {
-    if (containerWidth === 0) return;
-    const idxEncontrado = opcoes.findIndex((o) => o.id === selecionadoId);
-    const idx = Math.max(idxEncontrado, 0);
-    const pos = getPos(idx);
-    if (!inicializadoRef.current) {
-      animLeft.value = pos;
-      inicializadoRef.current = true;
-    } else {
-      animLeft.value = withSpring(pos, { damping: 75, stiffness: 680 });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selecionadoId, containerWidth, opcoes.length]);
-
-  const sliderStyle = useAnimatedStyle(() => ({
-    left: animLeft.value,
-  }));
-
-  if (opcoes.length === 0) return null;
-
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        marginHorizontal: 16,
-        marginBottom: 10,
-        marginTop: 10,
-        padding: 4,
-        borderRadius: 12,
-        backgroundColor: cores.fundoSecundario,
-      }}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-    >
-      {containerWidth > 0 && (
-        <Animated.View
-          style={[
-            sliderStyle,
-            {
-              position: "absolute",
-              top: 4,
-              width: sliderWidth,
-              height: "100%",
-              backgroundColor: cores.fundoPrimario,
-              borderRadius: 9,
-            },
-          ]}
-        />
-      )}
-
-      {opcoes.map((modal) => {
-        const selecionado = modal.id === selecionadoId;
-        return (
-          <Pressable
-            key={modal.id}
-            onPress={() => onSelecionar(modal.id)}
-            style={{
-              flex: 1,
-              paddingVertical: 9,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "700",
-                color: selecionado
-                  ? cores.textoInverso
-                  : cores.textoSecundario,
-              }}
-              numberOfLines={1}
-            >
-              {modal.nome}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+    animLeft.value = withSpring(4 + idx * itemWidth, { damping: 75, stiffness: 680 });
+    scrollRef.current?.scrollTo({ x: Math.max(0, idx * itemWidth - largura + itemWidth + 8), animated: true });
+  }, [idx, itemWidth, largura, animLeft]);
+  const sliderStyle = useAnimatedStyle(() => ({ left: animLeft.value }));
+  return <View onLayout={(event) => setLargura(event.nativeEvent.layout.width)}
+    style={{ marginHorizontal: 16, marginVertical: 10, borderRadius: 12, overflow: "hidden", backgroundColor: cores.fundoSecundario }}>
+    <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}>
+      <View style={{ padding: 4, flexDirection: "row" }}>
+        <Animated.View style={[sliderStyle, { position: "absolute", top: 4, bottom: 4,
+          width: itemWidth, borderRadius: 9, backgroundColor: cores.fundoPrimario }]} />
+        {opcoes.map((item) => {
+          const selected = item.id === selecionadoId;
+          const { Icon } = identidadeModalMapa(item.id);
+          return <Pressable key={item.id} onPress={() => onSelecionar(item.id)}
+            accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={item.nome}
+            style={{ width: itemWidth, minHeight: 44, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}>
+            <Icon size={15} color={selected ? cores.textoInverso : item.id === "favoritos" ? cores.iconePrimario : cores.textoSecundario}
+              fill={item.id === "favoritos" && selected ? cores.textoInverso : "transparent"} />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? cores.textoInverso : cores.textoSecundario }}>{item.nome}</Text>
+          </Pressable>;
+        })}
+      </View>
+    </ScrollView>
+  </View>;
 }
 
 // ─── LinhaCard ────────────────────────────────────────────────────────────
@@ -308,6 +245,9 @@ interface LinhaCardProps {
   aoToggleAtiva: () => void;
   aoAbrirConfig: () => void;
   isLast: boolean;
+  favorita: boolean;
+  favoritosProntos: boolean;
+  aoToggleFavorita: () => void;
 }
 
 function LinhaCard({
@@ -317,6 +257,7 @@ function LinhaCard({
   aoToggleAtiva,
   aoAbrirConfig,
   isLast,
+  favorita, favoritosProntos, aoToggleFavorita,
 }: LinhaCardProps) {
   const { cores } = useTema();
   const [confirmando, setConfirmando] = React.useState(false);
@@ -470,6 +411,7 @@ function LinhaCard({
               )}
             </View>
 
+            <BotaoFavorito favorita={favorita} disabled={!favoritosProntos} nome={linha.nomeExibicao} onPress={aoToggleFavorita} />
             {/* A remoção ocupa o espaço do chevron, sem cobrir os textos. */}
             {modoRemocao ? <Pressable
               accessibilityRole="button" accessibilityLabel={`Remover linha ${codigo}`}
@@ -603,6 +545,12 @@ function ColorWheel({
 // ─── LinhasContainer ──────────────────────────────────────────────────────
 function LinhasContainer({
   linhasSelecionadas,
+  todasLinhasSelecionadas = linhasSelecionadas,
+  visualizacaoFavoritos = false,
+  favoritasConfiguradas = [],
+  favoritasVisiveisIds = new Set<string>(),
+  aoEscolherVisibilidadeFavorita,
+  aoAdicionarFavorita,
   aoRemoverLinha,
   aoToggleAtiva,
   aoToggleSentido,
@@ -621,6 +569,8 @@ function LinhasContainer({
   limiteLinhasAtingido = false,
 }: Props) {
   const { cores, temaAtual } = useTema();
+  const favoritos = useFavoritos();
+
 
   const modalBase = cores.fundoPainel;
   const highlightAlpha = temaAtual === "escuro" ? 0.28 : 0.22;
@@ -670,9 +620,9 @@ function LinhasContainer({
   const linhaConfig = React.useMemo(
     () =>
       linhaConfigId
-        ? (linhasSelecionadas.find((l) => l.linhaId === linhaConfigId) ?? null)
+        ? ((visualizacaoFavoritos ? favoritasConfiguradas : linhasSelecionadas).find((l) => l.linhaId === linhaConfigId) ?? null)
         : null,
-    [linhaConfigId, linhasSelecionadas],
+    [linhaConfigId, linhasSelecionadas, visualizacaoFavoritos, favoritasConfiguradas],
   );
 
   React.useEffect(() => {
@@ -794,7 +744,7 @@ function LinhasContainer({
                   color: cores.textoSecundario,
                 }}
               >
-                {linhasSelecionadas.length}/{MAX_LINHAS_VIEW}
+                {visualizacaoFavoritos ? `${favoritos.linhas.length} favoritas` : `${linhasSelecionadas.length}/${MAX_LINHAS_VIEW}`}
               </Text>
             </View>
             <Pressable
@@ -819,14 +769,14 @@ function LinhasContainer({
         {/* Seletor de modal — mesmo padrão do SelectTransporte (slider animado) */}
         {opcoesModal.length > 0 && (
           <SelectModalLinhas
-            opcoes={opcoesModal}
+            opcoes={[...opcoesModal, { id: "favoritos", nome: "Favoritos" }]}
             selecionadoId={modalSelecionadoId}
-            onSelecionar={(id) => aoSelecionarModal?.(id)}
+            onSelecionar={(id) => { setModoRemocao(false); setLinhaConfigId(null); aoSelecionarModal?.(id); }}
           />
         )}
 
         {/* Ações fixas: fora da rolagem, entre o seletor e os cards. */}
-        <View style={{ marginHorizontal: 16, paddingTop: 2, paddingBottom: 10 }}>
+        {!visualizacaoFavoritos && <View style={{ marginHorizontal: 16, paddingTop: 2, paddingBottom: 10 }}>
           <View style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: 10 }}>
             {aoAdicionarLinha && <Pressable onPress={aoAdicionarLinha} accessibilityRole="button"
               accessibilityLabel={limiteLinhasAtingido ? "Limite de linhas atingido" : "Adicionar linha"}
@@ -852,14 +802,65 @@ function LinhasContainer({
           </View>
           {limiteLinhasAtingido && <Text style={{ marginTop: 6, fontSize: 11,
             color: cores.textoSecundario }}>Limite de 10 linhas atingido. Remova uma linha para adicionar outra.</Text>}
-        </View>
+        </View>}
 
         {/* Lista */}
         <ScrollView
+          key={visualizacaoFavoritos ? "favoritos" : "modal"}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 124 }}
           showsVerticalScrollIndicator={false}
         >
+          <EstadoFavoritos {...favoritos} />
+          {visualizacaoFavoritos ? <>
+            {favoritos.status === "pronto" && favoritos.linhas.length === 0 &&
+              <View style={{ alignItems: "center", paddingHorizontal: 24, paddingVertical: 28, gap: 8 }}>
+                <Star size={28} color={cores.iconePrimario} />
+                <Text style={{ color: cores.textoPrimario, fontSize: 14, fontWeight: "600" }}>Suas linhas favoritas ficam aqui</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 12, textAlign: "center" }}>Toque na estrela de uma linha em Linhas e Horários para encontrá-la facilmente.</Text>
+              </View>}
+            {favoritasConfiguradas.filter((linha) => linha.ativa).length > 10 && <Text
+              accessibilityLiveRegion="polite" style={{ marginHorizontal: 16, marginBottom: 10, fontSize: 12, color: cores.textoPrimario }}>
+              Escolha até 10 linhas para mostrar simultaneamente. {favoritasVisiveisIds.size}/10 visíveis.
+            </Text>}
+            {favoritos.linhas.map((favorita) => {
+              const identidade = identidadeModalMapa(favorita.modal);
+              const Icon = identidade.Icon;
+              const selecionada = todasLinhasSelecionadas.find((linha) => linha.linhaId === favorita.linhaId);
+              const config = favoritasConfiguradas.find((linha) => linha.linhaId === favorita.linhaId);
+              const visivel = favoritasVisiveisIds.has(favorita.linhaId);
+              return <View key={favorita.linhaId} style={{ marginHorizontal: 16, marginBottom: 8,
+                padding: 10, borderRadius: 16, borderWidth: 1, borderColor: cores.bordaSuave,
+                backgroundColor: cores.fundoCard, flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center",
+                  backgroundColor: misturar(identidade.cor, cores.fundoCard, 0.12) }}>
+                  <Icon size={20} color={temaAtual === "escuro" ? identidade.cor : identidade.texto} />
+                </View>
+                <Pressable onPress={() => setLinhaConfigId(favorita.linhaId)} accessibilityRole="button"
+                  accessibilityLabel={`Configurar ${favorita.nome}`} style={{ flex: 1, minWidth: 0, minHeight: 44, justifyContent: "center" }}>
+                  <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: "700", color: cores.textoPrimario }}>{favorita.codigo || favorita.nome}</Text>
+                  <Text numberOfLines={2} style={{ fontSize: 12, color: cores.textoSecundario }}>{favorita.nome}</Text>
+                  <Text style={{ marginTop: 3, fontSize: 11, color: cores.textoSecundario }}>
+                    {visivel ? "Visível" : !config?.ativa ? "Inativa nas configurações" : "Oculta nesta visualização"} · {favorita.modal === "onibus" ? "Ônibus" : favorita.modal === "brt" ? "BRT" : favorita.modal === "trem" ? "Trem" : "Metrô"}
+                    {!selecionada ? " · Temporária" : " · Configuração salva"}
+                  </Text>
+                  {!selecionada && <Pressable onPress={(event) => { event.stopPropagation(); aoAdicionarFavorita?.(favorita.linhaId); }}
+                    accessibilityRole="button" accessibilityLabel={`Adicionar ${favorita.nome} à lista normal`}
+                    style={{ minHeight: 44, justifyContent: "center" }}>
+                    <Text style={{ color: cores.textoPrimario, fontSize: 11 }}>+ Adicionar à lista normal</Text>
+                  </Pressable>}
+                </Pressable>
+                <Pressable onPress={() => aoEscolherVisibilidadeFavorita?.(favorita.linhaId)} disabled={!config?.ativa}
+                  accessibilityRole="button" accessibilityLabel={`${visivel ? "Ocultar" : "Mostrar"} ${favorita.nome} nesta visualização`}
+                  accessibilityState={{ selected: visivel, disabled: !config?.ativa }}
+                  style={{ width: 44, height: 44, justifyContent: "center", alignItems: "center", opacity: config?.ativa ? 1 : 0.4 }}>
+                  {visivel ? <Eye size={19} color={cores.textoPrimario} /> : <EyeOff size={19} color={cores.textoSecundario} />}
+                </Pressable>
+                <BotaoFavorito favorita nome={favorita.nome} disabled={favoritos.status !== "pronto"}
+                  onPress={() => favoritos.remover(favorita.linhaId)} />
+              </View>;
+            })}
+          </> : <>
           {linhasSelecionadas.length === 0 ? (
             <View style={{ alignItems: "center", paddingVertical: 40 }}>
               <Text
@@ -879,6 +880,10 @@ function LinhasContainer({
                 key={linha.linhaId}
                 modoRemocao={modoRemocao && aberto}
                 linha={linha}
+                favorita={favoritos.linhas.some((item) => item.linhaId === linha.linhaId)}
+                favoritosProntos={favoritos.status === "pronto"}
+                aoToggleFavorita={() => favoritos.alternar({ linhaId: linha.linhaId, codigo: linha.linhaCodigo,
+                  nome: linha.subtitulo || linha.nomeExibicao, modal: linha.modal })}
                 isLast={index === linhasSelecionadas.length - 1}
                 aoRemover={() => aoRemoverLinha(linha.linhaId)}
                 aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
@@ -886,6 +891,7 @@ function LinhasContainer({
               />
             ))
           )}
+          </>}
         </ScrollView>
       </Animated.View>
 
@@ -1056,11 +1062,15 @@ function LinhasContainer({
                   </View>
                 </View>}
               </View>
-              <Pressable onPress={() => { setLinhaConfigId(null); aoRemoverLinha(linhaConfig.linhaId); }}
+              <Pressable onPress={() => {
+                setLinhaConfigId(null);
+                if (visualizacaoFavoritos) favoritos.remover(linhaConfig.linhaId);
+                else aoRemoverLinha(linhaConfig.linhaId);
+              }}
                 style={{ marginTop: 10, minHeight: 46, borderRadius: 12, flexDirection: "row", gap: 8,
                   alignItems: "center", justifyContent: "center", backgroundColor: "rgba(239,68,68,.10)" }}>
                 <Trash2 color={cores.perigo} size={17} />
-                <Text style={{ fontSize: 12, fontWeight: "700", color: cores.perigo }}>Remover linha</Text>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: cores.perigo }}>{visualizacaoFavoritos ? "Desfavoritar linha" : "Remover linha"}</Text>
               </Pressable>
             </ScrollView>
           )}

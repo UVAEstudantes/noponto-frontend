@@ -36,8 +36,7 @@ export function useRadarParada({ linhas, modal, itinerarios, realtime, local, en
   const automatica = escolherParadaAutomatica(candidatos, automaticoId);
   useEffect(() => { setAutomaticoId(automatica?.parada.paradaId ?? null); }, [automatica?.parada.paradaId]);
   const escolhida = paradaEmDetalhes ? resolverParadaMonitorada(candidatos, null, paradaEmDetalhes)
-    : manual ? (manual.modal === modal
-      ? resolverParadaMonitorada(candidatos, null, manual.escolha.parada.paradaId) : null) : automatica;
+    : manual ? resolverParadaMonitorada(candidatos, null, manual.escolha.parada.paradaId) : automatica;
   const foraContexto = Boolean(manual && !escolhida);
   const parada = escolhida ?? (manual?.escolha ?? null);
   const chave = escolhida ? JSON.stringify([modal, escolhida.parada.paradaId,
@@ -137,7 +136,7 @@ export function useRadarParada({ linhas, modal, itinerarios, realtime, local, en
   const atualizar = useCallback(() => atualizarRef.current(), []);
   const estado = foraContexto ? "Parada manual fora do contexto ou distante. Retorne à seleção automática."
     : !local ? "Autorize a localização para encontrar uma parada próxima."
-    : !linhas.some((item) => item.ativa && item.modal === modal) ? "Ative uma linha para acompanhar próximos veículos."
+    : !linhas.some((item) => item.ativa && (modal === "todos" || item.modal === modal)) ? "Ative uma linha para acompanhar próximos veículos."
     : !Object.values(itinerarios).some((item) => item?.padroesV2?.length) ? "Carregando paradas…"
     : !escolhida ? "Nenhuma parada elegível a até 1 km."
     : erro?.chave === chave ? "Dados temporariamente indisponíveis."

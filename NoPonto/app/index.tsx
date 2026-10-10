@@ -1,3 +1,6 @@
+import { useFavoritos } from "@/src/hooks/useFavoritos";
+import { configurarFavoritas, linhasEfetivas, favoritasVisiveis, ehFerroviaria,
+  LIMITE_FAVORITAS_VISIVEIS, type ViewModeMapa, type SearchCategoryMapa } from "@/src/services/linhasEfetivas";
 import LinhasContainer, {
   PROXIMO_SENTIDO,
 } from "@/src/components/mapaComponents/linhasContainer";
@@ -21,7 +24,7 @@ import {
 import { useTema } from "@/src/hooks/useTema";
 import { useRailRealtime } from "@/src/hooks/useRailRealtime";
 import type { RailVehicleForMap } from "@/src/services/railRealtime";
-import { buscarOpcoesPorNome, buscarSugestoesBusca } from "@/src/services/mobilidadeRio";
+import { buscarModais, buscarOpcoesPorNome, buscarSugestoesBusca } from "@/src/services/mobilidadeRio";
 import {
   buscarEventosParada,
   filtrarEventosPorContexto,
@@ -92,6 +95,24 @@ const Home = () => {
   const atualizarPosicaoControlesRadar = useCallback((bottom: number | null) => {
     setRadarControlsBottom((anterior) => anterior === bottom ? anterior : bottom);
   }, []);
+  const [normalModal, setNormalModal] =
+    useState<CategoriaTransporteV2>("onibus");
+  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
+    LinhaSelecionadaInfo[]
+  >([]);
+  const [linhasHidratadas, setLinhasHidratadas] = useState(false);
+  const favoritos = useFavoritos();
+  const [viewMode, setViewMode] = useState<ViewModeMapa>("normal");
+  const [searchCategory, setSearchCategory] = useState<SearchCategoryMapa>("onibus");
+  const [temporarias, setTemporarias] = useState<Record<string, LinhaSelecionadaInfo>>({});
+  const [escolhaFavoritas, setEscolhaFavoritas] = useState<string[] | null>(null);
+  const favoritasConfiguradas = useMemo(() => configurarFavoritas(favoritos.linhas, linhasSelecionadas, temporarias),
+    [favoritos.linhas, linhasSelecionadas, temporarias]);
+  const linhasSelecionadasFiltradas = useMemo(() => linhasEfetivas(viewMode, normalModal,
+    linhasSelecionadas, favoritasConfiguradas, escolhaFavoritas),
+    [viewMode, normalModal, linhasSelecionadas, favoritasConfiguradas, escolhaFavoritas]);
+  const rodoviariasVisiveis = useMemo(() => linhasSelecionadasFiltradas.filter((linha) => linha.ativa && !ehFerroviaria(linha)),
+    [linhasSelecionadasFiltradas]);
   const {
     itinerariosPorId,
     estruturasRealtimePorVersao,
@@ -101,17 +122,17 @@ const Home = () => {
     removerItinerario,
     getVeiculosPorCodigo,
     veiculos,
-  } = useMobilidadeRio({ enabled: telaAtiva });
+  } = useMobilidadeRio({ enabled: telaAtiva, linhasRealtime: rodoviariasVisiveis });
   const veiculosRef = useRef(veiculos);
   const railVehiclesRef = useRef<RailVehicleForMap[]>([]);
   veiculosRef.current = veiculos;
 
   // ─── Modal ativo do mapa ──────────────────────────────────────────────────
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
-  const [modalSelecionadoId, setModalSelecionadoId] =
-    useState<CategoriaTransporteV2>("onibus");
+
 
   const modalAlteradoPeloUsuario = useRef(false);
+  const categoriaAlteradaPeloUsuario = useRef(false);
   const [modalHidratado, setModalHidratado] = useState(false);
   useEffect(() => {
     let ativo = true;
@@ -123,15 +144,29 @@ const Home = () => {
     carregarModalSelecionado().then((salvo) => {
       if (!ativo) return;
       if (!modalAlteradoPeloUsuario.current && (salvo === "onibus" || salvo === "brt" || salvo === "trem" || salvo === "metro"))
-        setModalSelecionadoId(salvo);
+        setNormalModal(salvo);
+      if (!categoriaAlteradaPeloUsuario.current && (salvo === "onibus" || salvo === "brt" || salvo === "trem" || salvo === "metro"))
+        setSearchCategory(salvo);
       setModalHidratado(true);
     });
     return () => { ativo = false; };
   }, []);
+  useEffect(() => {
+    let ativo = true;
+    buscarModais().then((catalogo) => {
+      if (ativo && catalogo.some((modal) => categoriaLinhaV2({ modal: modal.nome, tipoRota: "" }) === "metro"))
+        setModais((prev) => prev.some((modal) => modal.id === "metro") ? prev : [...prev, { id: "metro", nome: "Metrô" }]);
+    }).catch((erro) => console.warn("Catálogo de modais temporariamente indisponível", erro));
+    return () => { ativo = false; };
+  }, []);
+  useEffect(() => {
+    if (normalModal === "metro" || favoritasConfiguradas.some((linha) => linha.modal === "metro"))
+      setModais((prev) => prev.some((modal) => modal.id === "metro") ? prev : [...prev, { id: "metro", nome: "Metrô" }]);
+  }, [normalModal, favoritasConfiguradas]);
 
   useEffect(() => {
-    if (modalHidratado) void salvarModalSelecionado(modalSelecionadoId);
-  }, [modalHidratado, modalSelecionadoId]);
+    if (modalHidratado) void salvarModalSelecionado(normalModal);
+  }, [modalHidratado, normalModal]);
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
@@ -226,16 +261,15 @@ const Home = () => {
 
   useEffect(() => {
     let active = true;
-    setBusca("");
     setOpcoesBusca([]);
-    buscarSugestoesBusca(modalSelecionadoId).then((values) => {
+    buscarSugestoesBusca(searchCategory).then((values) => {
       if (active) setSugestoesBusca(values);
     });
     return () => { active = false; };
-  }, [modalSelecionadoId]);
+  }, [searchCategory]);
   useEffect(() => { carregarHistoricoBusca().then(setHistoricoBusca); }, [buscaAberta]);
   const recentesItens = useMemo(() => filtrarHistoricoBusca(historicoBusca,
-    modalSelecionadoId, busca, 3), [historicoBusca, modalSelecionadoId, busca]);
+    searchCategory, busca, 3), [historicoBusca, searchCategory, busca]);
   const recentesBusca = useMemo(() => recentesItens.map(historicoParaOpcao), [recentesItens]);
   const resultadosSemRecentes = useMemo(() => removerResultadosJaRecentes(opcoesBusca,
     recentesItens), [opcoesBusca, recentesItens]);
@@ -255,7 +289,7 @@ const Home = () => {
           busca,
           1,
           20,
-          modalSelecionadoId ?? undefined,
+          searchCategory ?? undefined,
           controller.signal,
         );
         if (active) setOpcoesBusca(opcoes);
@@ -265,15 +299,11 @@ const Home = () => {
       } finally { if (active) setCarregandoBusca(false); }
     }, 600);
     return () => { active = false; controller.abort(); clearTimeout(id); };
-  }, [busca, modalSelecionadoId]);
+  }, [busca, searchCategory]);
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
-  const [linhasSelecionadas, setLinhasSelecionadas] = useState<
-    LinhaSelecionadaInfo[]
-  >([]);
-  const [linhasHidratadas, setLinhasHidratadas] = useState(false);
-  const radar = useRadarParada({ linhas: linhasSelecionadas, modal: modalSelecionadoId,
+  const radar = useRadarParada({ linhas: linhasSelecionadasFiltradas, modal: viewMode === "favoritos" ? "todos" : normalModal,
     itinerarios: itinerariosPorId, realtime: estruturasRealtimePorVersao,
     local: location?.coords ?? null,
     paradaEmDetalhes: paradaDoRadar ? paradaSelecionada?.paradaId : null,
@@ -299,6 +329,7 @@ const Home = () => {
       const sentidos = [...new Set(itinerario.padroesV2?.map((p) => p.sentidoId) ?? [])];
       const sentidoId = linha.modoSentido === "ida" ? sentidos[0]
         : linha.modoSentido === "volta" ? sentidos[1] : undefined;
+      if (linha.modoSentido !== "ambos" && !sentidoId) return [] as Parada[];
       const padroes = sentidoId
         ? itinerario.padroesV2?.filter((p) => p.sentidoId === sentidoId) ?? []
         : itinerario.padroesV2 ?? [];
@@ -308,8 +339,8 @@ const Home = () => {
   );
 
   const contextoEventosParada = useMemo(() => ({
-    linhas: linhasSelecionadas
-      .filter((linha) => linha.ativa && linha.modal === modalSelecionadoId)
+    linhas: linhasSelecionadasFiltradas
+      .filter((linha) => linha.ativa)
       .map((linha) => {
         const estrutura = itinerariosPorId[linha.linhaId];
         const sentidos = [...new Set(
@@ -326,14 +357,15 @@ const Home = () => {
           .map((item) => item.padraoVersaoId);
         return {
           linhaId: linha.linhaId,
-          padraoVersaoIds: [...new Set([...padroesEstruturais, ...padroesRealtime])],
+          padraoVersaoIds: linha.modoSentido !== "ambos" && !sentidoId ? []
+            : [...new Set([...padroesEstruturais, ...padroesRealtime])],
         };
-      }),
+      }).filter((linha) => linha.padraoVersaoIds.length > 0),
   }), [
-    linhasSelecionadas,
+    linhasSelecionadasFiltradas,
     itinerariosPorId,
     estruturasRealtimePorVersao,
-    modalSelecionadoId,
+    normalModal,
   ]);
 
   useEffect(() => {
@@ -341,10 +373,10 @@ const Home = () => {
   }, [linhasHidratadas, linhasSelecionadas]);
 
   useEffect(() => {
-    linhasSelecionadas.forEach((l) => {
+    linhasSelecionadasFiltradas.filter((l) => l.ativa).forEach((l) => {
       garantirItinerario(l.linhaId, l.linhaCodigo, l.modal, l.mostrarParadas);
     });
-  }, [linhasSelecionadas, garantirItinerario]);
+  }, [linhasSelecionadasFiltradas, garantirItinerario]);
 
   const selecionarOpcao = useCallback(
     async (opcao: OpcaoBusca) => {
@@ -417,64 +449,76 @@ const Home = () => {
   const removerLinha = useCallback(
     (linhaId: string) => {
       const linha = linhasSelecionadas.find((l) => l.linhaId === linhaId);
-      if (linha) removerItinerario(linhaId, linha.linhaCodigo);
+      if (linha && !favoritos.linhas.some((item) => item.linhaId === linhaId)) removerItinerario(linhaId, linha.linhaCodigo);
       setLinhasSelecionadas((prev) =>
         prev.filter((l) => l.linhaId !== linhaId),
       );
     },
-    [linhasSelecionadas, removerItinerario],
+    [linhasSelecionadas, removerItinerario, favoritos.linhas],
   );
 
-  const toggleAtiva = useCallback((linhaId: string) => {
-    setLinhasSelecionadas((prev) =>
-      prev.map((l) => (l.linhaId === linhaId ? { ...l, ativa: !l.ativa } : l)),
-    );
-  }, []);
-
-  const toggleSentido = useCallback((linhaId: string) => {
-    setLinhasSelecionadas((prev) =>
-      prev.map((l) =>
-        l.linhaId === linhaId
-          ? { ...l, modoSentido: PROXIMO_SENTIDO[l.modoSentido] }
-          : l,
-      ),
-    );
-  }, []);
-  const selecionarSentido = useCallback((linhaId: string, modoSentido: ModoSentido) => {
-    setLinhasSelecionadas((prev) => prev.map((linha) =>
-      linha.linhaId === linhaId ? { ...linha, modoSentido } : linha));
-  }, []);
-
-  const toggleParadas = useCallback((linhaId: string) => {
-    setLinhasSelecionadas((prev) =>
-      prev.map((l) =>
-        l.linhaId === linhaId ? { ...l, mostrarParadas: !l.mostrarParadas } : l,
-      ),
-    );
-  }, []);
-
-  const atualizarCorLinha = useCallback((linhaId: string, cor: string) => {
-    setLinhasSelecionadas((prev) =>
-      prev.map((l) => (l.linhaId === linhaId ? { ...l, cor } : l)),
-    );
-  }, []);
+  const atualizarConfiguracao = useCallback((id: string, alterar: (linha: LinhaSelecionadaInfo) => LinhaSelecionadaInfo) => {
+    if (linhasSelecionadas.some((linha) => linha.linhaId === id)) {
+      setLinhasSelecionadas((prev) => prev.map((linha) => linha.linhaId === id ? alterar(linha) : linha));
+    } else {
+      const base = favoritasConfiguradas.find((linha) => linha.linhaId === id);
+      if (base) setTemporarias((prev) => ({ ...prev, [id]: alterar(prev[id] ?? base) }));
+    }
+  }, [linhasSelecionadas, favoritasConfiguradas]);
+  const toggleAtiva = useCallback((id: string) => atualizarConfiguracao(id, (linha) => ({ ...linha, ativa: !linha.ativa })), [atualizarConfiguracao]);
+  const toggleSentido = useCallback((id: string) => atualizarConfiguracao(id, (linha) => ({ ...linha, modoSentido: PROXIMO_SENTIDO[linha.modoSentido] })), [atualizarConfiguracao]);
+  const selecionarSentido = useCallback((id: string, modoSentido: ModoSentido) => atualizarConfiguracao(id, (linha) => ({ ...linha, modoSentido })), [atualizarConfiguracao]);
+  const toggleParadas = useCallback((id: string) => atualizarConfiguracao(id, (linha) => ({ ...linha, mostrarParadas: !linha.mostrarParadas })), [atualizarConfiguracao]);
+  const atualizarCorLinha = useCallback((id: string, cor: string) => atualizarConfiguracao(id, (linha) => ({ ...linha, cor })), [atualizarConfiguracao]);
+  const favoritasNoMapa = useMemo(() => favoritasVisiveis(favoritasConfiguradas, escolhaFavoritas),
+    [favoritasConfiguradas, escolhaFavoritas]);
+  const escolherVisibilidadeFavorita = useCallback((id: string) => {
+    const ids = favoritasNoMapa.map((linha) => linha.linhaId);
+    if (ids.includes(id)) setEscolhaFavoritas(ids.filter((item) => item !== id));
+    else if (ids.length < LIMITE_FAVORITAS_VISIVEIS) setEscolhaFavoritas([...ids, id]);
+    else Alert.alert("Limite de favoritas visíveis", "Oculte uma linha para mostrar outra. Seus favoritos serão preservados.");
+  }, [favoritasNoMapa]);
+  const adicionarFavoritaSelecionadas = useCallback((id: string) => {
+    const linha = favoritasConfiguradas.find((item) => item.linhaId === id);
+    if (!linha || linhasSelecionadas.some((item) => item.linhaId === id)) return;
+    if (linhasSelecionadas.length >= MAX_LINHAS) {
+      Alert.alert("Limite de linhas", "Remova uma linha da lista normal antes de adicionar outra."); return;
+    }
+    setLinhasSelecionadas((prev) => prev.some((item) => item.linhaId === id) || prev.length >= MAX_LINHAS
+      ? prev : [...prev, { ...linha }]);
+  }, [favoritasConfiguradas, linhasSelecionadas]);
   const toggleContainer = useCallback(() => {
     adicionarLinhaPendenteRef.current = false;
     setContainerAberto((p) => !p);
   }, []);
   const selecionarModalPainel = useCallback((id: string) => {
-    if (id === "onibus" || id === "brt" || id === "trem") {
-      modalAlteradoPeloUsuario.current = true;
-      setModalSelecionadoId(id);
+    if (id === "favoritos") {
+      if (viewMode === "favoritos") return;
+      categoriaAlteradaPeloUsuario.current = true;
+      setViewMode("favoritos"); setSearchCategory("todos"); return;
     }
-  }, []);
+    if (id === "onibus" || id === "brt" || id === "trem" || id === "metro") {
+      modalAlteradoPeloUsuario.current = true;
+      setViewMode("normal"); setNormalModal(id);
+      // Sair de Favoritos restaura o mapa sem reescrever a categoria escolhida na busca.
+      if (viewMode === "normal") { categoriaAlteradaPeloUsuario.current = true; setSearchCategory(id); }
+    }
+  }, [viewMode]);
+  const selecionarCategoriaBusca = useCallback((id: string) => {
+    if (id !== "todos" && id !== "onibus" && id !== "brt" && id !== "trem" && id !== "metro") return;
+    categoriaAlteradaPeloUsuario.current = true;
+    setSearchCategory(id);
+    if (viewMode === "normal" && id !== "todos") {
+      modalAlteradoPeloUsuario.current = true; setNormalModal(id);
+    }
+  }, [viewMode]);
 
   const adicionarLinha = useCallback(() => {
     if (linhasSelecionadas.length >= MAX_LINHAS) {
       Alert.alert("Limite de linhas", `Você pode selecionar até ${MAX_LINHAS} linhas. Remova uma linha para adicionar outra.`);
       return;
     }
-    // Lista e busca usam modalSelecionadoId: a categoria já está sincronizada.
+    // A busca conserva sua categoria independente da visualização.
     adicionarLinhaPendenteRef.current = true;
     setBuscaAberta(false);
     setContainerAberto(false);
@@ -496,7 +540,7 @@ const Home = () => {
     const linhasAtivas = new Set(
       contextoEventosParada.linhas.map((linha) => linha.linhaId),
     );
-    return linhasSelecionadas
+    return linhasSelecionadasFiltradas
       .filter((linha) => linhasAtivas.has(linha.linhaId))
       .map((l) => {
         const paradas = obterParadasLinha(l);
@@ -514,7 +558,7 @@ const Home = () => {
       .filter(Boolean) as LinhaParadaInfo[];
   }, [
     paradaSelecionada,
-    linhasSelecionadas,
+    linhasSelecionadasFiltradas,
     obterParadasLinha,
     contextoEventosParada,
   ]);
@@ -655,30 +699,27 @@ const Home = () => {
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
 
-  const modalSelecionadoNome = modalSelecionadoId;
+  const modalSelecionadoNome = normalModal;
 
-  const linhasSelecionadasFiltradas = useMemo(
-    () =>
-      linhasSelecionadas.filter(
-        (l) => !modalSelecionadoId || modalSelecionadoNome === l.modal,
-      ),
-    [linhasSelecionadas, modalSelecionadoId, modalSelecionadoNome],
-  );
-
+  const ferroviariasVisiveis = useMemo(() => linhasSelecionadasFiltradas.filter((linha) => linha.ativa && ehFerroviaria(linha)),
+    [linhasSelecionadasFiltradas]);
+  const railLinhaIds = useMemo(() => ferroviariasVisiveis.map((linha) => linha.linhaId), [ferroviariasVisiveis]);
   const railLinhaId = useMemo(() => {
-    const ativas = linhasSelecionadasFiltradas.filter((linha) => linha.ativa);
+    const ativas = ferroviariasVisiveis;
     return ativas.length === 1 ? ativas[0].linhaId : undefined;
-  }, [linhasSelecionadasFiltradas]);
+  }, [ferroviariasVisiveis]);
   const railDemoPadroes = useMemo(
     () =>
-      linhasSelecionadasFiltradas.flatMap((linha) => {
+      ferroviariasVisiveis.flatMap((linha) => {
         const itinerario = itinerariosPorId[linha.linhaId];
         return (itinerario?.padroesV2 ?? []).map((p) => p.padraoVersaoId);
       }),
-    [linhasSelecionadasFiltradas, itinerariosPorId],
+    [ferroviariasVisiveis, itinerariosPorId],
   );
   const railVehicles = useRailRealtime({
-    enabled: modalSelecionadoNome === "trem",
+    enabled: telaAtiva && ferroviariasVisiveis.length > 0,
+    linhaIds: railLinhaIds,
+    permitirDemo: viewMode === "normal",
     linhaId: railLinhaId,
     demoPadraoVersaoIds: railDemoPadroes,
   });
@@ -695,27 +736,33 @@ const Home = () => {
           const sentidoIds = [...new Set(itinerario?.padroesV2?.map((p) => p.sentidoId) ?? [])];
           const sentidoIdFiltro = l.modoSentido === "ida" ? sentidoIds[0]
             : l.modoSentido === "volta" ? sentidoIds[1] : undefined;
-          const padroesVisiveis = sentidoIdFiltro
+          const sentidoDisponivel = l.modoSentido === "ambos" || Boolean(sentidoIdFiltro);
+          const padroesVisiveis = !sentidoDisponivel ? [] : sentidoIdFiltro
             ? itinerario?.padroesV2?.filter((p) => p.sentidoId === sentidoIdFiltro) ?? []
             : itinerario?.padroesV2 ?? [];
           const padroesVersoesVisiveis = new Set(
             padroesVisiveis.map((padrao) => padrao.padraoVersaoId),
           );
 
+          Object.values(estruturasRealtimePorVersao)
+            .filter((estrutura) => sentidoDisponivel && estrutura.linhaId === l.linhaId
+              && (!sentidoIdFiltro || estrutura.sentidoId === sentidoIdFiltro))
+            .forEach((estrutura) => padroesVersoesVisiveis.add(estrutura.padraoVersaoId));
           const veiculos = getVeiculosPorCodigo(
             l.linhaCodigo,
             padroesVersoesVisiveis,
-          );
+          ).filter((v) => v.linhaId === l.linhaId && (!sentidoIdFiltro || v.sentidoId === sentidoIdFiltro));
           const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
 
-          const geometriasVisiveis = padroesVisiveis.map((padrao) => ({
+          const geometriasVisiveis = padroesVisiveis.filter((padrao, index, todos) =>
+            todos.findIndex((item) => item.padraoVersaoId === padrao.padraoVersaoId) === index).map((padrao) => ({
             padraoVersaoId: padrao.padraoVersaoId,
             sentidoId: padrao.sentidoId,
             sentidoNome: padrao.sentidoNome,
             coordenadas: segmentos[padrao.segmentoIndice],
           }));
           Object.values(estruturasRealtimePorVersao)
-            .filter((estrutura) => estrutura.linhaId === l.linhaId)
+            .filter((estrutura) => sentidoDisponivel && estrutura.linhaId === l.linhaId)
             .filter((estrutura) => !sentidoIdFiltro || estrutura.sentidoId === sentidoIdFiltro)
             .forEach((estrutura) => {
               if (geometriasVisiveis.some((item) =>
@@ -798,8 +845,7 @@ const Home = () => {
   );
 
   const railVehiclesVisiveis = useMemo(() => {
-    const filtros = linhasSelecionadasFiltradas
-      .filter((linha) => linha.ativa)
+    const filtros = ferroviariasVisiveis
       .map((linha) => {
         const padroes = itinerariosPorId[linha.linhaId]?.padroesV2 ?? [];
         const sentidos = [...new Set(padroes.map((padrao) => padrao.sentidoId))];
@@ -809,7 +855,7 @@ const Home = () => {
           linhaId: linha.linhaId,
           sentidoId,
           versoes: new Set(
-            padroes
+            (linha.modoSentido !== "ambos" && !sentidoId ? [] : padroes)
               .filter((padrao) => !sentidoId || padrao.sentidoId === sentidoId)
               .map((padrao) => padrao.padraoVersaoId),
           ),
@@ -817,22 +863,22 @@ const Home = () => {
       });
     return filtrarVeiculosFerroviariosVisiveis(
       railVehicles,
-      filtros.map((filtro) => ({
+      filtros.filter((filtro) => filtro.versoes.size > 0).map((filtro) => ({
         linhaId: filtro.linhaId,
         sentidoId: filtro.sentidoId,
         padraoVersaoIds: filtro.versoes,
       })),
     );
-  }, [railVehicles, linhasSelecionadasFiltradas, itinerariosPorId]);
+  }, [railVehicles, ferroviariasVisiveis, itinerariosPorId]);
 
-  const chegadasRadar = chegadasDoRadar(radar.eventos, radar.parada, linhasSelecionadas,
+  const chegadasRadar = chegadasDoRadar(radar.eventos, radar.parada, linhasSelecionadasFiltradas,
     radar.recebidoEm, radar.agora, veiculos, railVehiclesVisiveis).map((item) => ({ ...item,
       plataforma: item.plataforma ?? (radar.parada
         ? radar.metadados[radar.parada.parada.paradaId]?.plataforma : null),
     }));
   const idsLinhasRadar = new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []);
-  const linhasRadar: LinhaParadaInfo[] = linhasSelecionadas.filter((item) => item.ativa
-    && item.modal === modalSelecionadoId && idsLinhasRadar.has(item.linhaId)).map((item) => ({
+  const linhasRadar: LinhaParadaInfo[] = linhasSelecionadasFiltradas.filter((item) => item.ativa
+     && idsLinhasRadar.has(item.linhaId)).map((item) => ({
       linhaId: item.linhaId, codigo: item.linhaCodigo, nomeExibicao: item.nomeExibicao,
       cor: item.cor, ativa: item.ativa,
     }));
@@ -846,7 +892,7 @@ const Home = () => {
     }
   };
 
-  const linhasPendentes = linhasSelecionadas.filter((linha) => linha.ativa && linha.modal === modalSelecionadoId);
+  const linhasPendentes = linhasSelecionadasFiltradas.filter((linha) => linha.ativa);
   const carregandoEstruturas = !linhasHidratadas || !modalHidratado || linhasPendentes.some((linha) =>
     !estadosItinerarios[linha.linhaId] || estadosItinerarios[linha.linhaId].estado === "carregando");
   const falhaEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "erro");
@@ -875,8 +921,8 @@ const Home = () => {
 
       <BuscaMapa value={busca} onChangeText={setBusca} onClose={fecharBusca}
         active={buscaAberta} focusRequest={pedidoFocoBusca} onFocus={() => setBuscaAberta(true)}
-        modais={modais} modalSelecionadoId={modalSelecionadoId}
-        onSelecionarModal={selecionarModalPainel} onMenuAbertoChange={setMenuModalBuscaAberto}
+        modais={[{ id: "todos", nome: "Todos" }, ...modais]} modalSelecionadoId={searchCategory}
+        onSelecionarModal={selecionarCategoriaBusca} onMenuAbertoChange={setMenuModalBuscaAberto}
         placeholderSuggestions={sugestoesBusca} />
       {buscaAberta && (
         <View pointerEvents={menuModalBuscaAberto ? "none" : "auto"}
@@ -893,6 +939,7 @@ const Home = () => {
         </View>
       )}
       {!buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada &&
+        !(viewMode === "favoritos" && favoritasConfiguradas.filter((linha) => linha.ativa).length > LIMITE_FAVORITAS_VISIVEIS) &&
         (carregandoEstruturas || falhaEstruturas || semEstruturas) && (
         <View style={{ position: "absolute", top: insets.top + 64, left: 12, right: 12,
           zIndex: 19, padding: 8, borderRadius: 12, backgroundColor: cores.fundoPainel }}>
@@ -907,16 +954,32 @@ const Home = () => {
           </Pressable>}
         </View>
       )}
+      {viewMode === "favoritos" && favoritasConfiguradas.filter((linha) => linha.ativa).length > LIMITE_FAVORITAS_VISIVEIS
+        && !containerAberto && !buscaAberta && !paradaSelecionada && <Pressable
+          accessibilityRole="button" accessibilityLabel="Escolher favoritas visíveis"
+          onPress={() => setContainerAberto(true)}
+          style={{ position: "absolute", top: insets.top + 64, left: 12, right: 12, zIndex: 19,
+            minHeight: 44, padding: 10, borderRadius: 12, backgroundColor: cores.fundoPainel }}>
+          <Text style={{ fontSize: 12, color: cores.textoPrimario }}>
+            Escolha até 10 favoritas para o mapa · {favoritasNoMapa.length}/10 visíveis
+          </Text>
+        </Pressable>}
       <MapControls
         radarBottom={radarControlsBottom}
         lateralidade={preferenciaLateralidade}
-        modalAtivo={modalSelecionadoNome}
+        modalAtivo={viewMode === "favoritos" ? "favoritos" : modalSelecionadoNome}
         location={location}
         mapRef={mapRef}
         onOpenLines={() => { adicionarLinhaPendenteRef.current = false; setContainerAberto(true); }}
         disabled={Boolean(paradaSelecionada) || containerAberto || buscaAberta}
       />
       <LinhasContainer
+        visualizacaoFavoritos={viewMode === "favoritos"}
+        favoritasConfiguradas={favoritasConfiguradas}
+        favoritasVisiveisIds={new Set(favoritasNoMapa.map((linha) => linha.linhaId))}
+        aoEscolherVisibilidadeFavorita={escolherVisibilidadeFavorita}
+        aoAdicionarFavorita={adicionarFavoritaSelecionadas}
+        todasLinhasSelecionadas={linhasSelecionadas}
         linhasSelecionadas={linhasSelecionadasFiltradas}
         aoRemoverLinha={removerLinha}
         aoToggleAtiva={toggleAtiva}
@@ -927,17 +990,17 @@ const Home = () => {
         sentidosPorLinha={sentidosPorLinha}
         aberto={containerAberto}
         aoToggleAberto={toggleContainer}
-        modalAtivo={modalSelecionadoNome}
+        modalAtivo={viewMode === "favoritos" ? "favoritos" : modalSelecionadoNome}
         mostrarBotaoToggle={false}
         opcoesModal={modais}
-        modalSelecionadoId={modalSelecionadoId}
+        modalSelecionadoId={viewMode === "favoritos" ? "favoritos" : normalModal}
         aoSelecionarModal={selecionarModalPainel}
         aoAdicionarLinha={adicionarLinha}
         aoRecolher={aoRecolherLinhas}
         limiteLinhasAtingido={linhasSelecionadas.length >= MAX_LINHAS}
       />
 
-      <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadas} modal={modalSelecionadoId}
+      <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
         lateralidade={preferenciaLateralidade}
         visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada}
         localizavel={(evento) => localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis) != null}

@@ -23,7 +23,7 @@ export function paradasElegiveisRadar(linhas: readonly LinhaSelecionadaInfo[], m
   realtime: Record<string, ItinerarioPadraoVersaoV2> = {}, raio = RAIO_RADAR_METROS): ParadaRadar[] {
   if (!local) return [];
   const porId = new Map<string, ParadaRadar>();
-  for (const linha of linhas.filter((item) => item.ativa && item.modal === modal)) {
+  for (const linha of linhas.filter((item) => item.ativa && (modal === "todos" || item.modal === modal))) {
     const padroes = itinerarios[linha.linhaId]?.padroesV2 ?? [];
     const sentidos = [...new Set(padroes.map((item) => item.sentidoId))];
     const sentido = linha.modoSentido === "ida" ? sentidos[0]

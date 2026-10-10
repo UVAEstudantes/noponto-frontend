@@ -1,9 +1,8 @@
 import {
-  cancelarLinha,
+  atualizarInscricoesGps,
+  reconciliarInscricoesGps,
   conectarGpsHub,
-  obterDiagnosticoGpsHub,
   iniciarGpsHub,
-  inscreverLinha,
   removerGpsHubListener,
 } from "@/src/services/gpsHub";
 import { construirLinhasDisponiveis } from "@/src/services/mobilidadeRio";
@@ -42,7 +41,10 @@ export interface LinhaSelecionadaInfo {
   mostrarParadas: boolean;
 }
 
-export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {}) {
+export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
+  enabled?: boolean; linhasRealtime?: readonly Pick<LinhaSelecionadaInfo, "linhaId" | "linhaCodigo" | "modal">[];
+} = {}) {
+  const donoInscricoes = useRef(Symbol("mobilidade"));
   const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
   const [estruturasRealtimePorVersao, setEstruturasRealtimePorVersao] = useState<
     Record<string, ItinerarioPadraoVersaoV2>
@@ -108,13 +110,27 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
 
     return () => {
       removerGpsHubListener(handleRealtime);
+      void atualizarInscricoesGps(donoInscricoes.current, []);
     };
   }, [enabled, handleRealtime]);
+
+  const codigosRealtime = useMemo(() => {
+    const linhas = linhasRealtime ?? Object.entries(itinerariosPorId).flatMap(([id, itinerario]) => {
+      const pedido = pedidosRef.current.get(id);
+      return itinerario && pedido ? [{ linhaId: id, linhaCodigo: pedido.codigo, modal: pedido.modal }] : [];
+    });
+    return [...new Set(linhas.filter((linha) => linha.modal === "onibus" || linha.modal === "brt")
+      .map((linha) => linha.linhaCodigo))].sort().join("\n");
+  }, [linhasRealtime, itinerariosPorId]);
+  useEffect(() => {
+    void atualizarInscricoesGps(donoInscricoes.current, enabled && codigosRealtime ? codigosRealtime.split("\n") : []);
+  }, [enabled, codigosRealtime]);
 
   // Um veículo pode referenciar uma versão ainda não selecionada/carregada na UI.
   // O service deduplica a requisição pela chave oficial PadraoVersaoId.
   useEffect(() => {
-    const ids = [...new Set(veiculos.map((v) => v.padraoVersaoId))]
+    const idsVisiveis = linhasRealtime ? new Set(linhasRealtime.map((linha) => linha.linhaId)) : null;
+    const ids = [...new Set(veiculos.filter((v) => !idsVisiveis || (v.linhaId != null && idsVisiveis.has(v.linhaId))).map((v) => v.padraoVersaoId))]
       .filter((id): id is string => id !== null)
       .filter((id) => !estruturasRealtimePorVersao[id]);
     if (ids.length === 0) return;
@@ -134,14 +150,14 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
         });
       });
     return () => { active = false; };
-  }, [veiculos, estruturasRealtimePorVersao]);
+  }, [veiculos, estruturasRealtimePorVersao, linhasRealtime]);
 
   // ─── Itinerários ──────────────────────────────────────────────────────────
 
   /**
    * Carrega todos os padrões publicados da linha pela estrutura V2.
    * Cada geometria e lista de ocorrências é cacheada pelo PadraoVersaoId.
-   * Inscreve no hub SignalR para receber veículos em tempo real.
+   * Inscrições SignalR são controladas separadamente pelas linhas rodoviárias visíveis.
    */
   const garantirItinerario = useCallback(
     async (
@@ -237,9 +253,6 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
             return { ...prev, [linhaId]: itinerario };
           });
 
-          if (itinerario) {
-            inscreverLinha(linhaCodigo).catch(console.error);
-          }
 
           return itinerario;
         })
@@ -270,17 +283,10 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
 
   useEffect(() => {
     if (!enabled) return;
-    let ativo = true;
     const recuperar = () => {
       if (AppState.currentState !== "active") return;
       tentarNovamenteItinerarios();
-      if (obterDiagnosticoGpsHub().connectionState === "Connected") return;
-      void conectarGpsHub().then(() => {
-        if (!ativo || !montadoRef.current || AppState.currentState !== "active") return;
-        pedidosRef.current.forEach((pedido, id) => {
-          if (itinerariosRef.current[id]) void inscreverLinha(pedido.codigo);
-        });
-      });
+      void reconciliarInscricoesGps();
     };
     recuperar();
     const subscription = AppState.addEventListener("change", (estado) => {
@@ -288,7 +294,7 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
     });
     // Recuperação de falhas/offline; não é espera para a inicialização nem polling de ETA.
     const retry = setInterval(recuperar, 30000);
-    return () => { ativo = false; subscription.remove(); clearInterval(retry); };
+    return () => { subscription.remove(); clearInterval(retry); };
   }, [enabled, tentarNovamenteItinerarios]);
 
   /**
@@ -303,7 +309,7 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
       });
       delete itinerariosRef.current[linhaId];
       pedidosRef.current.delete(linhaId);
-      cancelarLinha(linhaCodigo).catch(console.error);
+      // As inscrições são reconciliadas pelo conjunto visível, independentemente do cache.
     },
     [],
   );

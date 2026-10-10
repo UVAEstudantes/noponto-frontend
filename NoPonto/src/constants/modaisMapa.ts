@@ -1,6 +1,8 @@
-import { Bus, BusFront, Train, TrainFrontTunnel } from "lucide-react-native";
+import { Bus, BusFront, Train, TrainFrontTunnel, Layers, Star } from "lucide-react-native";
 
 const IDENTIDADE_MODAL = {
+  todos: { Icon: Layers, cor: "#64748B", texto: "#475569" },
+  favoritos: { Icon: Star, cor: "#F59E0B", texto: "#A65D00" },
   onibus: { Icon: BusFront, cor: "#F59E0B", texto: "#A65D00" },
   brt: { Icon: Bus, cor: "#0EA5E9", texto: "#036A99" },
   trem: { Icon: Train, cor: "#A855F7", texto: "#7E22CE" },

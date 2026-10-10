@@ -1,3 +1,6 @@
+import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
+import EstadoFavoritos from "@/src/components/estadoFavoritos";
+import { useFavoritos } from "@/src/hooks/useFavoritos";
 import InputBusca from "@/src/components/inputBusca";
 import Chegada from "@/src/components/linhasComponents/chegada";
 import SelectTransporte from "@/src/components/linhasComponents/selectTransporte";
@@ -479,6 +482,7 @@ function PoisLista({ pois, aoClicarPoi, scrollDown }: PoisListaProps) {
 const Linhas = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
   const isFocused = useIsFocused();
+  const favoritos = useFavoritos();
   const { itinerariosPorId, estadosItinerarios, garantirItinerario, getVeiculosPorCodigo } =
     useMobilidadeRio({ enabled: isFocused });
   const [location, setLocation] = useState<LocationObject | null>(null);
@@ -1089,11 +1093,17 @@ const Linhas = () => {
                 {!linhaSelecionada && (opcoesBusca.length > 0 || carregandoBusca) && (
                   <SearchSections embedded recentes={[]} resultados={opcoesBusca}
                     carregando={carregandoBusca}
+                    favoritos={{ ids: new Set(favoritos.linhas.map((item) => item.linhaId)),
+                      disabled: favoritos.status !== "pronto", onToggle: ({ linha }) => favoritos.alternar({
+                        linhaId: linha.id, codigo: linha.codigo, nome: linha.nome, modalId: linha.modalId,
+                        modal: categoriaLinhaV2({ modal: linha.modal ?? "", tipoRota: linha.tipoRota ?? "" }),
+                      }) }}
                     onSelect={selecionarLinha}
                     maxHeight={260} />
                 )}
                 </View>
 
+                <EstadoFavoritos {...favoritos} />
                 {/* Uma escolha associa sentido e versão do padrão operacional V2. */}
                 {linhaSelecionada && (
                   <View style={{ marginTop: 16 }}>
