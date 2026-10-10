@@ -110,7 +110,8 @@ const Configuracao = () => {
           <View className="mt-4 flex-row">
             {opcoesTema.map((opcao, index) => {
               const selecionado = preferenciaTema === opcao.id;
-              const corSelecionado = "#1E1E1E";
+              const corSelecionado = "#FFFFFF";
+              const fundoSelecionado = cores.fundoPrimario;
 
               return (
                 <Pressable
@@ -119,10 +120,10 @@ const Configuracao = () => {
                   style={{
                     marginRight: index === opcoesTema.length - 1 ? 0 : 8,
                     backgroundColor: selecionado
-                      ? cores.fundoPrimario
+                      ? fundoSelecionado
                       : cores.fundoPainel,
                     borderColor: selecionado
-                      ? cores.fundoPrimario
+                      ? fundoSelecionado
                       : cores.borda,
                     borderWidth: 1,
                   }}

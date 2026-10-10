@@ -11,6 +11,7 @@ import {
   EyeOff,
   MapPin,
   MapPinOff,
+  Plus,
   Train,
   TrainFront,
   Trash2,
@@ -57,6 +58,9 @@ interface Props {
   opcoesModal?: { id: string; nome: string }[];
   modalSelecionadoId?: string | null;
   aoSelecionarModal?: (modalId: string) => void;
+  aoAdicionarLinha?: () => void;
+  aoRecolher?: () => void;
+  limiteLinhasAtingido?: boolean;
 }
 
 // ─── Utilitários de cor ────────────────────────────────────────────────────
@@ -298,6 +302,7 @@ function SelectModalLinhas({
 
 // ─── LinhaCard ────────────────────────────────────────────────────────────
 interface LinhaCardProps {
+  modoRemocao: boolean;
   linha: LinhaSelecionadaInfo;
   aoRemover: () => void;
   aoToggleAtiva: () => void;
@@ -306,6 +311,7 @@ interface LinhaCardProps {
 }
 
 function LinhaCard({
+  modoRemocao,
   linha,
   aoRemover,
   aoToggleAtiva,
@@ -314,6 +320,9 @@ function LinhaCard({
 }: LinhaCardProps) {
   const { cores } = useTema();
   const [confirmando, setConfirmando] = React.useState(false);
+  React.useEffect(() => {
+    if (!modoRemocao) setConfirmando(false);
+  }, [modoRemocao]);
 
   const iconeBg = misturar(linha.cor, cores.fundoSecundario, 0.25);
 
@@ -431,10 +440,10 @@ function LinhaCard({
         ) : (
           /* ── Card normal ── */
           <Pressable
-            onPress={aoAbrirConfig}
-            onLongPress={handleLongPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
+            onPress={modoRemocao ? undefined : aoAbrirConfig}
+            onLongPress={modoRemocao ? undefined : handleLongPress}
+            onPressIn={modoRemocao ? undefined : handlePressIn}
+            onPressOut={modoRemocao ? undefined : handlePressOut}
             android_ripple={{ color: "rgba(255,255,255,0.06)" }}
             style={[styles.card, { opacity: linha.ativa ? 1 : 0.45 }]}
           >
@@ -461,12 +470,19 @@ function LinhaCard({
               )}
             </View>
 
-            {/* Chevron — direita */}
-            <ChevronRight
+            {/* A remoção ocupa o espaço do chevron, sem cobrir os textos. */}
+            {modoRemocao ? <Pressable
+              accessibilityRole="button" accessibilityLabel={`Remover linha ${codigo}`}
+              onPress={(event) => { event.stopPropagation(); setConfirmando(true); }}
+              style={({ pressed }) => ({ width: 40, height: 40, flexShrink: 0,
+                alignItems: "center", justifyContent: "center", borderRadius: 10,
+                backgroundColor: pressed ? cores.fundoSecundario : "transparent" })}>
+              <Trash2 size={18} color={cores.perigo} />
+            </Pressable> : <ChevronRight
               color={cores.textoSecundario}
               size={18}
               strokeWidth={2}
-            />
+            />}
           </Pressable>
         )}
       </Animated.View>
@@ -600,6 +616,9 @@ function LinhasContainer({
   opcoesModal = [],
   modalSelecionadoId,
   aoSelecionarModal,
+  aoAdicionarLinha,
+  aoRecolher,
+  limiteLinhasAtingido = false,
 }: Props) {
   const { cores, temaAtual } = useTema();
 
@@ -608,6 +627,10 @@ function LinhasContainer({
 
   const [linhaConfigId, setLinhaConfigId] = React.useState<string | null>(null);
   const [corAberta, setCorAberta] = React.useState(false);
+  const [modoRemocao, setModoRemocao] = React.useState(false);
+  React.useEffect(() => {
+    if (!aberto) setModoRemocao(false);
+  }, [aberto]);
   React.useEffect(() => setCorAberta(false), [linhaConfigId]);
 
   const screenHeight = Dimensions.get("window").height;
@@ -616,9 +639,19 @@ function LinhasContainer({
   const GAP_BTN_SHEET = 5;
 
   const progress = useSharedValue(aberto ? 1 : 0);
+  const [painelVisivel, setPainelVisivel] = React.useState(aberto);
+  const aoRecolherRef = React.useRef(aoRecolher);
+  aoRecolherRef.current = aoRecolher;
+  const avisarRecolhimento = React.useCallback(() => {
+    setPainelVisivel(false);
+    aoRecolherRef.current?.();
+  }, []);
   React.useEffect(() => {
-    progress.value = withTiming(aberto ? 1 : 0, { duration: 260 });
-  }, [aberto, progress]);
+    if (aberto) setPainelVisivel(true);
+    progress.value = withTiming(aberto ? 1 : 0, { duration: 260 }, (finished) => {
+      if (finished && !aberto) runOnJS(avisarRecolhimento)();
+    });
+  }, [aberto, progress, avisarRecolhimento]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.value) * (SHEET_HEIGHT + 180) }],
@@ -700,6 +733,7 @@ function LinhasContainer({
 
       {/* ── Sheet principal ────────────────────────────────────────────── */}
       <Animated.View
+        pointerEvents={aberto ? "auto" : "none"}
         style={[
           sheetStyle,
           {
@@ -707,6 +741,7 @@ function LinhasContainer({
             left: 0,
             right: 0,
             bottom: 0,
+            display: painelVisivel || aberto ? "flex" : "none",
             height: SHEET_HEIGHT,
             backgroundColor: cores.fundoPainel,
             borderTopLeftRadius: 22,
@@ -790,6 +825,35 @@ function LinhasContainer({
           />
         )}
 
+        {/* Ações fixas: fora da rolagem, entre o seletor e os cards. */}
+        <View style={{ marginHorizontal: 16, paddingTop: 2, paddingBottom: 10 }}>
+          <View style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: 10 }}>
+            {aoAdicionarLinha && <Pressable onPress={aoAdicionarLinha} accessibilityRole="button"
+              accessibilityLabel={limiteLinhasAtingido ? "Limite de linhas atingido" : "Adicionar linha"}
+              style={{ flex: 1, height: 42, flexDirection: "row",
+                alignItems: "center", justifyContent: "center", gap: 6,
+                paddingHorizontal: 12, borderRadius: 12, borderWidth: 1,
+                borderColor: cores.borda,
+                backgroundColor: cores.fundoPainel }}>
+              <Plus size={17} color={cores.iconePrimario} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: cores.textoPrimario }}>Adicionar linha</Text>
+            </Pressable>}
+            <Pressable onPress={() => setModoRemocao((ativo) => !ativo)}
+              disabled={!modoRemocao && linhasSelecionadas.length === 0}
+              accessibilityRole="button" accessibilityLabel={modoRemocao ? "Concluir remoção de linhas" : "Ativar remoção de linhas"}
+              accessibilityState={{ disabled: !modoRemocao && linhasSelecionadas.length === 0 }}
+              style={{ width: 68, flexShrink: 0, height: 42,
+                alignItems: "center", justifyContent: "center",
+                opacity: !modoRemocao && linhasSelecionadas.length === 0 ? 0.5 : 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: cores.textoSecundario }}>
+                {modoRemocao ? "Concluir" : "Limpar"}
+              </Text>
+            </Pressable>
+          </View>
+          {limiteLinhasAtingido && <Text style={{ marginTop: 6, fontSize: 11,
+            color: cores.textoSecundario }}>Limite de 10 linhas atingido. Remova uma linha para adicionar outra.</Text>}
+        </View>
+
         {/* Lista */}
         <ScrollView
           style={{ flex: 1 }}
@@ -813,6 +877,7 @@ function LinhasContainer({
             linhasSelecionadas.map((linha, index) => (
               <LinhaCard
                 key={linha.linhaId}
+                modoRemocao={modoRemocao && aberto}
                 linha={linha}
                 isLast={index === linhasSelecionadas.length - 1}
                 aoRemover={() => aoRemoverLinha(linha.linhaId)}

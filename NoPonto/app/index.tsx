@@ -1,4 +1,3 @@
-import Filtro from "@/src/components/mapaComponents/filtro";
 import LinhasContainer, {
   PROXIMO_SENTIDO,
 } from "@/src/components/mapaComponents/linhasContainer";
@@ -64,7 +63,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Keyboard, View } from "react-native";
+import { Alert, Keyboard, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MAX_LINHAS = 10;
@@ -95,10 +94,7 @@ const Home = () => {
   const railVehiclesRef = useRef<RailVehicleForMap[]>([]);
   veiculosRef.current = veiculos;
 
-  // ─── Filtros ──────────────────────────────────────────────────────────────
-
-  const [transito, setTransito] = useState(false);
-  const [filtroAberto, setFiltroAberto] = useState(false);
+  // ─── Modal ativo do mapa ──────────────────────────────────────────────────
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
   const [modalSelecionadoId, setModalSelecionadoId] =
     useState<CategoriaTransporteV2>("onibus");
@@ -184,7 +180,10 @@ const Home = () => {
   const [opcoesBusca, setOpcoesBusca] = useState<OpcaoBusca[]>([]);
   const [busca, setBusca] = useState("");
   const [buscaAberta, setBuscaAberta] = useState(false);
+  const [menuModalBuscaAberto, setMenuModalBuscaAberto] = useState(false);
   const [containerAberto, setContainerAberto] = useState(false);
+  const adicionarLinhaPendenteRef = useRef(false);
+  const [pedidoFocoBusca, setPedidoFocoBusca] = useState(0);
   const selecionandoBuscaRef = useRef(false);
   const [sugestoesBusca, setSugestoesBusca] = useState<string[]>([]);
   const [historicoBusca, setHistoricoBusca] = useState<SearchHistoryItem[]>([]);
@@ -435,9 +434,30 @@ const Home = () => {
       prev.map((l) => (l.linhaId === linhaId ? { ...l, cor } : l)),
     );
   }, []);
-  const toggleContainer = useCallback(() => setContainerAberto((p) => !p), []);
+  const toggleContainer = useCallback(() => {
+    adicionarLinhaPendenteRef.current = false;
+    setContainerAberto((p) => !p);
+  }, []);
   const selecionarModalPainel = useCallback((id: string) => {
     if (id === "onibus" || id === "brt" || id === "trem") setModalSelecionadoId(id);
+  }, []);
+
+  const adicionarLinha = useCallback(() => {
+    if (linhasSelecionadas.length >= MAX_LINHAS) {
+      Alert.alert("Limite de linhas", `Você pode selecionar até ${MAX_LINHAS} linhas. Remova uma linha para adicionar outra.`);
+      return;
+    }
+    // Lista e busca usam modalSelecionadoId: a categoria já está sincronizada.
+    adicionarLinhaPendenteRef.current = true;
+    setBuscaAberta(false);
+    setContainerAberto(false);
+  }, [linhasSelecionadas.length]);
+
+  const aoRecolherLinhas = useCallback(() => {
+    if (!adicionarLinhaPendenteRef.current) return;
+    adicionarLinhaPendenteRef.current = false;
+    setPedidoFocoBusca((pedido) => pedido + 1);
+    setBuscaAberta(true);
   }, []);
 
   // ─── Paradas ──────────────────────────────────────────────────────────────
@@ -785,7 +805,6 @@ const Home = () => {
         location={location}
         linhasParaMostrar={dadosParaMapa}
         railVehicles={railVehiclesVisiveis}
-        showTraffic={transito}
         darkMode={temaAtual === "escuro"}
         estiloMapa={estiloMapaAtual}
         onStopPress={(parada) => {
@@ -794,13 +813,18 @@ const Home = () => {
         }}
       />
 
+      <BuscaMapa value={busca} onChangeText={setBusca} onClose={fecharBusca}
+        active={buscaAberta} focusRequest={pedidoFocoBusca} onFocus={() => setBuscaAberta(true)}
+        modais={modais} modalSelecionadoId={modalSelecionadoId}
+        onSelecionarModal={selecionarModalPainel} onMenuAbertoChange={setMenuModalBuscaAberto}
+        placeholderSuggestions={sugestoesBusca} />
       {buscaAberta && (
-        <View style={{ position: "absolute", top: insets.top + 12, left: 12, right: 12, zIndex: 20,
+        <View pointerEvents={menuModalBuscaAberto ? "none" : "auto"}
+          style={{ position: "absolute", top: insets.top + 64, left: 12, right: 12, zIndex: 20,
+          opacity: menuModalBuscaAberto ? 0 : 1,
           borderRadius: 18, overflow: "hidden", backgroundColor: cores.fundoCard,
           borderWidth: 0, shadowColor: "#000", shadowOpacity: 0.14,
           shadowRadius: 12, elevation: 8 }}>
-          <BuscaMapa embedded value={busca} onChangeText={setBusca} onClose={fecharBusca}
-            placeholderSuggestions={sugestoesBusca} />
           {(recentesBusca.length > 0 || resultadosSemRecentes.length > 0 || carregandoBusca) &&
             <SearchSections embedded recentes={recentesBusca} resultados={resultadosSemRecentes}
               carregando={carregandoBusca}
@@ -808,27 +832,13 @@ const Home = () => {
               onSelect={selecionarOpcao} />}
         </View>
       )}
-      <Filtro
-        transito={transito}
-        clickTransito={() => setTransito((p) => !p)}
-        modalSelecionado={modalSelecionadoNome || "onibus"}
-        onSelecionarModal={(modalNome) => {
-          if (modalNome === "onibus" || modalNome === "brt" || modalNome === "trem")
-            setModalSelecionadoId(modalNome);
-        }}
-        aberto={filtroAberto}
-        onToggle={() => setFiltroAberto(false)}
-        lateralidade={preferenciaLateralidade}
-      />
       <MapControls
         lateralidade={preferenciaLateralidade}
         modalAtivo={modalSelecionadoNome}
         location={location}
         mapRef={mapRef}
-        onOpenLines={() => setContainerAberto(true)}
-        onOpenSearch={() => setBuscaAberta(true)}
-        onOpenFilter={() => setFiltroAberto(true)}
-        disabled={filtroAberto || Boolean(paradaSelecionada) || containerAberto}
+        onOpenLines={() => { adicionarLinhaPendenteRef.current = false; setContainerAberto(true); }}
+        disabled={Boolean(paradaSelecionada) || containerAberto || buscaAberta}
       />
       <LinhasContainer
         linhasSelecionadas={linhasSelecionadasFiltradas}
@@ -846,6 +856,9 @@ const Home = () => {
         opcoesModal={modais}
         modalSelecionadoId={modalSelecionadoId}
         aoSelecionarModal={selecionarModalPainel}
+        aoAdicionarLinha={adicionarLinha}
+        aoRecolher={aoRecolherLinhas}
+        limiteLinhasAtingido={linhasSelecionadas.length >= MAX_LINHAS}
       />
 
       <ParadaSheet

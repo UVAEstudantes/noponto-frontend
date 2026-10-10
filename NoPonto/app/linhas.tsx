@@ -15,8 +15,7 @@ import {
   buscarPoisPorItinerario,
   buscarPoisPorParada,
 } from "@/src/services/mobilidadeRio";
-import { carregarHistoricoBusca, filtrarHistoricoBusca, historicoParaOpcao,
-  registrarSelecaoBusca, removerResultadosJaRecentes, type SearchHistoryItem } from "@/src/services/searchHistory";
+import { registrarSelecaoBusca } from "@/src/services/searchHistory";
 import { carregarModalSelecionado } from "@/src/services/storage";
 import { useIsFocused } from "@react-navigation/native";
 import {
@@ -537,7 +536,6 @@ const Linhas = () => {
   const [busca, setBusca] = useState("");
   const [opcoesBusca, setOpcoesBusca] = useState<OpcaoBusca[]>([]);
   const [sugestoesBusca, setSugestoesBusca] = useState<string[]>([]);
-  const [historicoBusca, setHistoricoBusca] = useState<SearchHistoryItem[]>([]);
   const [carregandoBusca, setCarregandoBusca] = useState(false);
   const [linhaSelecionada, setLinhaSelecionada] = useState<OpcaoBusca | null>(
     null,
@@ -555,12 +553,6 @@ const Linhas = () => {
     });
     return () => { active = false; };
   }, [categoriaBusca]);
-  useEffect(() => { carregarHistoricoBusca().then(setHistoricoBusca); }, []);
-  const recentesItens = useMemo(() => filtrarHistoricoBusca(historicoBusca, categoriaBusca,
-    busca, 3), [historicoBusca, categoriaBusca, busca]);
-  const recentesBusca = useMemo(() => recentesItens.map(historicoParaOpcao), [recentesItens]);
-  const resultadosSemRecentes = useMemo(() => removerResultadosJaRecentes(opcoesBusca,
-    recentesItens), [opcoesBusca, recentesItens]);
 
   const itinerario = linhaSelecionada
     ? (itinerariosPorId[linhaSelecionada.linha.id] ?? null)
@@ -695,7 +687,7 @@ const Linhas = () => {
     async (opcao: OpcaoBusca) => {
       setBusca(opcao.displayName);
       setOpcoesBusca([]);
-      registrarSelecaoBusca(opcao.linha, categoriaBusca).then(setHistoricoBusca);
+      void registrarSelecaoBusca(opcao.linha, categoriaBusca);
       setLinhaSelecionada(opcao);
       setSentidoSelecionado(null);
       setPadraoVersaoSelecionado(null);
@@ -1099,8 +1091,8 @@ const Linhas = () => {
                   }}
                 />
 
-                {!linhaSelecionada && (recentesBusca.length > 0 || resultadosSemRecentes.length > 0 || carregandoBusca) && (
-                  <SearchSections embedded recentes={recentesBusca} resultados={resultadosSemRecentes}
+                {!linhaSelecionada && (opcoesBusca.length > 0 || carregandoBusca) && (
+                  <SearchSections embedded recentes={[]} resultados={opcoesBusca}
                     carregando={carregandoBusca}
                     onSelect={selecionarLinha}
                     maxHeight={260} />

@@ -22,7 +22,8 @@ import { api } from "./api";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { listarLinhasV2, type FiltrosLinhasV2 } from "./estruturaV2";
 import { adaptarPosicaoRodoviariaV2 } from "./veiculosMapa";
-import { apresentarLinhaBusca, apresentarResultadosBackend } from "./searchPresentation";
+import { apresentarLinhaBusca } from "./searchPresentation";
+import { criarFiltroModalBusca } from "./searchModalFilter";
 import type { CategoriaTransporteV2 } from "@/src/types/estruturaV2";
 
 const TARIFA_PADRAO = 4.7;
@@ -122,38 +123,31 @@ export async function buscarOpcoesPorNome(
 ): Promise<OpcaoBusca[]> {
   if (!nome.trim()) return [];
   const cat = categoria as CategoriaTransporteV2 | undefined;
-  const filtros = cat ? await filtrosBuscaCategoria(cat) : {};
+  const filtros: FiltrosLinhasV2 = cat ? await filtrosBuscaCategoria(cat) : {};
   const linhas = await buscarLinhasDto(nome, page, pageSize, { ...filtros, signal });
-  return apresentarResultadosBackend(linhas, cat ?? "onibus").map(({ linha, ...presentation }) => {
-    const linhaCategoria = cat ?? categoriaLinhaV2({ tipoRota: linha.tipoRota ?? "", modal: linha.modal ?? "" });
-    const resolvedPresentation = cat ? presentation : apresentarLinhaBusca(linha, linhaCategoria);
+  return linhas.filter((linha) => !filtros.modalId || linha.modalId === filtros.modalId).map((linha) => {
+    const linhaCategoria = categoriaLinhaV2({ tipoRota: linha.tipoRota ?? "", modal: linha.modal ?? "" });
+    const resolvedPresentation = apresentarLinhaBusca(linha, linhaCategoria);
     return {
-    linha,
-    nomeExibicao: resolvedPresentation.displayName,
-    ...resolvedPresentation,
-  }});
+      linha,
+      nomeExibicao: resolvedPresentation.displayName,
+      ...resolvedPresentation,
+    };
+  });
 }
 
-let modaisBuscaPromise: Promise<ModalTransporteDto[]> | undefined;
-async function filtrosBuscaCategoria(categoria: CategoriaTransporteV2): Promise<FiltrosLinhasV2> {
-  modaisBuscaPromise ??= buscarModais();
-  const modais = await modaisBuscaPromise;
-  const nomeAlvo = categoria === "trem" ? "trem" : categoria === "metro" ? "metro" : "onibus";
-  const modalId = modais.find((modal) => normalizarModalBusca(modal.nome).includes(nomeAlvo))?.id;
-  return {
-    modalId,
-    tipoRota: categoria === "brt" ? "brt" : undefined,
-    excluirTipoRota: categoria === "onibus" ? "brt" : undefined,
-  };
-}
-
-const normalizarModalBusca = (value: string) => value.toLowerCase().normalize("NFD")
-  .replace(/[\u0300-\u036f]/g, "");
+const filtrosBuscaCategoria = criarFiltroModalBusca(buscarModais);
 
 export async function buscarSugestoesBusca(categoria: CategoriaTransporteV2, limite = 4) {
-  const linhas = await buscarLinhasDto("", 1, limite, await filtrosBuscaCategoria(categoria));
-  return linhas.map((linha) =>
-    apresentarLinhaBusca(linha, categoria).displayName);
+  try {
+    const filtros = await filtrosBuscaCategoria(categoria);
+    const linhas = await buscarLinhasDto("", 1, limite, filtros);
+    return linhas.filter((linha) => linha.modalId === filtros.modalId).map((linha) =>
+      apresentarLinhaBusca(linha, categoriaLinhaV2({ tipoRota: linha.tipoRota ?? "", modal: linha.modal ?? "" })).displayName);
+  } catch (error) {
+    console.warn("Não foi possível carregar sugestões de busca:", error);
+    return [];
+  }
 }
 
 // ─── Itinerário mesclado (ida + volta) ─────────────────────────────────────
