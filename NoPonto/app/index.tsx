@@ -67,7 +67,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Keyboard, View } from "react-native";
+import { Alert, Keyboard, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MAX_LINHAS = 10;
@@ -96,10 +96,12 @@ const Home = () => {
     itinerariosPorId,
     estruturasRealtimePorVersao,
     garantirItinerario,
+    estadosItinerarios,
+    tentarNovamenteItinerarios,
     removerItinerario,
     getVeiculosPorCodigo,
     veiculos,
-  } = useMobilidadeRio();
+  } = useMobilidadeRio({ enabled: telaAtiva });
   const veiculosRef = useRef(veiculos);
   const railVehiclesRef = useRef<RailVehicleForMap[]>([]);
   veiculosRef.current = veiculos;
@@ -109,21 +111,27 @@ const Home = () => {
   const [modalSelecionadoId, setModalSelecionadoId] =
     useState<CategoriaTransporteV2>("onibus");
 
+  const modalAlteradoPeloUsuario = useRef(false);
+  const [modalHidratado, setModalHidratado] = useState(false);
   useEffect(() => {
+    let ativo = true;
     setModais([
       { id: "onibus", nome: "Ônibus" },
       { id: "brt", nome: "BRT" },
       { id: "trem", nome: "Trem" },
     ]);
     carregarModalSelecionado().then((salvo) => {
-      if (salvo === "onibus" || salvo === "brt" || salvo === "trem")
+      if (!ativo) return;
+      if (!modalAlteradoPeloUsuario.current && (salvo === "onibus" || salvo === "brt" || salvo === "trem" || salvo === "metro"))
         setModalSelecionadoId(salvo);
+      setModalHidratado(true);
     });
+    return () => { ativo = false; };
   }, []);
 
   useEffect(() => {
-    if (modalSelecionadoId) salvarModalSelecionado(modalSelecionadoId);
-  }, [modalSelecionadoId]);
+    if (modalHidratado) void salvarModalSelecionado(modalSelecionadoId);
+  }, [modalHidratado, modalSelecionadoId]);
 
   // ─── Localização ──────────────────────────────────────────────────────────
 
@@ -455,7 +463,10 @@ const Home = () => {
     setContainerAberto((p) => !p);
   }, []);
   const selecionarModalPainel = useCallback((id: string) => {
-    if (id === "onibus" || id === "brt" || id === "trem") setModalSelecionadoId(id);
+    if (id === "onibus" || id === "brt" || id === "trem") {
+      modalAlteradoPeloUsuario.current = true;
+      setModalSelecionadoId(id);
+    }
   }, []);
 
   const adicionarLinha = useCallback(() => {
@@ -835,6 +846,12 @@ const Home = () => {
     }
   };
 
+  const linhasPendentes = linhasSelecionadas.filter((linha) => linha.ativa && linha.modal === modalSelecionadoId);
+  const carregandoEstruturas = !linhasHidratadas || !modalHidratado || linhasPendentes.some((linha) =>
+    !estadosItinerarios[linha.linhaId] || estadosItinerarios[linha.linhaId].estado === "carregando");
+  const falhaEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "erro");
+  const semEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "indisponivel");
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -873,6 +890,21 @@ const Home = () => {
               carregando={carregandoBusca}
               onSelectionStart={() => { selecionandoBuscaRef.current = true; }}
               onSelect={selecionarOpcao} />}
+        </View>
+      )}
+      {!buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada &&
+        (carregandoEstruturas || falhaEstruturas || semEstruturas) && (
+        <View style={{ position: "absolute", top: insets.top + 64, left: 12, right: 12,
+          zIndex: 19, padding: 8, borderRadius: 12, backgroundColor: cores.fundoPainel }}>
+          <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: cores.textoPrimario }}>
+            {carregandoEstruturas ? "Carregando linhas salvas…" : falhaEstruturas
+              ? "Itinerários temporariamente indisponíveis. Suas linhas foram preservadas."
+              : "Há linhas sem percursos publicados disponíveis."}
+          </Text>
+          {falhaEstruturas && <Pressable onPress={tentarNovamenteItinerarios} accessibilityRole="button"
+            style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={{ color: cores.textoPrimario, fontSize: 12 }}>Tentar novamente</Text>
+          </Pressable>}
         </View>
       )}
       <MapControls

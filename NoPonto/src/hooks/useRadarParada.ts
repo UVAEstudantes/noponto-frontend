@@ -145,6 +145,7 @@ export function useRadarParada({ linhas, modal, itinerarios, realtime, local, en
     : !eventos.length ? "Sem próximos eventos previstos." : null;
   return { candidatos, parada, foraContexto, manual: Boolean(manual), selecionar, selecaoAutomatica,
     metadados, carregarMetadados,
+    contextoConsulta: chave, consultaConcluida: Boolean(chave && resposta?.chave === chave && !carregando && erro?.chave !== chave),
     eventos, recebidoEm, agora: agoraEfetivo, carregando, erro: erro?.chave === chave ? erro.mensagem : null,
     estado, atualizar, atualizadoEm: resposta?.chave === chave ? resposta.recebidoEm : null };
 }

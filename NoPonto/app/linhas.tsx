@@ -9,7 +9,6 @@ import Select from "@/src/components/select";
 import { useMobilidadeRio } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import {
-  buscarDetalhesLinha,
   buscarOpcoesPorNome,
   buscarSugestoesBusca,
   buscarPoisPorItinerario,
@@ -19,7 +18,6 @@ import { registrarSelecaoBusca } from "@/src/services/searchHistory";
 import { carregarModalSelecionado } from "@/src/services/storage";
 import { useIsFocused } from "@react-navigation/native";
 import {
-  LinhaDetalhesDto,
   ModalApiTransporte,
   OpcaoBusca,
   Parada,
@@ -481,7 +479,7 @@ function PoisLista({ pois, aoClicarPoi, scrollDown }: PoisListaProps) {
 const Linhas = () => {
   const { temaAtual, estiloMapaAtual, cores } = useTema();
   const isFocused = useIsFocused();
-  const { itinerariosPorId, garantirItinerario, getVeiculosPorCodigo } =
+  const { itinerariosPorId, estadosItinerarios, garantirItinerario, getVeiculosPorCodigo } =
     useMobilidadeRio({ enabled: isFocused });
   const [location, setLocation] = useState<LocationObject | null>(null);
 
@@ -512,16 +510,20 @@ const Linhas = () => {
 
   const [modal, setModal] = useState<string | null>("Onibus");
 
+  const modalAlteradoPeloUsuario = useRef(false);
   useEffect(() => {
+    let ativa = true;
     const lista = [
       { id: "onibus", nome: "Onibus" },
       { id: "brt", nome: "BRT" },
       { id: "trem", nome: "Trem" },
     ];
     carregarModalSelecionado().then((salvo) => {
+      if (!ativa || modalAlteradoPeloUsuario.current) return;
       const escolhido = lista.find((item) => item.id === salvo) ?? lista[0];
       setModal(escolhido.nome);
     });
+    return () => { ativa = false; };
   }, []);
 
   const iconeBusca = useMemo<LucideIcon>(() => {
@@ -538,9 +540,6 @@ const Linhas = () => {
   const [sugestoesBusca, setSugestoesBusca] = useState<string[]>([]);
   const [carregandoBusca, setCarregandoBusca] = useState(false);
   const [linhaSelecionada, setLinhaSelecionada] = useState<OpcaoBusca | null>(
-    null,
-  );
-  const [detalhesLinha, setDetalhesLinha] = useState<LinhaDetalhesDto | null>(
     null,
   );
   const categoriaBusca = normalizarModal(modal) ?? "onibus";
@@ -593,22 +592,40 @@ const Linhas = () => {
     null,
   );
 
-  const opcoesSentido = useMemo(() =>
-    [...new Map((itinerario?.padroesV2 ?? []).map((p) => [p.sentidoId, {
-      value: p.sentidoId, label: p.sentidoNome,
-    }])).values()], [itinerario]);
-  const padroesDoSentido = useMemo(() =>
-    (itinerario?.padroesV2 ?? []).filter((p) => p.sentidoId === sentidoSelecionado),
-    [itinerario, sentidoSelecionado]);
-  const opcoesPadrao = useMemo(() => padroesDoSentido.map((p) => ({
-    value: p.padraoVersaoId, label: p.rotulo,
-  })), [padroesDoSentido]);
+  // O rótulo é apresentação; cada opção preserva a identidade da versão V2.
+  const opcoesPercurso = useMemo(() => {
+    const nomeCurto = (nome: string) => nome.split("/")
+      .map((parte) => parte.split("::")[0].trim()).filter(Boolean).join(" / ");
+    const padroes = itinerario?.padroesV2 ?? [];
+    const opcoes = padroes.map((padrao) => ({
+      value: padrao.padraoVersaoId,
+      sentidoId: padrao.sentidoId,
+      label: nomeCurto(padrao.rotulo) || nomeCurto(padrao.sentidoNome),
+      destino: nomeCurto(padrao.sentidoNome),
+      plataforma: padrao.sentidoNome.match(/::\s*(Plat(?:aforma)?\.?\s*[^/:]+)/i)?.[1]?.trim(),
+    }));
+    const diferenciadas = opcoes.map((opcao) => {
+      if (opcoes.filter((item) => item.label === opcao.label).length === 1) return opcao;
+      const detalhes = [opcao.destino !== opcao.label ? opcao.destino : null, opcao.plataforma]
+        .filter(Boolean).join(" · ");
+      return { ...opcao, label: detalhes ? `${opcao.label} · ${detalhes}` : opcao.label };
+    });
+    return diferenciadas.map((opcao, index) => {
+      const iguais = diferenciadas.filter((item) => item.label === opcao.label);
+      // Não descarta padrões com nomes iguais, nem seleciona um deles automaticamente.
+      const ordem = diferenciadas.slice(0, index + 1).filter((item) => item.label === opcao.label).length;
+      return { ...opcao, label: iguais.length > 1 ? `${opcao.label} (variação ${ordem})` : opcao.label };
+    });
+  }, [itinerario]);
+  const padraoSelecionado = itinerario?.padroesV2?.find((padrao) =>
+    padrao.padraoVersaoId === padraoVersaoSelecionado && padrao.sentidoId === sentidoSelecionado);
 
   useEffect(() => {
-    if (opcoesSentido.length === 1) setSentidoSelecionado(opcoesSentido[0].value);
-    else if (sentidoSelecionado && !opcoesSentido.some((item) => item.value === sentidoSelecionado))
+    if (padraoVersaoSelecionado && !padraoSelecionado) {
       setSentidoSelecionado(null);
-  }, [opcoesSentido, sentidoSelecionado]);
+      setPadraoVersaoSelecionado(null);
+    }
+  }, [padraoVersaoSelecionado, padraoSelecionado]);
 
   // ─── POIs ─────────────────────────────────────────────────────────────────
 
@@ -685,6 +702,7 @@ const Linhas = () => {
 
   const selecionarLinha = useCallback(
     async (opcao: OpcaoBusca) => {
+      modalAlteradoPeloUsuario.current = true;
       setBusca(opcao.displayName);
       setOpcoesBusca([]);
       void registrarSelecaoBusca(opcao.linha, categoriaBusca);
@@ -693,42 +711,19 @@ const Linhas = () => {
       setPadraoVersaoSelecionado(null);
       setPois([]);
       setPoiSelecionado(null);
-      setDetalhesLinha(null);
       Keyboard.dismiss();
 
-      const m = normalizarModal(modal);
-      if (!m) return;
-
-      // Busca itinerário e sentidos em paralelo
-      const [itRes, detalhesRes] = await Promise.allSettled([
-        garantirItinerario(
-          opcao.linha.id,
-          opcao.linha.codigo || opcao.linha.nome,
-          m,
-          true,
-        ),
-        buscarDetalhesLinha(opcao.linha.id),
-      ]);
-      if (itRes.status === "rejected") {
-        console.error("Erro ao carregar itinerário da linha", itRes.reason);
-      }
-      setDetalhesLinha(
-        detalhesRes.status === "fulfilled" ? detalhesRes.value : null,
-      );
     },
-    [modal, categoriaBusca, garantirItinerario],
+    [categoriaBusca],
   );
 
+  // A conclusão de cada pedido fica indexada por linha; nenhuma resposta antiga seleciona IDs.
   useEffect(() => {
-    if (!sentidoSelecionado) {
-      setPadraoVersaoSelecionado(null);
-      return;
-    }
-    if (padroesDoSentido.length === 1)
-      setPadraoVersaoSelecionado(padroesDoSentido[0].padraoVersaoId);
-    else if (!padroesDoSentido.some((p) => p.padraoVersaoId === padraoVersaoSelecionado))
-      setPadraoVersaoSelecionado(null);
-  }, [sentidoSelecionado, padroesDoSentido, padraoVersaoSelecionado]);
+    if (!linhaSelecionada || !modalAtual || !isFocused) return;
+    void garantirItinerario(linhaSelecionada.linha.id,
+      linhaSelecionada.linha.codigo || linhaSelecionada.linha.nome, modalAtual, true);
+  }, [linhaSelecionada, modalAtual, isFocused, garantirItinerario]);
+  const estadoPercurso = linhaSelecionada ? estadosItinerarios[linhaSelecionada.linha.id] : undefined;
 
   // ─── Ao selecionar sentido: carrega POIs ─────────────────────────────────
 
@@ -738,7 +733,7 @@ const Linhas = () => {
       return;
     }
 
-    // Descobre tipo do sentido pelo nome (ex: "Terminal Campo Grande (1)" → ida)
+    // A versão escolhida identifica o percurso; o nome não determina o sentido.
     const itId = padraoVersaoSelecionado;
     if (!itId) {
       setPois([]);
@@ -746,6 +741,7 @@ const Linhas = () => {
     }
 
     let cancelado = false;
+    setPois([]);
     setCarregandoPois(true);
     buscarPoisPorItinerario(itId, "prioridade,-ordemParada")
       .then((res) => {
@@ -801,7 +797,7 @@ const Linhas = () => {
   ]);
 
   const dadosParaMapa = useMemo(() => {
-    if (!linhaSelecionada || !modalAtual || !sentidoSelecionado) return [];
+    if (!linhaSelecionada || !modalAtual || !sentidoSelecionado || !padraoVersaoSelecionado) return [];
 
     const itinerarioSegmentoMap = padraoVersaoSelecionado
       ? { [padraoVersaoSelecionado]: 0 }
@@ -835,7 +831,7 @@ const Linhas = () => {
           direcao: v.direcao,
           velocidade: v.velocidade,
           velocidadeMedia: v.velocidadeMedia ?? null,
-          sentidoNome: padroesDoSentido[0]?.sentidoNome,
+          sentidoNome: padraoSelecionado?.sentidoNome,
           timestamp: v.timestamp,
           proximaParadaNome: v.proximaParadaNome ?? null,
           distanciaProximaParadaMetros: v.distanciaProximaParadaMetros ?? null,
@@ -860,7 +856,7 @@ const Linhas = () => {
     modalAtual,
     sentidoSelecionado,
     segmentosTrajeto,
-    padroesDoSentido,
+    padraoSelecionado,
     paradasSentido,
     padraoVersaoSelecionado,
     veiculos,
@@ -894,7 +890,6 @@ const Linhas = () => {
     setPois([]);
     setPoiSelecionado(null);
     setParadaPoi(null);
-    setDetalhesLinha(null);
     mapRef.current?.limparPoi();
   }, [modal]);
 
@@ -1048,6 +1043,7 @@ const Linhas = () => {
           <SelectTransporte
             modal={modal}
             setModal={(m) => {
+              modalAlteradoPeloUsuario.current = true;
               setModal(m);
             }}
           />
@@ -1086,7 +1082,6 @@ const Linhas = () => {
                       setPadraoVersaoSelecionado(null);
                       setPois([]);
                       setPoiSelecionado(null);
-                      setDetalhesLinha(null);
                     }
                   }}
                 />
@@ -1099,36 +1094,39 @@ const Linhas = () => {
                 )}
                 </View>
 
-                {/* Select de sentido — sem valor default, usuário escolhe */}
+                {/* Uma escolha associa sentido e versão do padrão operacional V2. */}
                 {linhaSelecionada && (
-                  <Select
-                    placeholder={
-                      opcoesSentido.length === 0
-                        ? "Carregando sentidos…"
-                        : "Selecione o sentido"
-                    }
-                    className="!w-[90%] self-center"
-                    options={opcoesSentido}
-                    value={sentidoSelecionado}
-                    onChange={(v) => {
-                      setSentidoSelecionado(v);
-                      setPadraoVersaoSelecionado(null);
-                      setPoiSelecionado(null);
-                    }}
-                  />
-                )}
-                {sentidoSelecionado && (
-                  <Select
-                    placeholder={
-                      opcoesPadrao.length === 0
-                        ? "Nenhum padrão publicado"
-                        : "Selecione o padrão"
-                    }
-                    className="!w-[90%] self-center mt-2"
-                    options={opcoesPadrao}
-                    value={padraoVersaoSelecionado}
-                    onChange={setPadraoVersaoSelecionado}
-                  />
+                  <View style={{ marginTop: 16 }}>
+                    <Select
+                      key={linhaSelecionada.linha.id}
+                      placeholder={
+                        estadoPercurso?.estado === "erro" ? "Percursos temporariamente indisponíveis"
+                          : !estadoPercurso || estadoPercurso.estado === "carregando" ? "Carregando percursos…"
+                          : opcoesPercurso.length === 0 ? "Nenhum percurso publicado"
+                          : "Selecione o percurso"
+                      }
+                      className="!w-[90%] self-center"
+                      options={opcoesPercurso}
+                      value={padraoVersaoSelecionado}
+                      onChange={(versaoId) => {
+                        const percurso = opcoesPercurso.find((item) => item.value === versaoId);
+                        if (!percurso) return;
+                        setSentidoSelecionado(percurso.sentidoId);
+                        setPadraoVersaoSelecionado(percurso.value);
+                        setPois([]);
+                        setPoiSelecionado(null);
+                        setParadaPoi(null);
+                        mapRef.current?.limparPoi();
+                      }}
+                    />
+                    {estadoPercurso?.estado === "erro" && <Pressable accessibilityRole="button"
+                      onPress={() => {
+                        if (modalAtual) void garantirItinerario(linhaSelecionada.linha.id,
+                          linhaSelecionada.linha.codigo || linhaSelecionada.linha.nome, modalAtual, true);
+                      }} style={{ minHeight: 44, width: "90%", alignSelf: "center", justifyContent: "center" }}>
+                      <Text style={{ fontSize: 12, color: cores.textoPrimario }}>Tentar carregar percursos novamente</Text>
+                    </Pressable>}
+                  </View>
                 )}
               </View>
 
@@ -1159,14 +1157,13 @@ const Linhas = () => {
                         color: cores.textoSecundario,
                       }}
                     >
-                      {opcoesSentido.find((s) => s.value === sentidoSelecionado)?.label}
+                      {opcoesPercurso.find((percurso) => percurso.value === padraoVersaoSelecionado)?.label}
                     </Text>
                   </Text>
 
                   <Chegada intervalo="~20 min" />
                   <Tarifas
-                    valor={detalhesLinha?.tarifaAtual?.tarifa}
-                    modal={modal?.toLowerCase() ?? "onibus"}
+                    linhaId={linhaSelecionada.linha.id}
                   />
 
                   {carregandoPois ? (

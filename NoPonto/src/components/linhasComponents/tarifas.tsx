@@ -1,10 +1,12 @@
 import { useTema } from "@/src/hooks/useTema";
-import { Banknote, CircleDollarSign, CreditCard } from "lucide-react-native";
-import { Text, View } from "react-native";
+import { Banknote, CreditCard, Wallet, Landmark, Smartphone, QrCode } from "lucide-react-native";
+import { resolverTarifa, type TarifaResolvida } from "@/src/services/tarifas";
+import { apresentarPagamento, type IconePagamento } from "@/src/utils/apresentacaoPagamento";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 interface Props {
-  valor?: number;
-  modal?: string;
+  linhaId: string;
 }
 
 interface FormaPagamentoProps {
@@ -18,7 +20,7 @@ interface FormaPagamentoProps {
 function Tag({ label, cor, bgCor, bordaCor, icon }: FormaPagamentoProps) {
   return (
     <View
-      className="flex-row items-center px-3 py-1 rounded-full mr-2"
+      className="flex-row items-center px-3 py-1 rounded-full mr-2 mb-2"
       style={{
         backgroundColor: bgCor,
         borderWidth: bordaCor ? 1 : 0,
@@ -33,55 +35,39 @@ function Tag({ label, cor, bgCor, bordaCor, icon }: FormaPagamentoProps) {
   );
 }
 
-function hexToRgb(hex: string) {
-  const n = parseInt(hex.replace("#", ""), 16);
-  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
-}
-
-function rgbToHex(r: number, g: number, b: number) {
-  return (
-    "#" +
-    [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("")
-  );
-}
-
-function misturar(hex: string, fundo: string, alpha: number) {
-  const c = hexToRgb(hex);
-  const f = hexToRgb(fundo);
-  return rgbToHex(
-    c.r * alpha + f.r * (1 - alpha),
-    c.g * alpha + f.g * (1 - alpha),
-    c.b * alpha + f.b * (1 - alpha),
-  );
-}
-
-const formasDePagamento = {
-  onibus: [
-    { label: "Dinheiro", cor: "#038B0F", bgCor: "#D5EBD7", icone: "banknote" },
-    { label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" },
-  ],
-  brt: [{ label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" }],
-  trem: [
-    { label: "RioCard", cor: "#1156EA", bgCor: "#D7E2EF", icone: "card" },
-    { label: "Dinheiro", cor: "#038B0F", bgCor: "#D5EBD7", icone: "banknote" },
-    { label: "Pix", cor: "#31b5a8", bgCor: "#d0fffaff", icone: "pix" },
-  ],
-  metro: [
-    { label: "RioCard", cor: "#1156EA", bgCor: "#D7E2EF", icone: "card" },
-    { label: "Dinheiro", cor: "#038B0F", bgCor: "#D5EBD7", icone: "banknote" },
-    { label: "Jaé", cor: "#EA790F", bgCor: "#F1EAD4", icone: "card" },
-  ],
-};
+const iconesPagamento = {
+  "credit-card": CreditCard, wallet: Wallet, banknote: Banknote,
+  landmark: Landmark, smartphone: Smartphone, "qr-code": QrCode,
+} satisfies Record<IconePagamento, typeof Wallet>;
 
 export default function Tarifas(props: Props) {
   const { cores, temaAtual } = useTema();
   const isDark = temaAtual === "escuro";
-  const valorDisponivel =
-    typeof props.valor === "number" && Number.isFinite(props.valor);
+  const [consulta, setConsulta] = useState<{
+    linhaId: string; estado: "carregando" | "sucesso" | "erro"; dados: TarifaResolvida | null;
+  }>({ linhaId: props.linhaId, estado: "carregando", dados: null });
+  const [tentativa, setTentativa] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    let ativa = true;
+    setConsulta({ linhaId: props.linhaId, estado: "carregando", dados: null });
+    resolverTarifa(props.linhaId, controller.signal)
+      .then((dados) => {
+        if (ativa) setConsulta({ linhaId: props.linhaId, estado: "sucesso", dados });
+      })
+      .catch(() => {
+        if (ativa) setConsulta({ linhaId: props.linhaId, estado: "erro", dados: null });
+      });
+    return () => { ativa = false; controller.abort(); };
+  }, [props.linhaId, tentativa]);
+  // Também bloqueia o valor anterior no render anterior à execução do effect.
+  const estado = consulta.linhaId === props.linhaId ? consulta.estado : "carregando";
+  const textoValor = estado === "carregando" ? "Consultando…"
+    : estado === "erro" ? "Tarifa indisponível"
+    : consulta.dados?.tarifa.valor == null ? "Sem valor registrado"
+    : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(consulta.dados!.tarifa.valor!);
 
-  const modalKey = (props.modal?.toLowerCase() ??
-    "onibus") as keyof typeof formasDePagamento;
-  const pagamentos = formasDePagamento[modalKey] ?? formasDePagamento.onibus;
+  const pagamentos = estado === "sucesso" ? consulta.dados?.formasPagamento ?? [] : [];
 
   return (
     <View
@@ -104,39 +90,39 @@ export default function Tarifas(props: Props) {
         >
           Tarifa
         </Text>
-        <Text className="font-semibold" style={{ color: cores.textoPrimario }}>
-          R$ {valorDisponivel ? props.valor!.toFixed(2).replace(".", ",") : "—"}
+        {estado === "carregando" && <ActivityIndicator size="small" color={cores.iconeSecundario}
+          style={{ marginRight: 8 }} />}
+        <Text accessibilityLiveRegion="polite" className="font-semibold"
+          style={{ color: cores.textoPrimario, flexShrink: 1, textAlign: "right" }}>
+          {textoValor}
         </Text>
       </View>
 
-      {!valorDisponivel && (
+      {estado === "erro" && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: cores.textoSecundario }}>
-            Ainda nao sabemos o valor dessa linha.
-          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Tentar consultar a tarifa novamente"
+            onPress={() => {
+              setConsulta({ linhaId: props.linhaId, estado: "carregando", dados: null });
+              setTentativa((valor) => valor + 1);
+            }} style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={{ fontSize: 12, color: cores.textoPrimario, fontWeight: "600" }}>Tentar novamente</Text>
+          </Pressable>
         </View>
       )}
 
       {/* Formas de pagamento */}
       <View className="p-4 flex-row flex-wrap">
-        {pagamentos.map((p) => (
-          <Tag
-            key={p.label}
-            label={p.label}
-            cor={p.cor}
-            bgCor={isDark ? misturar(p.bgCor, cores.fundoCard, 0.2) : p.bgCor}
-            bordaCor={isDark ? misturar(p.bgCor, cores.borda, 0.5) : undefined}
-            icon={
-              p.icone === "banknote" ? (
-                <Banknote color={p.cor} size={14} />
-              ) : p.icone === "pix" ? (
-                <CircleDollarSign color={p.cor} size={14} />
-              ) : (
-                <CreditCard color={p.cor} size={14} />
-              )
-            }
-          />
-        ))}
+        {estado === "carregando" && <Text style={{ color: cores.textoSecundario }}>Consultando métodos de pagamento…</Text>}
+        {estado === "erro" && <Text style={{ color: cores.textoSecundario }}>Métodos de pagamento indisponíveis</Text>}
+        {estado === "sucesso" && pagamentos.length === 0 &&
+          <Text style={{ color: cores.textoSecundario }}>Métodos de pagamento não informados</Text>}
+        {pagamentos.map((pagamento) => {
+          const visual = apresentarPagamento(pagamento, cores.fundoCard, isDark);
+          const Icon = iconesPagamento[visual.icone];
+          return <Tag key={pagamento.id} label={pagamento.nome}
+            cor={visual.cor} bgCor={visual.fundo} bordaCor={visual.borda}
+            icon={<Icon color={visual.cor} size={14} />} />;
+        })}
       </View>
     </View>
   );

@@ -1,6 +1,7 @@
 import {
   cancelarLinha,
   conectarGpsHub,
+  obterDiagnosticoGpsHub,
   iniciarGpsHub,
   inscreverLinha,
   removerGpsHubListener,
@@ -14,6 +15,7 @@ import {
 import { rotuloPadraoV2, rotuloSentidoPublico } from "@/src/types/estruturaV2";
 import type { ItinerarioPadraoVersaoV2 } from "@/src/types/estruturaV2";
 import { filtrarVeiculosPorPadroesVisiveis, reconciliarSnapshotsRodoviarios } from "@/src/services/veiculosMapa";
+import { AppState } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -54,20 +56,25 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
     Record<string, ItinerarioLinha | null>
   >({});
 
+  const montadoRef = useRef(true);
+  const [estadosItinerarios, setEstadosItinerarios] = useState<Record<string,
+    { estado: "carregando" | "pronto" | "indisponivel" | "erro"; mensagem?: string }>>({});
+  const pedidosRef = useRef(new Map<string, { codigo: string; modal: ModalApiTransporte; paradas: boolean }>());
+  const estadosRef = useRef(estadosItinerarios);
+  const registrarEstado = useCallback((id: string, estado: typeof estadosItinerarios[string]) => {
+    estadosRef.current = { ...estadosRef.current, [id]: estado };
+    if (montadoRef.current) setEstadosItinerarios(estadosRef.current);
+  }, []);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  const montadoRef = useRef(true);
   const itinerariosRef = useRef<Record<string, ItinerarioLinha | null>>({});
   const emAndamentoRef = useRef<
     Partial<Record<string, Promise<ItinerarioLinha | null>>>
   >({});
 
   useEffect(() => {
-    itinerariosRef.current = itinerariosPorId;
-  }, [itinerariosPorId]);
-
-  useEffect(() => {
+    montadoRef.current = true;
     return () => {
       montadoRef.current = false;
     };
@@ -143,18 +150,12 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
       modal: ModalApiTransporte,
       incluirParadas: boolean = false,
     ): Promise<ItinerarioLinha | null> => {
+      pedidosRef.current.set(linhaId, { codigo: linhaCodigo, modal, paradas: incluirParadas });
       const carregado = itinerariosRef.current[linhaId];
       if (carregado?.incluiParadas) return carregado;
-      if (emAndamentoRef.current[linhaId]) {
-        const resultado = await emAndamentoRef.current[linhaId]!;
-        const atualizado = itinerariosRef.current[linhaId];
-        if (atualizado && (!incluirParadas || atualizado.incluiParadas)) {
-          return atualizado;
-        }
-        if (resultado && (!incluirParadas || resultado.incluiParadas)) {
-          return resultado;
-        }
-      }
+      // Uma falha compartilhada termina a tentativa; não dispara um segundo pedido em cascata.
+      if (emAndamentoRef.current[linhaId]) return emAndamentoRef.current[linhaId]!;
+      registrarEstado(linhaId, { estado: "carregando" });
 
       const promessa = (async (): Promise<ItinerarioLinha | null> => {
         const sentidos = await listarSentidosV2(linhaCodigo);
@@ -177,7 +178,8 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
         const itinerarioSentidoMap: Record<string, string> = {};
         const padroesV2 = escolhas.flatMap((item, index) => {
           const estrutura = itinerarios[index];
-          if (!estrutura || estrutura.geometria.tipo !== "LineString") return [];
+          if (!estrutura || estrutura.geometria.tipo !== "LineString" || !estrutura.geometria.coordenadas.length)
+            throw new Error("Itinerário V2 temporariamente indisponível ou incompleto.");
           const segmento = estrutura.geometria.coordenadas.map(
             ([longitude, latitude]) => [latitude, longitude] as [number, number],
           );
@@ -226,7 +228,8 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
         };
       })()
         .then((itinerario) => {
-          if (!montadoRef.current) return itinerario;
+          if (!montadoRef.current || !pedidosRef.current.has(linhaId)) return itinerario;
+          registrarEstado(linhaId, { estado: itinerario ? "pronto" : "indisponivel" });
           if (itinerario) itinerariosRef.current[linhaId] = itinerario;
 
           setItinerariosPorId((prev) => {
@@ -242,6 +245,9 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
         })
         .catch((err) => {
           console.error(`Erro ao carregar itinerário ${linhaId}:`, err);
+          if (pedidosRef.current.has(linhaId)) registrarEstado(linhaId, {
+            estado: "erro", mensagem: "Itinerário temporariamente indisponível.",
+          });
           return null;
         })
         .finally(() => {
@@ -251,8 +257,39 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
       emAndamentoRef.current[linhaId] = promessa;
       return promessa;
     },
-    [],
+    [registrarEstado],
   );
+
+  const tentarNovamenteItinerarios = useCallback(() => {
+    pedidosRef.current.forEach((pedido, id) => {
+      if (estadosRef.current[id]?.estado === "erro") {
+        void garantirItinerario(id, pedido.codigo, pedido.modal, pedido.paradas);
+      }
+    });
+  }, [garantirItinerario]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let ativo = true;
+    const recuperar = () => {
+      if (AppState.currentState !== "active") return;
+      tentarNovamenteItinerarios();
+      if (obterDiagnosticoGpsHub().connectionState === "Connected") return;
+      void conectarGpsHub().then(() => {
+        if (!ativo || !montadoRef.current || AppState.currentState !== "active") return;
+        pedidosRef.current.forEach((pedido, id) => {
+          if (itinerariosRef.current[id]) void inscreverLinha(pedido.codigo);
+        });
+      });
+    };
+    recuperar();
+    const subscription = AppState.addEventListener("change", (estado) => {
+      if (estado === "active") recuperar();
+    });
+    // Recuperação de falhas/offline; não é espera para a inicialização nem polling de ETA.
+    const retry = setInterval(recuperar, 30000);
+    return () => { ativo = false; subscription.remove(); clearInterval(retry); };
+  }, [enabled, tentarNovamenteItinerarios]);
 
   /**
    * Remove o itinerário do cache e cancela a inscrição no hub.
@@ -265,6 +302,7 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
         return next;
       });
       delete itinerariosRef.current[linhaId];
+      pedidosRef.current.delete(linhaId);
       cancelarLinha(linhaCodigo).catch(console.error);
     },
     [],
@@ -305,6 +343,8 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
     veiculos,
     linhasDisponiveis: linhasOrdenadas,
     itinerariosPorId,
+    estadosItinerarios,
+    tentarNovamenteItinerarios,
     estruturasRealtimePorVersao,
     garantirItinerario,
     removerItinerario,

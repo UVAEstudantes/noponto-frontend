@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useReducer, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Check, ChevronLeft, ChevronRight, MapPin, X } from "lucide-react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -11,6 +11,7 @@ import type { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import type { EventoParadaDto } from "@/src/services/eventosParada";
 import { rotuloQualidadeEvento } from "@/src/services/eventosParada";
 import { doisEventosRadar, instanteEventoRadar } from "@/src/services/radarParada";
+import { estadoInicialPainelRadar, reduzirEstadoPainelRadar } from "@/src/services/estadoPainelRadar";
 import { identidadeModalMapa } from "@/src/constants/modaisMapa";
 
 interface Props {
@@ -27,9 +28,17 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const [recolhido, setRecolhido] = useState(false);
+  const [estadoPainel, enviarAcaoPainel] = useReducer(reduzirEstadoPainelRadar, estadoInicialPainelRadar);
+  const recolhido = estadoPainel.modo !== "aberto";
+  const temEventos = radar.eventos.length > 0;
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
+  useEffect(() => {
+    if (!visivel || seletor) return;
+    enviarAcaoPainel({ tipo: "observar", contexto: radar.contextoConsulta,
+      amostra: `${radar.atualizadoEm}:${temEventos}`, concluida: radar.consultaConcluida,
+      temEventos });
+  }, [visivel, seletor, radar.contextoConsulta, radar.atualizadoEm, radar.consultaConcluida, temEventos]);
   const progress = useSharedValue(0);
   const lado = lateralidade === "canhoto" ? "left" : "right";
   const { Icon, cor } = identidadeModalMapa(modal);
@@ -96,7 +105,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
             {radar.manual ? "Manual" : "Automático"}
           </Text>
         </View>
-        <Pressable onPress={() => setRecolhido(true)} accessibilityRole="button"
+        <Pressable onPress={() => enviarAcaoPainel({ tipo: "recolher" })} accessibilityRole="button"
           accessibilityLabel="Recolher painel de próximos veículos"
           style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center",
             justifyContent: "center", backgroundColor: hexParaRgba(cores.bordaSuave, 0.4) }}>
@@ -105,7 +114,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
         justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-        <Pressable onPress={() => { setSeletor(true); void radar.carregarMetadados(); }}
+        <Pressable onPress={() => { enviarAcaoPainel({ tipo: "abrir" }); setSeletor(true); void radar.carregarMetadados(); }}
           accessibilityRole="button" accessibilityLabel="Trocar parada monitorada"
           style={{ minHeight: 44, maxWidth: "100%", borderRadius: 22, paddingHorizontal: 10,
             paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 6,
@@ -169,7 +178,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         borderTopLeftRadius: ladoAba === "right" ? 32 : 0, borderBottomLeftRadius: ladoAba === "right" ? 32 : 0,
         borderTopRightRadius: ladoAba === "left" ? 32 : 0, borderBottomRightRadius: ladoAba === "left" ? 32 : 0,
         shadowColor: cores.sombra, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }, abaStyle]}>
-      <Pressable onPress={() => setRecolhido(false)} accessibilityRole="button" accessibilityLabel="Abrir painel de próximos veículos"
+      <Pressable onPress={() => enviarAcaoPainel({ tipo: "abrir" })} accessibilityRole="button" accessibilityLabel="Abrir painel de próximos veículos"
         style={{ height: 64, width: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}>
         <Reabrir size={20} color={cores.textoPrimario} />
         <View style={{ alignItems: "center", gap: 3 }}><Icon size={17} color={cor} />
