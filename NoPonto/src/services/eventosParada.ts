@@ -36,10 +36,22 @@ export function filtrarEventosPorContexto(
   });
 }
 
-export async function buscarEventosParada(paradaId: string) {
-  const result = await api.get<EventoParadaDto[]>(`/paradas/${paradaId}/eventos`);
-  if (!result.ok) throw new Error(result.error ?? "Falha ao carregar eventos da parada");
-  return ordenarEventosParada(result.data ?? []);
+const consultasEventos = new Map<string, Promise<EventoParadaDto[]>>();
+export function buscarEventosParada(paradaId: string): Promise<EventoParadaDto[]> {
+  const pendente = consultasEventos.get(paradaId);
+  if (pendente) return pendente;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  const consulta = api.get<EventoParadaDto[]>(`/paradas/${paradaId}/eventos`, { signal: controller.signal })
+    .then((result) => {
+      if (!result.ok) throw new Error(result.error ?? "Falha ao carregar eventos da parada");
+      return ordenarEventosParada(result.data ?? []);
+    }).finally(() => {
+      clearTimeout(timeout);
+      consultasEventos.delete(paradaId);
+    });
+  consultasEventos.set(paradaId, consulta);
+  return consulta;
 }
 
 export function ordenarEventosParada(eventos: EventoParadaDto[]) {

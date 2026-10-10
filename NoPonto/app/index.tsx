@@ -10,6 +10,10 @@ import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import SearchSections from "@/src/components/searchSections";
 import BuscaMapa from "@/src/components/mapaComponents/buscaMapa";
 import MapControls from "@/src/components/mapaComponents/mapControls";
+import RadarParada from "@/src/components/mapaComponents/radarParada";
+import { useRadarParada } from "@/src/hooks/useRadarParada";
+import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
+import { useIsFocused } from "@react-navigation/native";
 import {
   LinhaSelecionadaInfo,
   useMobilidadeRio,
@@ -79,9 +83,15 @@ const CORES_RAMAIS_TREM: Record<string, string> = {
 };
 
 const Home = () => {
+  const telaAtiva = useIsFocused();
   const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } =
     useTema();
   const insets = useSafeAreaInsets();
+  const [alturaAreaMapa, setAlturaAreaMapa] = useState<number | null>(null);
+  const [radarControlsBottom, setRadarControlsBottom] = useState<number | null>(null);
+  const atualizarPosicaoControlesRadar = useCallback((bottom: number | null) => {
+    setRadarControlsBottom((anterior) => anterior === bottom ? anterior : bottom);
+  }, []);
   const {
     itinerariosPorId,
     estruturasRealtimePorVersao,
@@ -123,6 +133,7 @@ const Home = () => {
     null,
   );
   const [paradaExpandida, setParadaExpandida] = useState(false);
+  const [paradaDoRadar, setParadaDoRadar] = useState(false);
 
   useEffect(() => {
     async function requestLocationPermissions() {
@@ -254,6 +265,11 @@ const Home = () => {
     LinhaSelecionadaInfo[]
   >([]);
   const [linhasHidratadas, setLinhasHidratadas] = useState(false);
+  const radar = useRadarParada({ linhas: linhasSelecionadas, modal: modalSelecionadoId,
+    itinerarios: itinerariosPorId, realtime: estruturasRealtimePorVersao,
+    local: location?.coords ?? null,
+    paradaEmDetalhes: paradaDoRadar ? paradaSelecionada?.paradaId : null,
+    enabled: telaAtiva && !buscaAberta && !containerAberto });
 
   useEffect(() => {
     let ativo = true;
@@ -355,7 +371,7 @@ const Home = () => {
             cor,
             ativa: true,
             modoSentido: "ambos",
-            mostrarParadas: false,
+            mostrarParadas: true,
           },
         ];
       });
@@ -501,6 +517,7 @@ const Home = () => {
   >(null);
 
   const atualizarChegadas = useCallback(async () => {
+    if (paradaDoRadar) return;
     if (!paradaSelecionada) {
       setChegadasParada([]);
       setAtualizadoChegadasEm(null);
@@ -576,6 +593,7 @@ const Home = () => {
       setCarregandoChegadas(false);
     }
   }, [
+    paradaDoRadar,
     paradaSelecionada,
     linhasNaParada,
     normalizarCodigo,
@@ -796,10 +814,34 @@ const Home = () => {
     );
   }, [railVehicles, linhasSelecionadasFiltradas, itinerariosPorId]);
 
+  const chegadasRadar = chegadasDoRadar(radar.eventos, radar.parada, linhasSelecionadas,
+    radar.recebidoEm, radar.agora, veiculos, railVehiclesVisiveis).map((item) => ({ ...item,
+      plataforma: item.plataforma ?? (radar.parada
+        ? radar.metadados[radar.parada.parada.paradaId]?.plataforma : null),
+    }));
+  const idsLinhasRadar = new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []);
+  const linhasRadar: LinhaParadaInfo[] = linhasSelecionadas.filter((item) => item.ativa
+    && item.modal === modalSelecionadoId && idsLinhasRadar.has(item.linhaId)).map((item) => ({
+      linhaId: item.linhaId, codigo: item.linhaCodigo, nomeExibicao: item.nomeExibicao,
+      cor: item.cor, ativa: item.ativa,
+    }));
+  const focarEventoRadar = (evento: EventoParadaDto) => {
+    const referencia = localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis);
+    if (referencia) {
+      setParadaSelecionada(null);
+      setParadaDoRadar(false);
+      setParadaExpandida(false);
+      mapRef.current?.focarVeiculo({ ...referencia, zoom: 17 });
+    }
+  };
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <View style={{ flex: 1, backgroundColor: cores.fundoApp }}>
+    <View onLayout={(event) => {
+      const altura = Math.floor(event.nativeEvent.layout.height);
+      setAlturaAreaMapa((anterior) => anterior === altura ? anterior : altura);
+    }} style={{ flex: 1, backgroundColor: cores.fundoApp }}>
       <MapaOSM
         ref={mapRef}
         location={location}
@@ -808,6 +850,7 @@ const Home = () => {
         darkMode={temaAtual === "escuro"}
         estiloMapa={estiloMapaAtual}
         onStopPress={(parada) => {
+          setParadaDoRadar(radar.parada?.parada.paradaId === parada.paradaId && !radar.foraContexto);
           setParadaSelecionada(parada);
           setParadaExpandida(false);
         }}
@@ -833,6 +876,7 @@ const Home = () => {
         </View>
       )}
       <MapControls
+        radarBottom={radarControlsBottom}
         lateralidade={preferenciaLateralidade}
         modalAtivo={modalSelecionadoNome}
         location={location}
@@ -861,19 +905,35 @@ const Home = () => {
         limiteLinhasAtingido={linhasSelecionadas.length >= MAX_LINHAS}
       />
 
+      <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadas} modal={modalSelecionadoId}
+        lateralidade={preferenciaLateralidade}
+        visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada}
+        localizavel={(evento) => localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis) != null}
+        onEvento={focarEventoRadar}
+        onVerTodos={() => {
+          if (!radar.parada || radar.foraContexto) return;
+          setParadaDoRadar(true);
+          setParadaSelecionada(radar.parada.parada);
+          setParadaExpandida(true);
+        }} />
       <ParadaSheet
         visivel={!!paradaSelecionada}
         parada={paradaSelecionada}
-        linhas={linhasNaParada}
-        chegadas={chegadasParada}
-        carregandoChegadas={carregandoChegadas}
-        erroChegadas={erroChegadas}
-        atualizadoEm={atualizadoChegadasEm}
-        onAtualizar={atualizarChegadas}
-        onFocarVeiculo={focarVeiculoNaParada}
+        linhas={paradaDoRadar ? linhasRadar : linhasNaParada}
+        chegadas={paradaDoRadar ? chegadasRadar : chegadasParada}
+        carregandoChegadas={paradaDoRadar ? radar.carregando : carregandoChegadas}
+        erroChegadas={paradaDoRadar ? radar.erro : erroChegadas}
+        atualizadoEm={paradaDoRadar ? radar.atualizadoEm : atualizadoChegadasEm}
+        onAtualizar={paradaDoRadar ? radar.atualizar : atualizarChegadas}
+        onFocarVeiculo={(chegada) => {
+          if (!paradaDoRadar) { focarVeiculoNaParada(chegada); return; }
+          const evento = radar.eventos.find((item) => item.eventId === chegada.id);
+          if (evento) focarEventoRadar(evento);
+        }}
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {
+          setParadaDoRadar(false);
           setParadaSelecionada(null);
           setParadaExpandida(false);
         }}

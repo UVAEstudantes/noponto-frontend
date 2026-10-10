@@ -143,6 +143,8 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
       modal: ModalApiTransporte,
       incluirParadas: boolean = false,
     ): Promise<ItinerarioLinha | null> => {
+      const carregado = itinerariosRef.current[linhaId];
+      if (carregado?.incluiParadas) return carregado;
       if (emAndamentoRef.current[linhaId]) {
         const resultado = await emAndamentoRef.current[linhaId]!;
         const atualizado = itinerariosRef.current[linhaId];
@@ -179,18 +181,17 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
           const segmento = estrutura.geometria.coordenadas.map(
             ([longitude, latitude]) => [latitude, longitude] as [number, number],
           );
-          const paradas = incluirParadas
-            ? [...estrutura.ocorrencias]
+          const paradas = [...estrutura.ocorrencias]
                 .sort((a, b) => a.ordem - b.ordem)
                 .map((ocorrencia) => ({
                   paradaId: ocorrencia.paradaId,
+                  codigo: ocorrencia.codigoParada,
                   nome: ocorrencia.nome,
                   ordem: ocorrencia.ordem,
                   latitude: ocorrencia.latitude,
                   longitude: ocorrencia.longitude,
                   posicaoLinha: ocorrencia.posicaoLinha,
-                }))
-            : [];
+                }));
           const segmentoIndice = segmentos.push(segmento) - 1;
           paradasPorItinerario[item.versaoId] = paradas;
           const sentidoPublico = rotuloSentidoPublico(
@@ -217,15 +218,16 @@ export function useMobilidadeRio({ enabled = true }: { enabled?: boolean } = {})
           linha: linhaCodigo,
           modal,
           segmentos,
-          paradas: incluirParadas ? todasParadas : undefined,
+          paradas: todasParadas,
           paradasPorItinerario,
           itinerarioSentidoMap,
-          incluiParadas: incluirParadas,
+          incluiParadas: true,
           padroesV2,
         };
       })()
         .then((itinerario) => {
           if (!montadoRef.current) return itinerario;
+          if (itinerario) itinerariosRef.current[linhaId] = itinerario;
 
           setItinerariosPorId((prev) => {
             if (!itinerario && prev[linhaId]) return prev;
