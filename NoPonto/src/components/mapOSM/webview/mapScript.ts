@@ -1,6 +1,9 @@
 // Responsabilidade: script que roda dentro da WebView e controla MapLibre,
 // markers, animações e integração com React Native via postMessage.
 // usadas pelo host React Native e por fluxos realtime/dead reckoning.
+import { familiasIndicadores } from '../../../constants/indicadores';
+import { codigoRenderizadorIndicadores } from '../../../constants/indicadoresSvg.generated';
+
 export function buildMapWebViewScript(params: {
   latInicial: number;
   lngInicial: number;
@@ -30,6 +33,33 @@ var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=
 var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
 var lastMapData=null;
 var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
+${codigoRenderizadorIndicadores}
+var renderIndicator=criarRenderizadorIndicadores(${JSON.stringify(familiasIndicadores).replace(/</g, '\\u003c')});
+var indicatorStyles={onibus:'padrao',brt:'padrao',trem:'padrao'};
+function applyVehiclePresentation(el,color,modal){
+  modal=String(modal||'onibus').toLowerCase();
+  if(modal!=='onibus'&&modal!=='brt'&&modal!=='trem')return;
+  var style=indicatorStyles[modal],signature=style+':'+modal+':'+color;
+  if(el.getAttribute('data-indicator-signature')===signature)return;
+  el.setAttribute('data-indicator-modal',modal);
+  el.setAttribute('data-indicator-color',color);
+  var visual=renderIndicator(style,modal,color);
+  var inner=el.querySelector('.bus-inner');
+  if(!inner){inner=document.createElement('div');inner.className='bus-inner';el.appendChild(inner)}
+  var image=inner.querySelector('.vehicle-art');
+  if(!image){image=document.createElement('img');image.className='vehicle-art';image.alt='';image.draggable=false;inner.appendChild(image)}
+  image.src=visual.uri;
+  image.style.width=visual.largura+'px';image.style.height=visual.altura+'px';
+  image.style.left=(20-visual.largura/2)+'px';image.style.top=(20-visual.ancoraY)+'px';
+  image.style.transformOrigin='50% '+(visual.ancoraY/visual.altura*100)+'%';
+  image.style.transform='rotate('+(-visual.orientacao)+'deg)';
+  el.setAttribute('data-indicator-signature',signature);
+}
+window.updateIndicatorStyles=function(styles){
+  indicatorStyles=styles;
+  Object.keys(vehicleMarkers).forEach(function(key){var el=vehicleMarkers[key].getElement();applyVehiclePresentation(el,el.getAttribute('data-indicator-color'),el.getAttribute('data-indicator-modal'))});
+  Object.keys(railMarkers).forEach(function(key){var el=railMarkers[key].getElement();applyVehiclePresentation(el,el.getAttribute('data-indicator-color'),'trem')});
+};
 
 var railBranchColors={
   'santa cruz':'#64a70b','deodoro':'#ba0c2f','japeri':'#92c1e9',
@@ -39,6 +69,11 @@ var railBranchColors={
 function railVisual(run){
   var name=(run.lineName||'').toLowerCase(),color='#59636e';
   Object.keys(railBranchColors).some(function(key){if(name.indexOf(key)>=0){color=railBranchColors[key];return true}return false});
+  // A cor personalizada da linha tem precedencia sobre a identidade do ramal.
+  if(lastMapData&&Array.isArray(lastMapData.linhas)){
+    var configured=lastMapData.linhas.find(function(line){return line.modal==='trem'&&((line.linhaId&&line.linhaId===run.linhaId)||(line.nome&&line.nome===run.lineName))});
+    if(configured&&configured.cor)color=configured.cor;
+  }
   var status=run.operationalStatus||'Estimated';
   return{color:color,status:status,opacity:status==='Scheduled'?.72:status==='Estimated'?.88:1};
 }
@@ -47,10 +82,10 @@ function applyRailMarkerVisual(el,run){
   el.classList.remove('rail-status-live','rail-status-estimated','rail-status-scheduled');
   el.classList.add('rail-status-'+visual.status.toLowerCase());
   el.style.opacity=visual.opacity;
-  var blob=el.querySelector('.bus-blob');if(blob)blob.style.background=visual.color;
+  applyVehiclePresentation(el,visual.color,'trem');
 }
 function railMarkerElement(run,identity){
-  // Preserve the original rail marker: .train-marker > .bus-inner > .bus-blob.
+  // Mantem o elemento externo e os eventos durante trocas de apresentacao.
   var visual=railVisual(run),el=busIcon(visual.color,0,'trem');
   el.setAttribute('data-rail-id',identity);
   applyRailMarkerVisual(el,run);
@@ -391,31 +426,13 @@ function animateTo(key,marker,dest,ms){
 }
 
 // ── busIcon: gera o elemento DOM do marcador de veículo ──────────────────────
-// BRT usa formato de máscara (sino com olhos), igual à imagem de referência.
 function busIcon(color,heading,modal){
   var el=document.createElement('div');
   var isTrain=(modal||'').toLowerCase()==='trem';
   var isBrt=(modal||'').toLowerCase()==='brt';
   el.className='bus-marker'+(isTrain?' train-marker':'')+(isBrt?' brt-marker':'');
-  if(isBrt){
-    // Shape: gota com recorte no topo (pinça), rotacionada corretamente
-    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-      '<div class="brt-mask">'+
-        '<svg viewBox="0 0 20 30" xmlns="http://www.w3.org/2000/svg">'+
-          '<path fill-rule="evenodd" d="'+
-            // Gota externa
-            'M10 29 C7 29 1 24 1 17 C1 10 5 3 10 1 C15 3 19 10 19 17 C19 24 13 29 10 29 Z '+
-            // Recorte interno maior e mais alto — pontas mais longas e separadas
-            'M10 2.5 C7.5 4.5 5.5 8 5.5 11 C5.5 13.8 7 15.5 10 15.5 C13 15.5 14.5 13.8 14.5 11 C14.5 8 12.5 4.5 10 2.5 Z'+
-          '" fill="'+color+'" stroke="rgba(255,255,255,0.95)" stroke-width="1.8" stroke-linejoin="round"/>'+
-        '</svg>'+
-      '</div>'+
-    '</div>';
-  }else{
-    el.innerHTML='<div class="bus-inner" style="--h:'+(heading||0)+'deg">'+
-                 '<div class="bus-blob" style="background:'+color+'"></div>'+
-                 '<div class="bus-arrow"></div></div>';
-  }
+  applyVehiclePresentation(el,color,modal);
+  setHeading({getElement:function(){return el}},heading||0);
   return el;
 }
 
@@ -1173,11 +1190,7 @@ window.updateMap=function(data){
 
       var markerEl=marker.getElement();
       if(markerEl){
-        var blob=markerEl.querySelector('.bus-blob');
-        if(blob)blob.style.background=color;
-        // Atualiza cor do BRT (SVG path fill)
-        var brtPath=markerEl.querySelector('.brt-mask path');
-        if(brtPath)brtPath.setAttribute('fill',color);
+        applyVehiclePresentation(markerEl,color,linha.modal);
       }
 
       // Atualiza heading

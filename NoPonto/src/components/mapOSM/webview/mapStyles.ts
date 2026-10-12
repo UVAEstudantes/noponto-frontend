@@ -19,56 +19,14 @@ export const MAP_WEBVIEW_STYLES = `
     }
 
     .bus-marker{background:transparent;border:none}
-    .bus-inner{position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(var(--h,0deg));transition:transform .2s ease-out}
-    /* onibus = gota */
-    .bus-blob{
-      position:relative;width:16px;height:16px;
-      border-radius:50% 50% 50% 0;
-      transform:rotate(135deg);
-      border:2px solid rgba(255,255,255,.95);
-      box-shadow:0 2px 8px rgba(0,0,0,.35), inset 0 -2px 0 rgba(0,0,0,.14)
-    }
-    .bus-blob:after{
-      content:'';position:absolute;left:3px;top:3px;width:5px;height:5px;border-radius:50%;
-      background:rgba(255,255,255,.34)
-    }
-    .bus-arrow{display:none}
-
-    /* ── BRT marker: formato máscara SVG (sino com olhos) ── */
-    .brt-marker .bus-blob{display:none}
-    .brt-mask{
-      position:relative;
-      width:14px;height:21px;
-      display:flex;align-items:center;justify-content:center;
-    }
-    .brt-mask svg{
-      width:14px;height:21px;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));
-      overflow:visible;
-    }
-    /* BRT: pinça aponta para trás — rotaciona o inner 180° + heading */
-    .brt-marker .bus-inner{
-      transform:rotate(calc(var(--h,0deg) + 180deg));
-    }
+    .bus-marker{width:40px;height:40px}
+    .bus-inner{position:relative;width:40px;height:40px;transform:rotate(var(--h,0deg));transform-origin:20px 20px;transition:transform .2s ease-out}
+    .vehicle-art{position:absolute;display:block;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}
     .stop-train .stop-pin{width:14px;height:14px;border:2px solid #fff;box-shadow:0 0 0 3px var(--stop-color)}
-    .train-marker .bus-inner{width:34px;height:34px;transform:rotate(calc(var(--h,0deg) - 90deg));transition:transform .2s ease-out}
-    /* trem = pilula fina: frente arredondada, traseira reta */
-    .train-marker .bus-blob{
-      width:24px;height:10px;transform:none;
-      border-radius:3px 9px 9px 3px;
-      box-shadow:0 4px 10px rgba(0,0,0,.35),inset 0 -2px 0 rgba(0,0,0,.16)
-    }
-    .train-marker .bus-blob:after{
-      content:'';position:absolute;right:2px;top:2px;width:8px;height:6px;border-radius:5px;
-      background:rgba(255,255,255,.32)
-    }
-    .train-marker .bus-arrow{display:none}
-    .train-marker.rail-status-live{filter:drop-shadow(0 2px 5px rgba(0,0,0,.42))}
-    .train-marker.rail-status-estimated{filter:drop-shadow(0 0 3px rgba(255,255,255,.9)) drop-shadow(0 2px 5px rgba(0,0,0,.42))}
-    .train-marker.rail-status-scheduled .bus-blob{outline:1px dashed rgba(255,255,255,.9);outline-offset:2px}
-    .train-marker.rail-selected .bus-blob{box-shadow:0 0 0 3px rgba(255,255,255,.9),0 4px 12px rgba(0,0,0,.5),inset 0 -2px 0 rgba(0,0,0,.16)}
+    .train-marker.rail-status-estimated .vehicle-art{filter:drop-shadow(0 1px 3px rgba(0,0,0,.35))}
+    .train-marker.rail-selected .bus-inner{outline:2px solid rgba(255,255,255,.9);outline-offset:2px;border-radius:12px}
     .rail-status-badge{display:inline-flex;padding:2px 6px;margin-left:5px;border-radius:999px;background:#eef2f7;color:#334155;font-size:10px;font-weight:700;vertical-align:middle}
     .rail-status-badge.live{background:#dcfce7;color:#087a3d}.rail-status-badge.estimated{background:#e0f2fe;color:#075985}.rail-status-badge.scheduled{background:#f1f5f9;color:#475569}
     .popup-rail-primary{font-size:13px;font-weight:700;color:#1f2937}

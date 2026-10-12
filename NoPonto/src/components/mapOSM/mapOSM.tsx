@@ -13,6 +13,8 @@ import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
 import { adaptarRailParaMapa } from "@/src/services/veiculosMapa";
+import { useIndicadores } from "@/src/context/ProvedorIndicadores";
+import { estilosEfetivos } from "@/src/constants/indicadores";
 
 // IDs de estilo/filtros serializados para consumo dentro do script da WebView.
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
@@ -44,6 +46,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     ref,
   ) => {
     const webViewRef = useRef<WebView>(null);
+    const { preferencias } = useIndicadores();
+    const estilosVeiculos = useMemo(() => estilosEfetivos(preferencias), [preferencias]);
     const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullBytes: 0, realtimeBytes: 0 });
     const railVehiclesForMap = useMemo(
       () => railVehicles.map(adaptarRailParaMapa),
@@ -122,6 +126,12 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     // Só enviamos updates após a confirmação "map_ready" vinda da WebView.
     const [mapReady, setMapReady] = React.useState(false);
     const [mapGeneration, setMapGeneration] = React.useState(0);
+
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef,
+        `if(window.updateIndicatorStyles) window.updateIndicatorStyles(${JSON.stringify(estilosVeiculos)});`);
+    }, [mapReady, mapGeneration, estilosVeiculos]);
 
     // Update "pesado": linhas/tema/tráfego/estilo. Mantido separado do update de usuário.
     useEffect(() => {

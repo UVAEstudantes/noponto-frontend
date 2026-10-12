@@ -1,5 +1,6 @@
 import NavBar from "@/src/components/NavBar";
 import { ProvedorTema } from "@/src/context/ProvedorTema";
+import { ProvedorIndicadores } from "@/src/context/ProvedorIndicadores";
 import { useTema } from "@/src/hooks/useTema";
 import { StatusBar } from "expo-status-bar";
 import { Tabs } from "expo-router";
@@ -95,9 +96,11 @@ const _layout = () => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ProvedorTema>
-        <PaperProvider>
-          <ConteudoLayout />
-        </PaperProvider>
+        <ProvedorIndicadores>
+          <PaperProvider>
+            <ConteudoLayout />
+          </PaperProvider>
+        </ProvedorIndicadores>
       </ProvedorTema>
     </GestureHandlerRootView>
   );

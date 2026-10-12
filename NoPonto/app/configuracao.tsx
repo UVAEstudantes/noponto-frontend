@@ -12,6 +12,7 @@ import {
   Sun,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
 
 const Configuracao = () => {
   const {
@@ -322,7 +323,7 @@ const Configuracao = () => {
             As preferências são salvas automaticamente.
           </Text>
         </View>
-      
+        <IndicadoresConfiguracao />
         <View
           className="mt-4 rounded-2xl p-4 flex-row items-center"
           style={{

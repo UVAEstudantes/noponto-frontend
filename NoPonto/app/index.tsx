@@ -790,6 +790,7 @@ const Home = () => {
               assinaturaEstruturalParadas(l.mostrarParadas, paradas),
               ...geometriasVisiveis.map((item) => item.padraoVersaoId)].join(":"),
             nome: l.nomeExibicao,
+            linhaId: l.linhaId,
             descricao: l.subtitulo,
             cor: l.cor,
             modal: l.modal,
