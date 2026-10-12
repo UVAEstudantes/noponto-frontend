@@ -6,8 +6,9 @@ import { Tabs } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import * as SplashScreen from "expo-splash-screen";
 import * as NavigationBar from "expo-navigation-bar";
-import SplashVideoOverlay from "@/src/components/startup/SplashVideoOverlay";
-import SplashVideoBoundary from "@/src/components/startup/SplashVideoBoundary";
+import StartupOverlay, {
+  StartupPendingOverlay,
+} from "@/src/components/startup/StartupOverlay";
 import { StartupContext } from "@/src/components/startup/StartupContext";
 import { Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -21,7 +22,13 @@ const startupSession = globalThis as typeof globalThis & {
 };
 
 const ConteudoLayout = () => {
-  const { temaAtual, cores, carregandoTema } = useTema();
+  const {
+    temaAtual,
+    cores,
+    carregandoTema,
+    animacaoAbertura,
+    carregandoAbertura,
+  } = useTema();
   const [opening, setOpening] = useState(!startupSession.noPontoStartupStarted);
   const [mapReady, setMapReady] = useState(false);
   const reportMapReady = useCallback(() => setMapReady(true), []);
@@ -70,14 +77,16 @@ const ConteudoLayout = () => {
           </>
         )}
       </StartupContext.Provider>
-      {opening && (
-        <SplashVideoBoundary onComplete={completeOpening}>
-          <SplashVideoOverlay
+      {opening &&
+        (carregandoAbertura ? (
+          <StartupPendingOverlay />
+        ) : (
+          <StartupOverlay
+            animated={animacaoAbertura}
             appReady={mapReady}
             onComplete={completeOpening}
           />
-        </SplashVideoBoundary>
-      )}
+        ))}
     </View>
   );
 };

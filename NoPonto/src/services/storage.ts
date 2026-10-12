@@ -14,6 +14,20 @@ const CHAVE_PREFERENCIA_TEMA = "@preferenciaTema";
 const CHAVE_ESTILO_MAPA = "@estiloMapaSelecionado";
 const CHAVE_MODAL_SELECIONADO = "@modalSelecionado";
 const CHAVE_LATERALIDADE = "@preferenciaLateralidade";
+const CHAVE_ANIMACAO_ABERTURA = "@animacaoAbertura";
+
+export const carregarAnimacaoAbertura = async (): Promise<boolean> => {
+  try {
+    return (await AsyncStorage.getItem(CHAVE_ANIMACAO_ABERTURA)) !== "false";
+  } catch (error) {
+    console.warn("Erro ao carregar animação de abertura:", error);
+    return true;
+  }
+};
+
+// Let the caller report write failures instead of claiming the setting was saved.
+export const salvarAnimacaoAbertura = (ativada: boolean): Promise<void> =>
+  AsyncStorage.setItem(CHAVE_ANIMACAO_ABERTURA, String(ativada));
 
 const ehPreferenciaTemaValida = (
   valor: string | null,

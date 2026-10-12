@@ -9,6 +9,7 @@ export interface CoresTema {
   bordaNav: string;
   fundoSecundario: string;
   fundoPrimario: string;
+  fundoPrimarioSuave: string;
   textoPrimario: string;
   textoSecundario: string;
   textoInverso: string;
@@ -40,6 +41,7 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       bordaNav: "rgba(0,0,0,0.1)",
       fundoSecundario: "#E4E4E4",
       fundoPrimario: "#FFC107",
+      fundoPrimarioSuave: "rgba(255, 193, 7, 0.6)",
       textoPrimario: "#1E1E1E",
       textoSecundario: "#8E8E93",
       textoInverso: "#F2F4F7",
@@ -64,6 +66,7 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       fundoNav: "rgba(30, 30, 30, 1)",
       bordaNav: "rgba(255,255,255,0.1)",
       fundoSecundario: "#2C3036",
+      fundoPrimarioSuave: "rgba(255, 193, 7, 0.5)",
       fundoPrimario: "#FFC107",
       textoPrimario: "#F2F4F7",
       textoSecundario: "#B2BAC2",

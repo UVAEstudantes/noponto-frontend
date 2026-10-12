@@ -3,13 +3,13 @@ import * as SplashScreen from "expo-splash-screen";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, StyleSheet } from "react-native";
+import { useStartupTransition } from "./useStartupTransition";
 
 type Props = { appReady: boolean; onComplete: () => void };
 
 export default function SplashVideoOverlay({ appReady, onComplete }: Props) {
-  const opacity = useRef(new Animated.Value(1)).current;
   const [ended, setEnded] = useState(false);
-  const [waitingExpired, setWaitingExpired] = useState(false);
+  const opacity = useStartupTransition(ended, appReady, onComplete);
   const ending = useRef(false);
   const laidOut = useRef(false);
   const frameReady = useRef(false);
@@ -63,25 +63,6 @@ export default function SplashVideoOverlay({ appReady, onComplete }: Props) {
     }, 45000);
     return () => clearTimeout(watchdog);
   }, [finish, player]);
-
-  useEffect(() => {
-    if (!ended) return;
-    const deadline = setTimeout(() => setWaitingExpired(true), 8000);
-    return () => clearTimeout(deadline);
-  }, [ended]);
-
-  useEffect(() => {
-    if (!ended || (!appReady && !waitingExpired)) return;
-    const animation = Animated.timing(opacity, {
-      toValue: 0,
-      duration: 220,
-      useNativeDriver: true,
-    });
-    animation.start(({ finished }) => {
-      if (finished) onComplete();
-    });
-    return () => animation.stop();
-  }, [appReady, ended, onComplete, opacity, waitingExpired]);
 
   return (
     <Animated.View

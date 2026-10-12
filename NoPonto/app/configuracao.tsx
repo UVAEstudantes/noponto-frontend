@@ -1,7 +1,7 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
   Check,
   Hand,
@@ -23,6 +23,10 @@ const Configuracao = () => {
     preferenciaLateralidade,
     definirPreferenciaLateralidade,
     cores,
+    animacaoAbertura,
+    carregandoAbertura,
+    salvandoAbertura,
+    definirAnimacaoAbertura,
   } = useTema();
 
   const opcoesTema = [
@@ -122,9 +126,7 @@ const Configuracao = () => {
                     backgroundColor: selecionado
                       ? fundoSelecionado
                       : cores.fundoPainel,
-                    borderColor: selecionado
-                      ? fundoSelecionado
-                      : cores.borda,
+                    borderColor: selecionado ? fundoSelecionado : cores.borda,
                     borderWidth: 1,
                   }}
                   onPress={() => definirPreferenciaTema(opcao.id)}
@@ -320,6 +322,56 @@ const Configuracao = () => {
             As preferências são salvas automaticamente.
           </Text>
         </View>
+      
+        <View
+          className="mt-4 rounded-2xl p-4 flex-row items-center"
+          style={{
+            backgroundColor: cores.fundoCard,
+            borderColor: cores.borda,
+            borderWidth: 1,
+          }}
+        >
+          <View className="flex-1 pr-3">
+            <Text
+              className="text-base font-semibold"
+              style={{ color: cores.textoPrimario }}
+            >
+              Animação de abertura
+            </Text>
+            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
+              Exibir animação ao iniciar o aplicativo.
+            </Text>
+            <Text
+              className="mt-2 text-xs"
+              style={{ color: cores.textoSecundario }}
+            >
+              Válido na próxima inicialização.
+            </Text>
+          </View>
+          <Switch
+            value={animacaoAbertura}
+            disabled={carregandoAbertura || salvandoAbertura}
+            trackColor={{
+              false: cores.bordaSuave,
+              true: cores.fundoPrimarioSuave,
+            }}
+            thumbColor={
+              animacaoAbertura ? cores.fundoPrimario : cores.borda
+            }
+            accessibilityLabel="Animação de abertura"
+            accessibilityHint="Exibir animação ao iniciar o aplicativo. Válido na próxima inicialização."
+            onValueChange={(ativada) => {
+              void definirAnimacaoAbertura(ativada).catch((error) => {
+                console.warn("Erro ao salvar animação de abertura:", error);
+                Alert.alert(
+                  "Não foi possível salvar",
+                  "Tente alterar a opção novamente.",
+                );
+              });
+            }}
+          />
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
