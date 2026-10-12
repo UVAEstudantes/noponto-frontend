@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="240" viewBox="0 0 80 240" fill="none">
+  <!-- Frente no topo. Altere apenas o fill de carroceria para recolorir. -->
+  <defs>
+    <linearGradient id="padrao-bus-volume" x1="10" y1="0" x2="70" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity=".17"/>
+      <stop offset=".12" stop-color="#fff" stop-opacity=".42"/>
+      <stop offset=".34" stop-color="#fff" stop-opacity=".09"/>
+      <stop offset=".76" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".16"/>
+    </linearGradient>
+    <linearGradient id="padrao-bus-glass" x1="32" y1="17" x2="46" y2="44" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42494c"/><stop offset="1" stop-color="#171c1e"/>
+    </linearGradient>
+  </defs>
+  <g id="estrutura" fill="#24292b">
+    <rect x="5" y="61" width="8" height="34" rx="4"/>
+    <rect x="67" y="61" width="8" height="34" rx="4"/>
+    <rect x="5" y="164" width="8" height="34" rx="4"/>
+    <rect x="67" y="164" width="8" height="34" rx="4"/>
+    <path d="M11 213H69V222Q67 233 54 234H26Q13 233 11 222Z"/>
+  </g>
+  <g id="carroceria" fill="#FFC400">
+    <path id="padrao-bus-body" d="M28 7Q10 7 10 24V216Q10 230 27 231H53Q70 230 70 216V24Q70 7 52 7Z"/>
+  </g>
+  <g id="volume">
+    <use href="#padrao-bus-body" fill="url(#padrao-bus-volume)" stroke="#000" stroke-opacity=".2" stroke-width=".8"/>
+    <path d="M16 203V64Q16 51 27 51H53" stroke="#fff" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>
+    <path d="M21 12Q40 9 59 12" stroke="#fff" stroke-opacity=".48" stroke-linecap="round"/>
+  </g>
+  <g id="vidros">
+    <path d="M22 18Q40 14 58 18Q64 19 63 26L61 39Q60 44 54 44H26Q20 44 19 39L17 26Q16 19 22 18Z" fill="url(#padrao-bus-glass)" stroke="#111719" stroke-width="1.2"/>
+    <path d="M22 21Q40 17 58 21" stroke="#fff" stroke-opacity=".22" stroke-linecap="round"/>
+  </g>
+  <g id="traseira">
+    <path d="M17 216Q40 220 63 216L62 225Q60 232 52 232H28Q20 232 18 225Z" fill="#202628"/>
+    <path d="M22 225L28 226M52 226L58 225" stroke="#F0443C" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+</svg>

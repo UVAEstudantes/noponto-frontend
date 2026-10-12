@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="240" viewBox="0 0 80 240" fill="none">
+  <!-- Frente no topo. Recolorir somente fill do grupo carroceria. -->
+  <defs>
+    <linearGradient id="bus-volume" x1="9" y1="0" x2="71" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity=".28"/><stop offset=".12" stop-color="#fff" stop-opacity=".34"/><stop offset=".3" stop-color="#fff" stop-opacity=".08"/><stop offset=".7" stop-color="#fff" stop-opacity="0"/><stop offset=".91" stop-color="#000" stop-opacity=".08"/><stop offset="1" stop-color="#000" stop-opacity=".3"/>
+    </linearGradient>
+    <linearGradient id="bus-glass" x1="22" y1="12" x2="56" y2="42" gradientUnits="userSpaceOnUse"><stop stop-color="#474b4c"/><stop offset="1" stop-color="#171a1b"/></linearGradient>
+    <linearGradient id="bus-rear" x1="40" y1="198" x2="40" y2="226" gradientUnits="userSpaceOnUse"><stop stop-color="#343839"/><stop offset="1" stop-color="#111415"/></linearGradient>
+  </defs>
+  <g id="estrutura" fill="#202324">
+    <rect x="5" y="32" width="7" height="24" rx="3"/><rect x="68" y="32" width="7" height="24" rx="3"/>
+    <rect x="7" y="67" width="7" height="34" rx="3"/><rect x="66" y="67" width="7" height="34" rx="3"/>
+    <rect x="7" y="121" width="7" height="34" rx="3"/><rect x="66" y="121" width="7" height="34" rx="3"/>
+    <rect x="7" y="166" width="7" height="34" rx="3"/><rect x="66" y="166" width="7" height="34" rx="3"/>
+    <path d="M11 211H69V222Q67 233 54 234H26Q13 233 11 222Z"/>
+  </g>
+  <g id="carroceria" fill="#FFC400">
+    <path id="bus-body" d="M28 7Q10 7 10 24V216Q10 230 27 231H53Q70 230 70 216V24Q70 7 52 7Z"/>
+  </g>
+  <g id="volume">
+    <use href="#bus-body" fill="url(#bus-volume)"/>
+    <use href="#bus-body" stroke="#604100" stroke-opacity=".5" stroke-width=".8"/>
+    <path d="M17 62V199M63 62V199" stroke="#fff" stroke-opacity=".38"/>
+    <path d="M19 11Q40 7 60 12" stroke="#fff" stroke-opacity=".75" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M16 214Q40 225 64 214" stroke="#885000" stroke-opacity=".35"/>
+  </g>
+  <g id="vidros" stroke="#101314" stroke-width="1.2">
+    <path d="M22 16Q40 13 58 16Q64 17 63 24L61 37Q60 43 55 43H25Q20 43 19 37L17 24Q16 18 22 16Z" fill="url(#bus-glass)"/>
+    <path d="M22 197H58Q62 197 62 203L60 215Q40 222 20 215L18 203Q18 197 22 197Z" fill="url(#bus-rear)"/>
+    <path d="M13 20L16 24V41L13 47ZM67 20L64 24V41L67 47Z" fill="#242829"/>
+  </g>
+  <g id="acabamento" stroke-linecap="round">
+    <path d="M23 19Q40 16 57 19M23 200H56" stroke="#fff" stroke-opacity=".24"/>
+    <path d="M20 38L29 18M48 41L58 20" stroke="#fff" stroke-opacity=".07" stroke-width="2"/>
+    <rect x="29" y="81" width="22" height="67" rx="3" fill="#fff" fill-opacity=".08" stroke="#ac7000" stroke-width="1"/>
+    <path d="M31 145V85H48" stroke="#fff" stroke-opacity=".55"/>
+    <path d="M30 165H50M30 169H50M30 173H50M30 177H50M32 181H48" stroke="#805200" stroke-opacity=".8"/>
+    <path d="M19 10H24M56 10H61" stroke="#242829" stroke-width="2"/>
+    <path d="M14 219L19 224M66 219L61 224" stroke="#e63529" stroke-width="3.5"/>
+    <path d="M26 227Q40 229 54 227" stroke="#fff" stroke-opacity=".6"/>
+    <path d="M13 49V60M67 49V60" stroke="#fff" stroke-opacity=".72" stroke-width="2"/>
+  </g>
+</svg>

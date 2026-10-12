@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildMapWebViewScript } from "./mapScript";
+import { MAP_WEBVIEW_STYLES } from "./mapStyles";
 
-const script = buildMapWebViewScript({ latInicial: -22.9, lngInicial: -43.2,
-  estilosJS: "", filtrosMapaJS: "", estiloMapaPadrao: "light" });
+const script = buildMapWebViewScript({
+  latInicial: -22.9,
+  lngInicial: -43.2,
+  estilosJS: "",
+  filtrosMapaJS: "",
+  estiloMapaPadrao: "light",
+});
 
-test("rail marker restores the original train marker structure and stable identity", () => {
+test("rail marker uses shared presentation and stable identity", () => {
   assert.match(script, /railMarkerElement/);
   assert.match(script, /busIcon\(visual\.color,0,'trem'\)/);
-  assert.match(script, /\.train-marker > \.bus-inner > \.bus-blob/);
+  assert.match(script, /applyVehiclePresentation\(el,visual\.color,'trem'\)/);
   assert.doesNotMatch(script, /className='rail-vehicle-marker/);
   assert.match(script, /run\.idVisual\|\|run\.railVehicleId\|\|run\.railRunId/);
 });
@@ -24,15 +30,32 @@ test("all rail states retain click handling and open the existing popup", () => 
 
 test("rail heading follows the local route tangent without recreating the marker", () => {
   assert.match(script, /railHeadingAtDistance/);
-  assert.match(script, /railCoordinateAtDistance\(g,Math\.max\(0,distance-delta\)\)/);
-  assert.match(script, /railCoordinateAtDistance\(g,Math\.min\(g\.total,distance\+delta\)\)/);
+  assert.match(
+    script,
+    /railCoordinateAtDistance\(g,Math\.max\(0,distance-delta\)\)/,
+  );
+  assert.match(
+    script,
+    /railCoordinateAtDistance\(g,Math\.min\(g\.total,distance\+delta\)\)/,
+  );
   assert.match(script, /railHeadings\[key\]=heading/);
   assert.match(script, /else heading=railHeadings\[key\]/);
   assert.match(script, /marker\.setLngLat\(coord\)/);
-  assert.doesNotMatch(script, /railMarkers\[key\]\.remove\(\).*applyRailHeading/);
+  assert.doesNotMatch(
+    script,
+    /railMarkers\[key\]\.remove\(\).*applyRailHeading/,
+  );
 });
 
 test("rail popup has singleton lifecycle and same identity updates in place", () => {
+  assert.doesNotMatch(
+    MAP_WEBVIEW_STYLES,
+    /\.train-marker\.rail-status-scheduled/,
+  );
+  assert.match(
+    MAP_WEBVIEW_STYLES,
+    /\.train-marker\.rail-selected \.bus-inner\{outline:2px solid/,
+  );
   assert.match(script, /activeRailPopup=null,activeRailPopupIdentity=null/);
   assert.match(script, /activeRailPopup&&activeRailPopupIdentity===identity/);
   assert.match(script, /activeRailPopup\.setLngLat\(coord\)/);
@@ -62,8 +85,7 @@ test("human presentation supports all statuses and never falls back to UUID dest
 test("bus and BRT marker branches remain intact", () => {
   assert.match(script, /var isTrain=\(modal\|\|''\)\.toLowerCase\(\)==='trem'/);
   assert.match(script, /var isBrt=\(modal\|\|''\)\.toLowerCase\(\)==='brt'/);
-  assert.match(script, /brt-mask/);
-  assert.match(script, /bus-blob/);
+  assert.match(script, /applyVehiclePresentation\(el,color,modal\)/);
   assert.match(script, /popup-vehicle" style="--c:/);
   assert.doesNotMatch(script, /popup-service/);
 });
@@ -79,5 +101,5 @@ test("terminal consumes backend semantics and returns to next-station presentati
 test("last evidence is elapsed locally and absent evidence renders no false clock", () => {
   assert.match(script, /railElapsed/);
   assert.match(script, /data-rail-evidence/);
-  assert.match(script, /run\.lastRealtimeEvidenceUtc\?/);
+  assert.match(script, /run\.lastRealtimeEvidenceUtc&&status!=='Programado'\?/);
 });

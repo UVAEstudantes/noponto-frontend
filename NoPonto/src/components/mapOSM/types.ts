@@ -7,6 +7,7 @@ import type { RailVehicleForMap } from "@/src/services/railRealtime";
 // entre o componente React Native (host da WebView) e os payloads usados no mapa.
 
 export interface LinhaParaMostrar {
+  linhaId?: string;
   structureKey?: string;
   nome: string;
     descricao?: string;
@@ -59,6 +60,7 @@ export interface LinhaParaMostrar {
 }
 
 export interface MapaOSMProps {
+  onReady?: () => void;
   location: any;
   linhasParaMostrar: LinhaParaMostrar[];
   darkMode?: boolean;

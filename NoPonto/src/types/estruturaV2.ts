@@ -36,15 +36,24 @@ export interface ItinerarioPadraoVersaoV2 {
 }
 
 const normalizar = (value?: string | null) =>
-  (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  (value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+export function categoriaModalV2(nome?: string | null): CategoriaTransporteV2 | undefined {
+  const modal = normalizar(nome);
+  if (modal === "brt" || modal === "bus rapid transit") return "brt";
+  if (modal.includes("trem") || modal.includes("train")) return "trem";
+  if (modal.includes("metro") || modal === "subway") return "metro";
+  if (modal.includes("onibus") || modal === "bus") return "onibus";
+  return undefined;
+}
 
 export function categoriaLinhaV2(
   linha: Pick<LinhaV2, "tipoRota" | "modal">,
 ): CategoriaTransporteV2 {
+  // A identidade persistida prevalece sobre o tipo de serviço da linha.
+  const persistido = categoriaModalV2(linha.modal);
+  if (persistido) return persistido;
   if (normalizar(linha.tipoRota) === "brt") return "brt";
-  const modal = normalizar(linha.modal);
-  if (modal.includes("trem") || modal.includes("train")) return "trem";
-  if (modal.includes("metro")) return "metro";
   return "onibus";
 }
 

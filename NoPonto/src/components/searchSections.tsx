@@ -1,6 +1,9 @@
 import type { OpcaoBusca } from "@/src/types/transporte";
 import { useTema } from "@/src/hooks/useTema";
-import { BusFront, ChevronRight, Clock3, CornerUpLeft, Search, TrainFront } from "lucide-react-native";
+import { ChevronRight, Clock3, CornerUpLeft, Search } from "lucide-react-native";
+import { identidadeModalMapa } from "@/src/constants/modaisMapa";
+import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
+import BotaoFavorito from "@/src/components/botaoFavorito";
 import React from "react";
 import { Pressable, ScrollView, Text, View, ViewStyle } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
@@ -14,13 +17,12 @@ interface Props {
   style?: ViewStyle;
   maxHeight?: number;
   embedded?: boolean;
+  favoritos?: { ids: ReadonlySet<string>; disabled: boolean; onToggle: (item: OpcaoBusca) => void };
 }
 
 export default function SearchSections({ recentes, resultados, carregando = false,
-  onSelect, onSelectionStart, style, maxHeight = 400, embedded = false }: Props) {
+  onSelect, onSelectionStart, style, maxHeight = 400, embedded = false, favoritos }: Props) {
   const { cores, temaAtual } = useTema();
-  const resultadoFundo = temaAtual === "escuro" ? "#12352D" : "#E8F8F1";
-  const resultadoCor = temaAtual === "escuro" ? "#6EE7B7" : "#07883F";
   if (!recentes.length && !resultados.length && !carregando) return null;
   const section = (title: string, values: OpcaoBusca[], recent = false) => values.length ? (
     <View>
@@ -31,16 +33,19 @@ export default function SearchSections({ recentes, resultados, carregando = fals
         <Text style={{ color: cores.textoSecundario, fontSize: 12, fontWeight: "700" }}>{title}</Text>
       </View>
       {values.map((item) => {
-        const isTrain = item.linha.modal?.toLowerCase().includes("trem")
-          || item.linha.tipoRota?.toLowerCase().includes("train");
-        const Icon = isTrain ? TrainFront : BusFront;
-        return <Pressable key={item.linha.id} onPressIn={onSelectionStart}
+        const categoria = categoriaLinhaV2({ modal: item.linha.modal ?? "", tipoRota: item.linha.tipoRota ?? "" });
+        const { Icon, cor, texto } = identidadeModalMapa(categoria);
+        const corIcone = temaAtual === "escuro" ? cor : texto;
+        const fundoIcone = `${cor}${temaAtual === "escuro" ? (recent ? "20" : "30") : (recent ? "10" : "1F")}`;
+        return <View key={item.linha.id} style={{ flexDirection: "row", alignItems: "center",
+          borderBottomWidth: 1, borderBottomColor: cores.bordaSuave }}>
+          <Pressable onPressIn={onSelectionStart}
           onPress={() => onSelect(item)} style={{ paddingHorizontal: 14, paddingVertical: 10,
-            borderBottomWidth: 1, borderBottomColor: cores.bordaSuave, flexDirection: "row",
+            flex: 1, minWidth: 0, flexDirection: "row",
             alignItems: "center", gap: 11 }}>
           <View style={{ width: 36, height: 36, borderRadius: 11, alignItems: "center",
-            justifyContent: "center", backgroundColor: recent ? cores.fundoSecundario : resultadoFundo }}>
-            <Icon size={18} color={recent ? cores.iconeSecundario : resultadoCor} />
+            justifyContent: "center", backgroundColor: fundoIcone }}>
+            <Icon size={18} color={corIcone} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: cores.textoPrimario, fontSize: 16, fontWeight: "700" }}>{item.displayName}</Text>
@@ -48,7 +53,10 @@ export default function SearchSections({ recentes, resultados, carregando = fals
           </View>
           {recent ? <CornerUpLeft size={16} color={cores.iconeSecundario} />
             : <ChevronRight size={17} color={cores.iconeSecundario} />}
-        </Pressable>;
+        </Pressable>
+        {favoritos && <BotaoFavorito favorita={favoritos.ids.has(item.linha.id)}
+          disabled={favoritos.disabled} nome={item.linha.nome} onPress={() => favoritos.onToggle(item)} />}
+        </View>;
       })}
     </View>
   ) : null;

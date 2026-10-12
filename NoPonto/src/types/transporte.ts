@@ -132,6 +132,7 @@ export interface GeometriaItem {
 
 export interface Parada {
   paradaId: string;
+  codigo?: string;
   nome: string;
   ordem: number;
   latitude: number;

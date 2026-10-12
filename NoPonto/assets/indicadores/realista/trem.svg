@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="240" viewBox="0 0 80 240" fill="none">
+  <!-- Frente no topo. Recolorir somente fill do grupo carroceria. -->
+  <defs>
+    <linearGradient id="train-volume" x1="12" y1="0" x2="68" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#000" stop-opacity=".3"/><stop offset=".14" stop-color="#fff" stop-opacity=".38"/><stop offset=".35" stop-color="#fff" stop-opacity=".08"/><stop offset=".7" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient>
+    <linearGradient id="train-glass" x1="25" y1="17" x2="53" y2="67" gradientUnits="userSpaceOnUse"><stop stop-color="#44494b"/><stop offset="1" stop-color="#15191b"/></linearGradient>
+    <linearGradient id="train-roof" x1="29" y1="0" x2="51" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#404546"/><stop offset="1" stop-color="#25292b"/></linearGradient>
+  </defs>
+  <g id="estrutura" fill="#202426"><path d="M13 85H67V216Q67 233 54 234H26Q13 233 13 216Z"/></g>
+  <g id="carroceria" fill="#FFC400">
+    <path id="train-body" d="M40 9C26 9 20 28 16 44C12 61 12 76 12 96V215Q12 230 26 231H54Q68 230 68 215V96C68 76 68 61 64 44C60 28 54 9 40 9Z"/>
+  </g>
+  <g id="volume">
+    <use href="#train-body" fill="url(#train-volume)"/>
+    <use href="#train-body" stroke="#6f4b00" stroke-opacity=".5" stroke-width=".8"/>
+    <path d="M21 45Q28 15 40 14Q52 15 59 45" stroke="#fff" stroke-opacity=".5" stroke-width="1.2"/>
+    <path d="M22 82V205M58 82V205" stroke="#fff" stroke-opacity=".35"/>
+    <path d="M18 217Q40 209 62 217" stroke="#926000" stroke-opacity=".35"/>
+  </g>
+  <g id="vidros" stroke="#111517" stroke-width="1.2">
+    <path d="M40 17C31 17 26 31 23 45L21 56Q20 67 29 69H51Q60 67 59 56L57 45C54 31 49 17 40 17Z" fill="url(#train-glass)"/>
+    <rect x="30" y="83" width="20" height="70" rx="3" fill="url(#train-roof)"/>
+    <rect x="30" y="168" width="20" height="33" rx="3" fill="url(#train-roof)"/>
+    <path d="M17 86Q20 87 20 93V194L16 207Q15 170 15 117Z" fill="#24292b"/>
+    <path d="M63 86Q60 87 60 93V194L64 207Q65 170 65 117Z" fill="#24292b"/>
+  </g>
+  <g id="acabamento" stroke-linecap="round">
+    <path d="M24 51H56M30 52L27 67M50 52L53 67" stroke="#090d0f" stroke-width="1.5"/>
+    <path d="M39 20Q31 25 27 44M33 86H47M33 171H47" stroke="#fff" stroke-opacity=".22"/>
+    <path d="M31 121H49" stroke="#090d0f" stroke-width="2"/>
+    <path d="M32 123H48" stroke="#fff" stroke-opacity=".18"/>
+    <path d="M18 55L17 64Q17 67 20 66L22 56ZM62 55L63 64Q63 67 60 66L58 56Z" fill="#fff" fill-opacity=".88"/>
+    <path d="M17 96V188M63 96V188" stroke="#fff" stroke-opacity=".17"/>
+    <path d="M30 221Q40 216 50 221L53 229H27Z" fill="#24292b" stroke="#111517"/>
+    <circle cx="22" cy="220" r="3.4" fill="#202426"/><circle cx="58" cy="220" r="3.4" fill="#202426"/>
+    <circle cx="22" cy="220" r="2" fill="#ed3b2f"/><circle cx="58" cy="220" r="2" fill="#ed3b2f"/>
+    <path d="M33 222Q40 220 47 222" stroke="#fff" stroke-opacity=".2"/>
+  </g>
+</svg>

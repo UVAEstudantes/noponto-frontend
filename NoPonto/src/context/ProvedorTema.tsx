@@ -17,6 +17,8 @@ import { NomeTema, temas } from "@/src/constants/tema";
 import {
   PreferenciaTema,
   carregarEstiloMapa,
+  carregarAnimacaoAbertura,
+  salvarAnimacaoAbertura,
   carregarPreferenciaLateralidade,
   carregarPreferenciaTema,
   PreferenciaLateralidade,
@@ -26,6 +28,10 @@ import {
 } from "@/src/services/storage";
 
 type TemaContexto = {
+  animacaoAbertura: boolean;
+  carregandoAbertura: boolean;
+  salvandoAbertura: boolean;
+  definirAnimacaoAbertura: (ativada: boolean) => Promise<void>;
   temaAtual: NomeTema;
   preferenciaTema: PreferenciaTema;
   definirPreferenciaTema: (preferencia: PreferenciaTema) => Promise<void>;
@@ -43,6 +49,40 @@ type TemaContexto = {
 export const TemaContext = createContext<TemaContexto | undefined>(undefined);
 
 export function ProvedorTema({ children }: PropsWithChildren) {
+  const [animacaoAbertura, setAnimacaoAbertura] = useState(true);
+  const [carregandoAbertura, setCarregandoAbertura] = useState(true);
+  const [salvandoAbertura, setSalvandoAbertura] = useState(false);
+  useEffect(() => {
+    let ativo = true;
+    const aplicar = (valor: boolean) => {
+      if (!ativo) return;
+      setAnimacaoAbertura(valor);
+      setCarregandoAbertura(false);
+    };
+    // Recovery for storage that never settles; not a minimum display duration.
+    const limite = setTimeout(() => {
+      console.warn("[Startup] Limite de leitura da preferência excedido");
+      aplicar(true);
+      ativo = false;
+    }, 8000);
+    void carregarAnimacaoAbertura().then((valor) => {
+      clearTimeout(limite);
+      aplicar(valor);
+    });
+    return () => {
+      ativo = false;
+      clearTimeout(limite);
+    };
+  }, []);
+  const definirAnimacaoAbertura = useCallback(async (ativada: boolean) => {
+    setSalvandoAbertura(true);
+    try {
+      await salvarAnimacaoAbertura(ativada);
+      setAnimacaoAbertura(ativada);
+    } finally {
+      setSalvandoAbertura(false);
+    }
+  }, []);
   const esquemaSistema = useEsquemaSistema();
   const [preferenciaTema, setPreferenciaTema] =
     useState<PreferenciaTema>("sistema");
@@ -130,6 +170,10 @@ export function ProvedorTema({ children }: PropsWithChildren) {
 
   const valor = useMemo(
     () => ({
+      animacaoAbertura,
+      carregandoAbertura,
+      salvandoAbertura,
+      definirAnimacaoAbertura,
       temaAtual,
       preferenciaTema,
       definirPreferenciaTema,
@@ -142,6 +186,10 @@ export function ProvedorTema({ children }: PropsWithChildren) {
       carregandoTema,
     }),
     [
+      animacaoAbertura,
+      carregandoAbertura,
+      salvandoAbertura,
+      definirAnimacaoAbertura,
       temaAtual,
       preferenciaTema,
       definirPreferenciaTema,

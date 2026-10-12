@@ -10,7 +10,14 @@ export class CacheEstruturalPorVersao<T> {
   get(key: string, loader: () => Promise<T>) {
     let value = this.values.get(key);
     if (!value) {
-      value = loader();
+      const pending = loader();
+      value = pending.then((resultado) => {
+        if (resultado == null && this.values.get(key) === value) this.values.delete(key);
+        return resultado;
+      }, (erro) => {
+        if (this.values.get(key) === value) this.values.delete(key);
+        throw erro;
+      });
       this.values.set(key, value);
     }
     return value;
@@ -45,12 +52,14 @@ export async function listarSentidosV2(codigoLinha: string) {
   const response = await api.get<SentidoV2[]>(
     `/linhas/${encodeURIComponent(codigoLinha)}/sentidos`,
   );
-  return response.ok && response.data ? response.data : [];
+  if (!response.ok || !Array.isArray(response.data)) throw new Error("Não foi possível carregar sentidos V2.");
+  return response.data;
 }
 
 export async function listarPadroesV2(sentidoId: string) {
   const response = await api.get<PadraoOperacionalV2[]>(`/sentidos/${sentidoId}/padroes`);
-  return response.ok && response.data ? response.data : [];
+  if (!response.ok || !Array.isArray(response.data)) throw new Error("Não foi possível carregar padrões V2.");
+  return response.data;
 }
 
 export function obterItinerarioPadraoVersaoV2(padraoVersaoId: string) {

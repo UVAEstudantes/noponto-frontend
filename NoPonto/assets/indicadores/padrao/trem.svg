@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="240" viewBox="0 0 80 240" fill="none">
+  <!-- Frente no topo. Altere apenas o fill de carroceria para recolorir. -->
+  <defs>
+    <linearGradient id="padrao-train-volume" x1="12" y1="0" x2="68" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity=".17"/>
+      <stop offset=".12" stop-color="#fff" stop-opacity=".42"/>
+      <stop offset=".34" stop-color="#fff" stop-opacity=".09"/>
+      <stop offset=".76" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".16"/>
+    </linearGradient>
+    <linearGradient id="padrao-train-glass" x1="32" y1="24" x2="46" y2="71" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42494c"/><stop offset="1" stop-color="#171c1e"/>
+    </linearGradient>
+  </defs>
+  <g id="estrutura" fill="#24292b">
+    <path d="M13 210H67V216Q67 233 54 234H26Q13 233 13 216Z"/>
+  </g>
+  <g id="carroceria" fill="#FFC400">
+    <path id="padrao-train-body" d="M40 9C26 9 20 28 16 44C12 61 12 76 12 96V215Q12 230 26 231H54Q68 230 68 215V96C68 76 68 61 64 44C60 28 54 9 40 9Z"/>
+  </g>
+  <g id="volume">
+    <use href="#padrao-train-body" fill="url(#padrao-train-volume)" stroke="#000" stroke-opacity=".2" stroke-width=".8"/>
+    <path d="M19 205V97Q19 79 29 79H51" stroke="#fff" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g id="vidros">
+    <path d="M40 21C31 21 27 34 24 47L22 57Q20 71 31 72H49Q60 71 58 57L56 47C53 34 49 21 40 21Z" fill="url(#padrao-train-glass)" stroke="#111719" stroke-width="1.2"/>
+    <path d="M27 51Q40 45 53 51" stroke="#fff" stroke-opacity=".28" stroke-linecap="round"/>
+    <path d="M26 52L25 57M54 52L55 57" stroke="#fff" stroke-opacity=".75" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g id="traseira">
+    <path d="M22 217Q40 215 58 217L57 227Q55 234 48 234H32Q25 234 23 227Z" fill="#202628"/>
+    <path d="M29 227H34M46 227H51" stroke="#F0443C" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+</svg>

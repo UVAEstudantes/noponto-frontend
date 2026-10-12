@@ -38,10 +38,10 @@ export function atualizarHistorico(items: SearchHistoryItem[], linha: LinhaSimpl
 export function historicoPorCategoria(items: SearchHistoryItem[], categoria: CategoriaTransporteV2,
   limit = 6) { return items.filter((item) => item.categoria === categoria).slice(0, limit); }
 
-export function filtrarHistoricoBusca(items: SearchHistoryItem[], categoria: CategoriaTransporteV2,
+export function filtrarHistoricoBusca(items: SearchHistoryItem[], categoria: CategoriaTransporteV2 | "todos",
   query: string, limit = 6) {
   const needle = normalizarBusca(query);
-  return items.filter((item) => item.categoria === categoria)
+  return items.filter((item) => categoria === "todos" || item.categoria === categoria)
     .filter((item) => !needle || [item.codigo, item.nome]
       .some((value) => normalizarBusca(value).includes(needle)))
     .slice(0, limit);
@@ -56,7 +56,7 @@ export function removerResultadosJaRecentes<T extends { linha: { id: string } }>
 
 export function historicoParaOpcao(item: SearchHistoryItem): OpcaoBusca {
   const linha: LinhaSimplesDto = { id: item.linhaId, codigo: item.codigo, nome: item.nome,
-    tipoRota: item.tipoRota, modalId: item.modalId, modal: item.modal };
+    tipoRota: item.tipoRota, modalId: item.modalId, modal: item.modal ?? item.categoria };
   const presentation = apresentarLinhaBusca(linha, item.categoria);
   return { linha, nomeExibicao: presentation.displayName, ...presentation };
 }

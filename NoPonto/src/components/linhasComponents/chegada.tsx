@@ -8,8 +8,6 @@ interface Props {
 
 export default function Chegada(props: Props) {
   const { cores, temaAtual } = useTema();
-  const headerText =
-    temaAtual === "escuro" ? cores.textoPrimario : cores.textoInverso;
   const headerAccent =
     temaAtual === "escuro" ? cores.textoDestaque : cores.iconePrimario;
 
@@ -27,10 +25,10 @@ export default function Chegada(props: Props) {
         className="p-4 flex-row items-center"
         style={{ backgroundColor: cores.fundoNav }}
       >
-        <HistoryIcon color={headerAccent} size={20} />
+        <HistoryIcon color={cores.iconeSecundario} size={20} />
         <Text
           className="font-semibold ml-3 flex-1"
-          style={{ color: headerText }}
+          style={{ color: cores.textoPrimario }}
         >
           Chegada Estimada
         </Text>

@@ -13,6 +13,8 @@ import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
 import { adaptarRailParaMapa } from "@/src/services/veiculosMapa";
+import { useIndicadores } from "@/src/context/ProvedorIndicadores";
+import { estilosEfetivos } from "@/src/constants/indicadores";
 
 // IDs de estilo/filtros serializados para consumo dentro do script da WebView.
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
@@ -39,10 +41,13 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       estiloMapa = ESTILO_MAPA_PADRAO,
       onStopPress,
       railVehicles = [],
+      onReady,
     },
     ref,
   ) => {
     const webViewRef = useRef<WebView>(null);
+    const { preferencias } = useIndicadores();
+    const estilosVeiculos = useMemo(() => estilosEfetivos(preferencias), [preferencias]);
     const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullBytes: 0, realtimeBytes: 0 });
     const railVehiclesForMap = useMemo(
       () => railVehicles.map(adaptarRailParaMapa),
@@ -77,27 +82,13 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       };
     }, []);
 
-    // Guardamos apenas a primeira coordenada válida para impedir "salto" inicial do mapa quando localização vai refinando nos primeiros segundos do GPS.
-    const coordInicialRef = useRef<{
-      latitude: number;
-      longitude: number;
-    } | null>(null);
-
-    if (!coordInicialRef.current && location?.coords) {
-      coordInicialRef.current = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-    }
-
-    const latInicial =
-      coordInicialRef.current?.latitude ??
-      location?.coords?.latitude ??
-      -22.9068;
-    const lngInicial =
-      coordInicialRef.current?.longitude ??
-      location?.coords?.longitude ??
-      -43.1729;
+    // Âncora imutável por montagem: GPS tardio entra por updateUser, sem recarregar o HTML.
+    const coordInicialRef = useRef({
+      latitude: location?.coords?.latitude ?? -22.9068,
+      longitude: location?.coords?.longitude ?? -43.1729,
+    });
+    const latInicial = coordInicialRef.current.latitude;
+    const lngInicial = coordInicialRef.current.longitude;
 
     useImperativeHandle(ref, () => ({
       centerOnUser: () => {
@@ -134,6 +125,13 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
     // Só enviamos updates após a confirmação "map_ready" vinda da WebView.
     const [mapReady, setMapReady] = React.useState(false);
+    const [mapGeneration, setMapGeneration] = React.useState(0);
+
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef,
+        `if(window.updateIndicatorStyles) window.updateIndicatorStyles(${JSON.stringify(estilosVeiculos)});`);
+    }, [mapReady, mapGeneration, estilosVeiculos]);
 
     // Update "pesado": linhas/tema/tráfego/estilo. Mantido separado do update de usuário.
     useEffect(() => {
@@ -163,6 +161,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       mapReady,
+      mapGeneration,
       structureSignature,
       darkMode,
       showTraffic,
@@ -180,7 +179,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       }
       injectWebViewCommand(webViewRef,
         `if(window.updateRealtime) window.updateRealtime(${serialized});`);
-    }, [mapReady, realtimeLines, railVehiclesForMap]);
+    }, [mapReady, mapGeneration, realtimeLines, railVehiclesForMap]);
 
     // Update "leve" e frequente: posição do usuário + heading/acurácia.
     useEffect(() => {
@@ -196,7 +195,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         webViewRef,
         `if(window.updateUser) window.updateUser(${JSON.stringify(data)});`,
       );
-    }, [mapReady, location]);
+    }, [mapReady, mapGeneration, location]);
 
     // HTML final memoizado: só recria quando a âncora inicial muda.
     const mapHTML = useMemo(
@@ -211,11 +210,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       [latInicial, lngInicial],
     );
 
+    const source = useMemo(() => ({ html: mapHTML }), [mapHTML]);
+
     return (
       <WebView
         ref={webViewRef}
         originWhitelist={["*"]}
-        source={{ html: mapHTML }}
+        source={source}
+        onLoadStart={() => setMapReady(false)}
         style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#f0f0f0" }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -226,7 +228,9 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         onMessage={(event) => {
           const raw = event.nativeEvent.data;
           if (raw === "map_ready") {
+            setMapGeneration((geracao) => geracao + 1);
             setMapReady(true);
+            onReady?.();
             return;
           }
           try {
