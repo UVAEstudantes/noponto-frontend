@@ -39,6 +39,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       estiloMapa = ESTILO_MAPA_PADRAO,
       onStopPress,
       railVehicles = [],
+      onReady,
     },
     ref,
   ) => {
@@ -219,6 +220,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           if (raw === "map_ready") {
             setMapGeneration((geracao) => geracao + 1);
             setMapReady(true);
+            onReady?.();
             return;
           }
           try {

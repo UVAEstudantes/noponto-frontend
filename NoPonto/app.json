@@ -4,18 +4,14 @@
     "slug": "NoPonto",
     "version": "2.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/images/iconeNovo.png",
-
     "scheme": "noponto",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/images/iconeNovo.png"
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/iconeNovoSemFundo.png",
@@ -25,32 +21,33 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.guilhermedesales.nononto"
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/iconeNovo.png"
     },
-
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/iconeNovoSemFundo.png",
-          "backgroundColor": "#0B0B0B",
-          "imageWidth": 250
+          "image": "./assets/images/splash-transparent.png",
+          "imageWidth": 1,
+          "backgroundColor": "#000000",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
         }
       ],
       "expo-font",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      ["expo-navigation-bar", { "enforceContrast": false }],
+      "expo-video"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
-
     "extra": {
       "router": {},
       "eas": {

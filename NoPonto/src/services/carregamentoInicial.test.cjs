@@ -153,14 +153,17 @@ for (const estruturasAntes of [true, false]) {
       "@/src/services/veiculosMapa": { adaptarRailParaMapa: (item) => item },
     }).default;
     const linha = { structureKey: "linha:versao", nome: "SV866", segmentos: [[[1, 2], [3, 4]]], posicoes: [] };
-    let props = { location: null, linhasParaMostrar: estruturasAntes ? [linha] : [] };
+    let readyNotifications = 0;
+    let props = { location: null, linhasParaMostrar: estruturasAntes ? [linha] : [], onReady: () => readyNotifications++ };
     let view;
     const render = () => { view = harness.render(() => Mapa(props, null)); };
     render();
+    assert.equal(readyNotifications, 0);
     const source = view.props.source;
     const scripts = [];
     view.props.ref.current = { injectJavaScript: (script) => scripts.push(script) };
     view.props.onMessage({ nativeEvent: { data: "map_ready" } }); render();
+    assert.equal(readyNotifications, 1); // Opening can finish before GPS/vehicles arrive.
     if (!estruturasAntes) { props = { ...props, linhasParaMostrar: [linha] }; render(); }
     assert.ok(scripts.some((script) => script.startsWith("window.updateMap(") && script.includes("linha:versao")));
     props = { ...props, location: { coords: { latitude: -22, longitude: -43 } } }; render();

@@ -59,6 +59,7 @@ export interface LinhaParaMostrar {
 }
 
 export interface MapaOSMProps {
+  onReady?: () => void;
   location: any;
   linhasParaMostrar: LinhaParaMostrar[];
   darkMode?: boolean;

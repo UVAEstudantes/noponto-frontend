@@ -9,6 +9,7 @@ import ParadaSheet, {
   LinhaParadaInfo,
 } from "@/src/components/mapaComponents/paradaSheet";
 import MapaOSM from "@/src/components/mapOSM/mapOSM";
+import { StartupContext } from "@/src/components/startup/StartupContext";
 import { MapaOSMRef } from "@/src/components/mapOSM/types";
 import SearchSections from "@/src/components/searchSections";
 import BuscaMapa from "@/src/components/mapaComponents/buscaMapa";
@@ -86,6 +87,7 @@ const CORES_RAMAIS_TREM: Record<string, string> = {
 };
 
 const Home = () => {
+  const reportStartupReady = React.useContext(StartupContext);
   const telaAtiva = useIsFocused();
   const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } =
     useTema();
@@ -906,6 +908,7 @@ const Home = () => {
       setAlturaAreaMapa((anterior) => anterior === altura ? anterior : altura);
     }} style={{ flex: 1, backgroundColor: cores.fundoApp }}>
       <MapaOSM
+        onReady={reportStartupReady}
         ref={mapRef}
         location={location}
         linhasParaMostrar={dadosParaMapa}
