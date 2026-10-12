@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="240" viewBox="0 0 80 240" fill="none">
+  <!-- Frente no topo. Altere apenas o fill de carroceria para recolorir. -->
+  <defs>
+    <linearGradient id="padrao-brt-volume" x1="12" y1="0" x2="68" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity=".17"/>
+      <stop offset=".12" stop-color="#fff" stop-opacity=".42"/>
+      <stop offset=".34" stop-color="#fff" stop-opacity=".09"/>
+      <stop offset=".76" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".16"/>
+    </linearGradient>
+    <linearGradient id="padrao-brt-glass" x1="33" y1="14" x2="46" y2="39" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42494c"/><stop offset="1" stop-color="#171c1e"/>
+    </linearGradient>
+    <linearGradient id="padrao-brt-joint" x1="12" y1="0" x2="68" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171c1e"/><stop offset=".16" stop-color="#3b4244"/><stop offset=".4" stop-color="#2d3335"/><stop offset="1" stop-color="#171c1e"/>
+    </linearGradient>
+  </defs>
+  <g id="estrutura" fill="#24292b">
+    <rect x="8" y="49" width="7" height="32" rx="3.5"/>
+    <rect x="65" y="49" width="7" height="32" rx="3.5"/>
+    <rect x="8" y="168" width="7" height="32" rx="3.5"/>
+    <rect x="65" y="168" width="7" height="32" rx="3.5"/>
+    <path d="M12 213H68V222Q68 233 56 234H24Q12 233 12 222Z"/>
+  </g>
+  <g id="carroceria" fill="#FFC400">
+    <path id="padrao-brt-front" d="M29 6H51Q68 6 68 23V122H12V23Q12 6 29 6Z"/>
+    <path id="padrao-brt-back" d="M12 152H68V218Q68 231 55 231H25Q12 231 12 218Z"/>
+  </g>
+  <g id="volume">
+    <use href="#padrao-brt-front" fill="url(#padrao-brt-volume)" stroke="#000" stroke-opacity=".2" stroke-width=".8"/>
+    <use href="#padrao-brt-back" fill="url(#padrao-brt-volume)" stroke="#000" stroke-opacity=".2" stroke-width=".8"/>
+    <path d="M18 117V56Q18 44 28 44H53M18 208V167Q18 157 28 157H53" stroke="#fff" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <g id="articulacao">
+    <rect x="12" y="122" width="56" height="30" rx="3" fill="url(#padrao-brt-joint)" stroke="#13181a" stroke-width=".8"/>
+    <path d="M18 125H62" stroke="#fff" stroke-opacity=".13" stroke-linecap="round"/>
+  </g>
+  <g id="vidros">
+    <path d="M24 14Q40 11 56 14Q62 15 61 22L59 34Q58 38 53 38H27Q22 38 21 34L19 22Q18 15 24 14Z" fill="url(#padrao-brt-glass)" stroke="#111719" stroke-width="1.2"/>
+    <path d="M24 17Q40 14 56 17" stroke="#fff" stroke-opacity=".22" stroke-linecap="round"/>
+  </g>
+  <g id="traseira">
+    <path d="M17 218Q40 221 63 218L62 226Q60 232 53 232H27Q20 232 18 226Z" fill="#202628"/>
+    <path d="M22 226L28 227M52 227L58 226" stroke="#F0443C" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+</svg>
