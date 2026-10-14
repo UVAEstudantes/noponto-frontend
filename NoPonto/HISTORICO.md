@@ -20,3 +20,13 @@
 - Inscrições rodoviárias reconciliadas no hub compartilhado, com limpeza/reconexão; polling ferroviário por linhas visíveis, snapshot agregado e deduplicação. Radar único usa contexto efetivo multimodal e plataformas específicas.
 - Preparada suíte favoritosEtapaB.test.cjs e roteiro com 24 regressões em VALIDACAO_FAVORITOS_ETAPA_B.md. Nenhum teste, build, lint, deploy ou Git executado.
 - Backend, GPS/ETA/ML, tarifas, pagamentos, POIs, tema global, navegação e Rotinas preservados. Integração e aparência aguardam validação manual.
+
+## 2026-10-14 — Presença física BUS/BRT nos terminais (OFF por padrão)
+- Corrigido filtro visual demonstrado por teste RED para posição recente da linha selecionada sem versão estrutural. Separada presença de identidade/ETA sob EXPO_PUBLIC_ROAD_PRESENCE_ENABLED=true; default OFF. App mapa/Linhas, hook, reconciliação, payload e popup adaptados sem inventar linha/sentido/execução ou alterar Radar/backend operacional.
+- Apresentação conservadora: em viagem; terminal/fim com duas observações; aguardando saída apenas após chegada observada e confirmação do novo sentido, parado; estado indeterminado e GPS desatualizado. Posição GPS bruta quando indisponível para projeção, sem dead reckoning nesses estados; idade real, 60s frescor visual e180s retenção máxima, sem renovação do GPS ou persistência. Histerese 50m/100m e evidências limitadas a5000 veículos.
+- 24 testes Node aprovados (12 de presença e12 de Favoritos/SignalR/Radar), incluindo filtro real, troca falsa de sentido, jitter, expiração e duplicação entre linhas; TypeScript --noEmit e sintaxe do script WebView aprovados. Backend validado separadamente em HTTP local/cache em memória, sem bancos existentes.
+- Novos src/services/roadPresence.ts e terminalPresence.test.cjs. Modificados app/index.tsx, app/linhas.tsx, useMobilidadeRio.ts, veiculosMapa.ts, types/veiculoMapa.ts, components/mapOSM/types.ts e webview/mapScript.ts, antes limpos. WIP de startup/theme/eas preservado integralmente. Não executado build mobile, deploy, commit/push/merge nem alteração de CI/CD. Relatório no backend: docs/09-validacao/11-visibilidade-terminais-20261014.md. Aparência e limiares aguardam homologação no dispositivo; causa real do terminal não afirmada.
+
+
+### 2026-10-14 — F1 candidata — presença isolada
+- Nove arquivos aprovados e somente histórico terminal transportados. WIP startup/theme/EAS ficou no original. Flag visual OFF, nenhum build APK ou workflow executado.

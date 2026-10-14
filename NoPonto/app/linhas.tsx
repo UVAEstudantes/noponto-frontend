@@ -1,4 +1,5 @@
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
+import { ROAD_PRESENCE_ENABLED } from '@/src/services/roadPresence';
 import EstadoFavoritos from "@/src/components/estadoFavoritos";
 import { useFavoritos } from "@/src/hooks/useFavoritos";
 import InputBusca from "@/src/components/inputBusca";
@@ -786,11 +787,13 @@ const Linhas = () => {
   }, [itinerario, padraoVersaoFiltro]);
 
   const veiculos = useMemo<VeiculoTempoReal[]>(() => {
-    if (!linhaSelecionada || !modalAtual || !padraoVersaoSelecionado) return [];
+    if (!linhaSelecionada || !modalAtual || (!padraoVersaoSelecionado
+      && !(ROAD_PRESENCE_ENABLED && (modalAtual==='onibus' || modalAtual==='brt')))) return [];
     const codigo = linhaSelecionada.linha.codigo || linhaSelecionada.linha.nome;
     return getVeiculosPorCodigo(
       codigo,
       padraoVersaoFiltro ? new Set([padraoVersaoFiltro]) : null,
+      linhaSelecionada.linha.id,
     );
   }, [
     linhaSelecionada,
@@ -801,7 +804,8 @@ const Linhas = () => {
   ]);
 
   const dadosParaMapa = useMemo(() => {
-    if (!linhaSelecionada || !modalAtual || !sentidoSelecionado || !padraoVersaoSelecionado) return [];
+    if (!linhaSelecionada || !modalAtual || ((!sentidoSelecionado || !padraoVersaoSelecionado)
+      && !(ROAD_PRESENCE_ENABLED && (modalAtual==='onibus' || modalAtual==='brt')))) return [];
 
     const itinerarioSegmentoMap = padraoVersaoSelecionado
       ? { [padraoVersaoSelecionado]: 0 }
@@ -829,6 +833,9 @@ const Linhas = () => {
         posicoes: veiculos.map((v) => ({
           id: v.id,
           idVisual: v.idVisual,
+          presencaEstado:v.presencaEstado,
+          presencaRotulo:v.presencaRotulo,
+          presencaIdadeSegundos:v.presencaIdadeSegundos,
           runtime: v.runtime,
           latitude: v.latitude,
           longitude: v.longitude,
