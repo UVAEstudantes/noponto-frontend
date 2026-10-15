@@ -1,8 +1,7 @@
-import React, { Component, type PropsWithChildren } from "react";
-import { View } from "react-native";
-import * as SplashScreen from "expo-splash-screen";
+import { Component, type PropsWithChildren } from "react";
+import { startupLog } from "./startupDiagnostics";
 
-// Native player creation can fail before playback events are available.
+// The parent remains mounted to show the logo and wait for the map independently.
 export default class SplashVideoBoundary extends Component<
   PropsWithChildren<{ onComplete: () => void }>,
   { failed: boolean }
@@ -14,19 +13,11 @@ export default class SplashVideoBoundary extends Component<
   }
 
   componentDidCatch(error: Error) {
-    console.warn("[SplashVideo] Player indisponível", error);
+    startupLog("player.creationError", { message: error.message });
+    this.props.onComplete();
   }
 
   render() {
-    if (!this.state.failed) return this.props.children;
-    return (
-      <View
-        style={{ position: "absolute", inset: 0, backgroundColor: "#000000" }}
-        onLayout={() => {
-          void SplashScreen.hideAsync().catch(() => {});
-          this.props.onComplete();
-        }}
-      />
-    );
+    return this.state.failed ? null : this.props.children;
   }
 }

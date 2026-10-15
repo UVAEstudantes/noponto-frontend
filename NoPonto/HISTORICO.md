@@ -43,3 +43,12 @@
 - Corrigido replay da transição inserindo o HTML já expandido antes de setHTML; 54 testes direcionados e TypeScript aprovados nessa revisão.
 - A pedido do operador, removida apenas a animação contínua do pseudo-elemento do ícone no popup, mantendo o contorno estático e os movimentos do mapa. Adicionada regressão específica; 14 testes de popup/título aprovados após essa alteração. Sem alterações de GPS, ETA, backend, CI/CD ou workspaces originais. Commit local ainda depende de autorização.
 - Fechamento visual: operador confirmou também o ícone sem pulso e autorizou explicitamente commit local dos seis arquivos e encerramento da sessão, sem push.
+
+### 2026-10-15 — Preparação do patch de abertura Android para PR32
+- Transportado o conjunto funcional recuperado e homologado, não apenas a última retomada: SplashVideoOverlay, SplashVideoBoundary, StartupOverlay, useStartupTransition, StartupLogo, helper diagnóstico e testes. Layout, provedor de tema, preferência persistida e commits de presença/popup/Radar preservados.
+- Splash liberada no layout; fallback com logo, primeiro frame com limite de 3s em foreground, watchdog retomado pela duração restante e orçamento paralelo de mapa de 8s. Player retoma após lifecycle e encerra em playToEnd/erro/timeout, sem seek, retry periódico ou replay tardio.
+- Diagnósticos de release OFF quando variável ausente/0; nenhum sampler ativo sem diagnóstico. Logs de medição do layout/tema e override de superfície ficaram no laboratório; textureView mantida fixa como no APK homologado. Não transportados Android gerado, assinatura, pacote de teste, endpoints, EAS, caches, APK ou limites de build.
+- Evidência anterior: release local completou playToEnd em 5,005s, sem timeout; operador confirmou vídeo completo com leve engasgo inicial. Essa ressalva permanece. Sem novo build ou nova homologação nesta preparação.
+- Diff e validação desta candidata serão registrados antes da autorização de commit. Nenhum stage, commit, push, atualização remota da PR, merge, backend, ML ou Docker nesta etapa.
+
+- Validação desta preparação: 40/40 testes direcionados (14 startup, 9 popup, 5 título do Radar e 12 presença), TypeScript `--noEmit` e `git diff --check` aprovados. Laboratório preservado por status e SHA-256; candidata sem stage ou commit. Nenhum novo APK ou teste visual nesta revisão.
