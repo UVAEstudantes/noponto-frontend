@@ -30,3 +30,16 @@
 
 ### 2026-10-14 — F1 candidata — presença isolada
 - Nove arquivos aprovados e somente histórico terminal transportados. WIP startup/theme/EAS ficou no original. Flag visual OFF, nenhum build APK ou workflow executado.
+
+### 2026-10-14 — Correções pontuais de popup e título do Radar na candidata
+- Reproduzidas nove falhas RED e dois casos aprovados antes da correção. Atualizações de HTML descartavam a expansão de Mais detalhes; preservado somente o estado do DOM do mesmo popup atualmente aberto, renovando todo o conteúdo. Consumidores rodoviário e ferroviário reutilizam o helper, sem estado global, timer ou retenção de veículo removido. Fechamento manual permanece funcional.
+- Removido somente o limite de uma linha/reticências do título do Radar; nome completo quebra dentro da coluna flexível e do painel rolável já existente. Sem alteração de eventos, API, ETA ou escolha da parada.
+- Novos popupDetails.test.cjs (7 casos) e radarStopTitle.test.cjs (5 casos), com fluxo WebView real em VM e renderização TSX com hosts/hooks simulados. Validam GPS/timestamp/repetição, conteúdo renovado, fechamento, veículos distintos/removidos, consumidor ferroviário e nome completo de fixture/metadados/nomes longos em layouts de 320/480. Não são medição nativa de pixels nem homologação visual pós-patch.
+- GREEN: 53 testes direcionados (12 novos, 12 presença, 9 indicadores, 10 Radar e 10 eventos), TypeScript --noEmit e git diff --check aprovados. Node 20 exigiu transpilar TypeScript para executar as regressões antigas; tentativas iniciais sem loader/esModuleInterop falharam na inicialização, corrigidas apenas no comando de teste. Nenhuma suíte backend, infraestrutura, Expo ou APK executados.
+- Alterações apenas nesta candidata frontend, inicialmente limpa, HEAD 30072b4a4597 preservado. Originais, startup/splash/tema/EAS, backend, ML e CI/CD não editados. Sem stage, commit, push, PR, merge ou deploy. Diff pronto para revisão; aparência pós-patch ainda não reconferida no Android.
+
+### 2026-10-14 — Validação visual final e remoção do pulso do ícone
+- Operador confirmou no Android: detalhes estáveis após atualizações realtime, fechamento manual preservado, outro veículo inicia recolhido e título completo do Radar legível. Fixture próxima FIXRADAR criada somente no banco descartável externo à candidata.
+- Corrigido replay da transição inserindo o HTML já expandido antes de setHTML; 54 testes direcionados e TypeScript aprovados nessa revisão.
+- A pedido do operador, removida apenas a animação contínua do pseudo-elemento do ícone no popup, mantendo o contorno estático e os movimentos do mapa. Adicionada regressão específica; 14 testes de popup/título aprovados após essa alteração. Sem alterações de GPS, ETA, backend, CI/CD ou workspaces originais. Commit local ainda depende de autorização.
+- Fechamento visual: operador confirmou também o ícone sem pulso e autorizou explicitamente commit local dos seis arquivos e encerramento da sessão, sem push.

@@ -97,7 +97,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 }}>
         <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cores.sucesso }} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text numberOfLines={1} ellipsizeMode="tail" accessibilityLabel={titulo}
+          <Text accessibilityLabel={titulo}
             style={{ fontSize: 13, fontWeight: "700", color: cores.textoPrimario }}>
             {titulo}
           </Text>

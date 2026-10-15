@@ -254,7 +254,7 @@ function openRailPopup(run,coord){
   var signature=[status,title,destination,primary,run.platformLabel||run.platform||'',run.lastRealtimeEvidenceUtc||'',run.trainCode||''].join('|');
   if(activeRailPopup&&activeRailPopupIdentity===identity){
     activeRailPopup.setLngLat(coord);
-    if(activeRailPopupSignature!==signature){activeRailPopup.setHTML(html);activeRailPopupSignature=signature}
+    if(activeRailPopupSignature!==signature){setPopupHTMLPreservingDetails(activeRailPopup,html);activeRailPopupSignature=signature}
     return;
   }
   if(activeRailPopup)activeRailPopup.remove();
@@ -601,6 +601,20 @@ function toggleDetails(btn){
     btn.classList.add('open');
     if(label)label.textContent='Menos detalhes';
   }
+}
+
+function setPopupHTMLPreservingDetails(popup,html){
+  // Keep expansion only on this currently open popup; always refresh its data.
+  var element=popup.isOpen&&popup.isOpen()&&popup.getElement?popup.getElement():null;
+  var expanded=element&&element.querySelector('.popup-details.open');
+  // MapLibre measures during setHTML: insert the final state, without replaying
+  // the opening transition. Manual toggleDetails still animates normally.
+  if(expanded){
+    html=html.replace('class="popup-details"','class="popup-details open"')
+      .replace('class="popup-toggle"','class="popup-toggle open"')
+      .replace('<span class="toggle-label">Mais detalhes</span>','<span class="toggle-label">Menos detalhes</span>');
+  }
+  popup.setHTML(html);
 }
 
 function modalIconSvg(modal){
@@ -1248,7 +1262,7 @@ window.updateMap=function(data){
       }
 
       if(popup){
-        popup.setHTML(buildPopup(linha,p,vid,heading));
+        setPopupHTMLPreservingDetails(popup,buildPopup(linha,p,vid,heading));
         if(popup.isOpen&&popup.isOpen())refreshIcons();
       }
     });
