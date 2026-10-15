@@ -27,6 +27,9 @@ export interface VeiculoMapa {
   distanciaProximaParadaMetros?: number | null;
   proximaOcorrenciaParadaPadraoId?: string | null;
   raw: unknown;
+  presencaEstado?: string;
+  presencaRotulo?: string;
+  presencaIdadeSegundos?: number;
 }
 
 export function statusFonteFerroviaria(
