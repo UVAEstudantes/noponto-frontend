@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
+import { startupLog } from "./startupDiagnostics";
 
 export function useStartupTransition(
   readyToFinish: boolean,
@@ -9,10 +10,17 @@ export function useStartupTransition(
   const opacity = useRef(new Animated.Value(1)).current;
   const [waitingExpired, setWaitingExpired] = useState(false);
   useEffect(() => {
-    if (!readyToFinish) return;
-    const deadline = setTimeout(() => setWaitingExpired(true), 8000);
+    if (appReady) return;
+    // Map budget runs in parallel with video, never restarts on video failure.
+    const deadline = setTimeout(() => {
+      startupLog("map.waitTimeout");
+      setWaitingExpired(true);
+    }, 8000);
     return () => clearTimeout(deadline);
-  }, [readyToFinish]);
+  }, [appReady]);
+  useEffect(() => {
+    startupLog("transition.state", { readyToFinish, appReady, waitingExpired });
+  }, [readyToFinish, appReady, waitingExpired]);
   useEffect(() => {
     if (!readyToFinish || (!appReady && !waitingExpired)) return;
     const animation = Animated.timing(opacity, {
@@ -21,7 +29,10 @@ export function useStartupTransition(
       useNativeDriver: true,
     });
     animation.start(({ finished }) => {
-      if (finished) onComplete();
+      if (finished) {
+        startupLog("overlay.removed", { appReady, waitingExpired });
+        onComplete();
+      }
     });
     return () => animation.stop();
   }, [appReady, readyToFinish, onComplete, opacity, waitingExpired]);

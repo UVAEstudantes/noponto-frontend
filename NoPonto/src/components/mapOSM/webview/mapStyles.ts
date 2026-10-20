@@ -39,7 +39,7 @@ export const MAP_WEBVIEW_STYLES = `
     .popup-card{display:flex;flex-direction:column;gap:10px}
     .popup-header{display:flex;align-items:center;gap:11px}
     .popup-indicator{width:46px;height:46px;position:relative;flex:0 0 46px;border-radius:50%;background:color-mix(in srgb,var(--c,#07883f) 15%,var(--popup-surface));color:color-mix(in srgb,var(--c,#07883f) 82%,var(--popup-fg));display:flex;align-items:center;justify-content:center}
-    .popup-indicator:after{content:'';position:absolute;left:50%;top:50%;width:42px;height:42px;border-radius:50%;border:2px solid currentColor;transform:translate(-50%,-50%);opacity:.16;animation:iconPulse 2.6s ease-out infinite}
+    .popup-indicator:after{content:'';position:absolute;left:50%;top:50%;width:42px;height:42px;border-radius:50%;border:2px solid currentColor;transform:translate(-50%,-50%);opacity:.16}
     .popup-indicator svg{width:24px;height:24px;stroke:currentColor;stroke-width:2;fill:none}
     .popup-title-row{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
     .popup-title{font-weight:800;font-size:18px;color:var(--popup-fg);min-width:0}

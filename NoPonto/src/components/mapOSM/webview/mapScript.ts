@@ -254,7 +254,7 @@ function openRailPopup(run,coord){
   var signature=[status,title,destination,primary,run.platformLabel||run.platform||'',run.lastRealtimeEvidenceUtc||'',run.trainCode||''].join('|');
   if(activeRailPopup&&activeRailPopupIdentity===identity){
     activeRailPopup.setLngLat(coord);
-    if(activeRailPopupSignature!==signature){activeRailPopup.setHTML(html);activeRailPopupSignature=signature}
+    if(activeRailPopupSignature!==signature){setPopupHTMLPreservingDetails(activeRailPopup,html);activeRailPopupSignature=signature}
     return;
   }
   if(activeRailPopup)activeRailPopup.remove();
@@ -603,6 +603,20 @@ function toggleDetails(btn){
   }
 }
 
+function setPopupHTMLPreservingDetails(popup,html){
+  // Keep expansion only on this currently open popup; always refresh its data.
+  var element=popup.isOpen&&popup.isOpen()&&popup.getElement?popup.getElement():null;
+  var expanded=element&&element.querySelector('.popup-details.open');
+  // MapLibre measures during setHTML: insert the final state, without replaying
+  // the opening transition. Manual toggleDetails still animates normally.
+  if(expanded){
+    html=html.replace('class="popup-details"','class="popup-details open"')
+      .replace('class="popup-toggle"','class="popup-toggle open"')
+      .replace('<span class="toggle-label">Mais detalhes</span>','<span class="toggle-label">Menos detalhes</span>');
+  }
+  popup.setHTML(html);
+}
+
 function modalIconSvg(modal){
   var m=(modal||'onibus').toLowerCase();
   if(m==='trem'||m==='metro'){
@@ -654,10 +668,10 @@ function buildPopup(linha,p,vid,heading){
   html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';
   html+='<div class="popup-main">';
   html+='<div class="popup-title-row"><div class="popup-title">'+escapeHtml(linha.nome)+'</div><span class="popup-vehicle" style="--c:'+corFinal+'">'+escapeHtml(ordemLabel)+'</span></div>';
-  html+='<div class="popup-sub">'+escapeHtml(linha.descricao||('Sentido: '+sentidoLabel))+'</div>';
+  html+='<div class="popup-sub">'+escapeHtml(p.presencaEstado && (!p.padraoVersaoId || p.presencaEstado==='indeterminado') ? 'Sentido indeterminado' : (linha.descricao||('Sentido: '+sentidoLabel)))+'</div>';
   html+='</div>';
   html+='</div>';
-  html+='<div class="popup-meta"><span class="popup-status">Ao vivo</span><span class="popup-time">Atualizado há '+tempoHtml+'</span></div>';
+  html+='<div class="popup-meta"><span class="popup-status">'+escapeHtml(p.presencaRotulo||'Ao vivo')+'</span><span class="popup-time">Atualizado há '+tempoHtml+'</span></div>';
   html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this)">'+
         '<span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>';
   html+='<div class="popup-details" id="'+detailsId+'">';
@@ -1144,6 +1158,7 @@ window.updateMap=function(data){
 
       // Escolhe a geometria pela identidade estrutural oficial da versão.
       var lineCoordsDR=segmentos[0]||null;
+      var physicalOnly=p.presencaEstado&&p.presencaEstado!=='em_viagem';
       if(p.padraoVersaoId&&linha.itinerarioSegmentoMap){
         var segIdx=linha.itinerarioSegmentoMap[p.padraoVersaoId];
         if(typeof segIdx==='number'&&segmentos[segIdx]){
@@ -1151,6 +1166,7 @@ window.updateMap=function(data){
         }
       }
 
+      if(physicalOnly){lineCoordsDR=null;posicaoNaRota=null;velocidade=0;}
       if(posicaoNaRota!==null&&lineCoordsDR){
         var hRoute=headingNaRota(lineCoordsDR,posicaoNaRota);
         if(typeof hRoute==='number')heading=hRoute;
@@ -1166,6 +1182,7 @@ window.updateMap=function(data){
           if(c)posInicial={lat:c[0],lng:c[1]};
         }
         var el=busIcon(color,heading||0,linha.modal);
+        if(p.presencaEstado){el.style.opacity=p.presencaEstado==='gps_desatualizado'?'0.55':'1';el.title=p.presencaRotulo||'';}
         marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
         popup=new maplibregl.Popup({offset:18,closeButton:false}).setHTML(buildPopup(linha,p,vid,heading));
         if(popup.on)popup.on('open',refreshIcons);
@@ -1190,6 +1207,7 @@ window.updateMap=function(data){
 
       var markerEl=marker.getElement();
       if(markerEl){
+        if(p.presencaEstado){markerEl.style.opacity=p.presencaEstado==='gps_desatualizado'?'0.55':'1';markerEl.title=p.presencaRotulo||'';}
         applyVehiclePresentation(markerEl,color,linha.modal);
       }
 
@@ -1244,7 +1262,7 @@ window.updateMap=function(data){
       }
 
       if(popup){
-        popup.setHTML(buildPopup(linha,p,vid,heading));
+        setPopupHTMLPreservingDetails(popup,buildPopup(linha,p,vid,heading));
         if(popup.isOpen&&popup.isOpen())refreshIcons();
       }
     });

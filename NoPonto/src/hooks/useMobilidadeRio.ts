@@ -14,6 +14,7 @@ import {
 import { rotuloPadraoV2, rotuloSentidoPublico } from "@/src/types/estruturaV2";
 import type { ItinerarioPadraoVersaoV2 } from "@/src/types/estruturaV2";
 import { filtrarVeiculosPorPadroesVisiveis, reconciliarSnapshotsRodoviarios } from "@/src/services/veiculosMapa";
+import { ROAD_PRESENCE_ENABLED, projectRoadPresence, RETENTION_MS, type RoadEvidence } from '@/src/services/roadPresence';
 import { AppState } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -46,6 +47,14 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
 } = {}) {
   const donoInscricoes = useRef(Symbol("mobilidade"));
   const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
+  const [presenceNow,setPresenceNow] = useState(Date.now);
+  const presenceEvidence = useRef(new Map<string,RoadEvidence>());
+  useEffect(()=>{
+    if (!ROAD_PRESENCE_ENABLED || !enabled) return;
+    const timer=setInterval(()=>{if(AppState.currentState!=='background' && AppState.currentState!=='inactive')setPresenceNow(Date.now());},1000);
+    const subscription=AppState.addEventListener('change',state=>{if(state==='active')setPresenceNow(Date.now());});
+    return ()=>{clearInterval(timer);subscription.remove();};
+  },[enabled]);
   const [estruturasRealtimePorVersao, setEstruturasRealtimePorVersao] = useState<
     Record<string, ItinerarioPadraoVersaoV2>
   >({});
@@ -87,9 +96,11 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
   const handleRealtime = useCallback((listaVeiculos: VeiculoTempoReal[]) => {
     if (!montadoRef.current) return;
     if (!Array.isArray(listaVeiculos)) return;
+    if (ROAD_PRESENCE_ENABLED) setPresenceNow(Date.now());
 
     setVeiculos((prev) => {
-      return reconciliarSnapshotsRodoviarios(prev, listaVeiculos);
+      return reconciliarSnapshotsRodoviarios(prev, listaVeiculos,
+        {enabled:ROAD_PRESENCE_ENABLED,now:Date.now()});
     });
 
     setLinhasDisponiveis((prev) => {
@@ -321,21 +332,39 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
    * Opcionalmente filtra pela versão estrutural oficial visível na UI.
    */
   const getVeiculosPorCodigo = useCallback(
-    (linhaCodigo: string, padroesVersoesVisiveis?: ReadonlySet<string> | null): VeiculoTempoReal[] => {
+    (linhaCodigo: string, padroesVersoesVisiveis?: ReadonlySet<string> | null, presenceLineId?: string): VeiculoTempoReal[] => {
       if (!Array.isArray(veiculos)) return [];
       const codigo = linhaCodigo.trim().toUpperCase();
       let filtrados = veiculos.filter((v) => v.linha === codigo);
 
-      if (padroesVersoesVisiveis) {
+      if (padroesVersoesVisiveis || (ROAD_PRESENCE_ENABLED && presenceLineId)) {
         filtrados = filtrarVeiculosPorPadroesVisiveis(
           filtrados,
           padroesVersoesVisiveis,
+          presenceLineId ? {enabled:ROAD_PRESENCE_ENABLED,now:presenceNow,lineCode:codigo,lineId:presenceLineId,
+            knownVersions:new Set(Object.keys(estruturasRealtimePorVersao)),
+            visibleDirections:new Set([...(padroesVersoesVisiveis ?? [])]
+              .map(id=>estruturasRealtimePorVersao[id]?.sentidoId).filter((id):id is string=>!!id))} : undefined,
         );
+      }
+
+      if (ROAD_PRESENCE_ENABLED && presenceLineId) {
+        for(const [id,evidence] of presenceEvidence.current) {
+          if(presenceNow-evidence.timestamp>RETENTION_MS)presenceEvidence.current.delete(id);
+        }
+        filtrados=filtrados.flatMap(v=>{
+          const projected=projectRoadPresence(v,v.padraoVersaoId ? estruturasRealtimePorVersao[v.padraoVersaoId] : undefined,
+            presenceEvidence.current.get(v.idVisual),presenceNow);
+          if(!projected)return [];
+          if(presenceEvidence.current.size<5000 || presenceEvidence.current.has(v.idVisual))
+            presenceEvidence.current.set(v.idVisual,projected.evidence);
+          return [{...v,...projected.presentation}];
+        });
       }
 
       return filtrados;
     },
-    [veiculos],
+    [veiculos,presenceNow,estruturasRealtimePorVersao],
   );
 
   const linhasOrdenadas = useMemo(
