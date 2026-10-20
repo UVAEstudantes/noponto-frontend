@@ -22,6 +22,7 @@ import { api } from "./api";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { listarLinhasV2, type FiltrosLinhasV2 } from "./estruturaV2";
 import { adaptarPosicaoRodoviariaV2 } from "./veiculosMapa";
+import { gpsSnapshotGuard, normalizarCodigoLinha } from "./gpsSnapshotGuard";
 import { apresentarLinhaBusca } from "./searchPresentation";
 import { criarFiltroModalBusca } from "./searchModalFilter";
 import type { CategoriaTransporteV2 } from "@/src/types/estruturaV2";
@@ -353,12 +354,16 @@ export async function buscarProximosVeiculosParada(
 export async function buscarVeiculosPorLinha(
   codigoLinha: string,
 ): Promise<VeiculoTempoReal[]> {
+  const codigo = normalizarCodigoLinha(codigoLinha);
+  if (!codigo) return [];
+  const leitura = gpsSnapshotGuard.capturarLeitura(codigo);
   const response = await api.get<VeiculosLinhaDto>(
-    `/veiculos/linha/${codigoLinha}`,
+    `/veiculos/linha/${encodeURIComponent(codigo)}`,
   );
-  if (!response.ok || !response.data) return [];
-  return response.data.posicoes
-    .map((posicao) => adaptarPosicaoRodoviariaV2(posicao));
+  if (!response.ok || !response.data || !gpsSnapshotGuard.leituraAtual(leitura)) return [];
+  return gpsSnapshotGuard.filtrarSnapshot(response.data.posicoes
+    .filter((posicao) => normalizarCodigoLinha(posicao.codigoLinha) === codigo)
+    .map((posicao) => adaptarPosicaoRodoviariaV2(posicao)));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

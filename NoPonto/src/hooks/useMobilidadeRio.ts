@@ -6,6 +6,7 @@ import {
   removerGpsHubListener,
 } from "@/src/services/gpsHub";
 import { construirLinhasDisponiveis } from "@/src/services/mobilidadeRio";
+import { normalizarCodigoLinha } from "@/src/services/gpsSnapshotGuard";
 import {
   listarPadroesV2,
   listarSentidosV2,
@@ -49,10 +50,20 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
   const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
   const [presenceNow,setPresenceNow] = useState(Date.now);
   const presenceEvidence = useRef(new Map<string,RoadEvidence>());
+  const codigosVisiveisRef = useRef(new Set<string>());
   useEffect(()=>{
-    if (!ROAD_PRESENCE_ENABLED || !enabled) return;
-    const timer=setInterval(()=>{if(AppState.currentState!=='background' && AppState.currentState!=='inactive')setPresenceNow(Date.now());},1000);
-    const subscription=AppState.addEventListener('change',state=>{if(state==='active')setPresenceNow(Date.now());});
+    if (!enabled) return;
+    const expirar = () => {
+      if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+      const now = Date.now();
+      if (ROAD_PRESENCE_ENABLED) setPresenceNow(now);
+      setVeiculos(prev => {
+        const recentes = reconciliarSnapshotsRodoviarios(prev, [], {enabled:true,now});
+        return recentes.length === prev.length ? prev : recentes;
+      });
+    };
+    const timer=setInterval(expirar, ROAD_PRESENCE_ENABLED ? 1000 : 15000);
+    const subscription=AppState.addEventListener('change',state=>{if(state==='active')expirar();});
     return ()=>{clearInterval(timer);subscription.remove();};
   },[enabled]);
   const [estruturasRealtimePorVersao, setEstruturasRealtimePorVersao] = useState<
@@ -96,13 +107,21 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
   const handleRealtime = useCallback((listaVeiculos: VeiculoTempoReal[]) => {
     if (!montadoRef.current) return;
     if (!Array.isArray(listaVeiculos)) return;
+    const observados = listaVeiculos;
+    listaVeiculos = observados.filter(v => codigosVisiveisRef.current.has(v.linha));
+    for (const v of observados) {
+      const evidence = presenceEvidence.current.get(v.idVisual);
+      if (evidence && evidence.lineCode !== v.linha) presenceEvidence.current.delete(v.idVisual);
+    }
     if (ROAD_PRESENCE_ENABLED) setPresenceNow(Date.now());
 
     setVeiculos((prev) => {
-      return reconciliarSnapshotsRodoviarios(prev, listaVeiculos,
-        {enabled:ROAD_PRESENCE_ENABLED,now:Date.now()});
+      const next = reconciliarSnapshotsRodoviarios(prev, listaVeiculos,
+        {enabled:ROAD_PRESENCE_ENABLED,now:Date.now()}, observados);
+      return next.length === prev.length && next.every((v, i) => v === prev[i]) ? prev : next;
     });
 
+    if (listaVeiculos.length === 0) return;
     setLinhasDisponiveis((prev) => {
       const novos = construirLinhasDisponiveis(listaVeiculos);
       const codigosNovos = new Set(novos.map((l) => l.nome));
@@ -114,16 +133,29 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
     setCarregando(false);
   }, []);
 
+  const handleLinhaEsvaziada = useCallback((codigoLinha: string) => {
+    const codigo = normalizarCodigoLinha(codigoLinha);
+    if (!codigo || !montadoRef.current) return;
+    setVeiculos(prev => prev.filter(v => v.linha !== codigo));
+    setLinhasDisponiveis(prev => prev.filter(linha => normalizarCodigoLinha(linha.nome) !== codigo));
+    for (const [id, evidence] of presenceEvidence.current) {
+      if (evidence.lineCode === codigo) presenceEvidence.current.delete(id);
+    }
+    setCarregando(false);
+    setErro(null);
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
-    iniciarGpsHub(handleRealtime);
+    const dono = donoInscricoes.current;
+    iniciarGpsHub(handleRealtime, handleLinhaEsvaziada);
     conectarGpsHub();
 
     return () => {
-      removerGpsHubListener(handleRealtime);
-      void atualizarInscricoesGps(donoInscricoes.current, []);
+      removerGpsHubListener(handleRealtime, handleLinhaEsvaziada);
+      void atualizarInscricoesGps(dono, []);
     };
-  }, [enabled, handleRealtime]);
+  }, [enabled, handleRealtime, handleLinhaEsvaziada]);
 
   const codigosRealtime = useMemo(() => {
     const linhas = linhasRealtime ?? Object.entries(itinerariosPorId).flatMap(([id, itinerario]) => {
@@ -131,11 +163,17 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
       return itinerario && pedido ? [{ linhaId: id, linhaCodigo: pedido.codigo, modal: pedido.modal }] : [];
     });
     return [...new Set(linhas.filter((linha) => linha.modal === "onibus" || linha.modal === "brt")
-      .map((linha) => linha.linhaCodigo))].sort().join("\n");
+      .map((linha) => normalizarCodigoLinha(linha.linhaCodigo)).filter((codigo): codigo is string => codigo !== null))].sort().join("\n");
   }, [linhasRealtime, itinerariosPorId]);
+  codigosVisiveisRef.current = new Set(enabled && codigosRealtime ? codigosRealtime.split("\n") : []);
+  const codigosAnterioresRef = useRef(new Set<string>());
   useEffect(() => {
-    void atualizarInscricoesGps(donoInscricoes.current, enabled && codigosRealtime ? codigosRealtime.split("\n") : []);
-  }, [enabled, codigosRealtime]);
+    for (const codigo of codigosAnterioresRef.current) {
+      if (!codigosVisiveisRef.current.has(codigo)) handleLinhaEsvaziada(codigo);
+    }
+    codigosAnterioresRef.current = codigosVisiveisRef.current;
+    void atualizarInscricoesGps(donoInscricoes.current, [...codigosVisiveisRef.current]);
+  }, [enabled, codigosRealtime, handleLinhaEsvaziada]);
 
   // Um veículo pode referenciar uma versão ainda não selecionada/carregada na UI.
   // O service deduplica a requisição pela chave oficial PadraoVersaoId.

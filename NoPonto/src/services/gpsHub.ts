@@ -5,6 +5,7 @@ import {
   VeiculoMapaRodoviario,
 } from "./veiculosMapa";
 import * as signalR from "@microsoft/signalr";
+import { codigoLinhaEsvaziada, gpsSnapshotGuard } from "./gpsSnapshotGuard";
 
 const HUB_URL = config.GPS_HUB_URL;
 
@@ -51,6 +52,7 @@ export function reconciliarInscricoesGps(): Promise<void> {
 }
 
 const subscribers = new Set<(veiculos: VeiculoMapaRodoviario[]) => void>();
+const emptySubscribers = new Set<(codigoLinha: string) => void>();
 
 export function obterDiagnosticoGpsHub() {
   return { subscribers: subscribers.size, connectionState: connection?.state ?? "NotCreated" };
@@ -61,8 +63,10 @@ export function obterDiagnosticoGpsHub() {
  */
 export function iniciarGpsHub(
   onUpdate: (veiculos: VeiculoMapaRodoviario[]) => void,
+  onEmpty?: (codigoLinha: string) => void,
 ): signalR.HubConnection {
   subscribers.add(onUpdate);
+  if (onEmpty) emptySubscribers.add(onEmpty);
   if (__DEV__) console.log("[GpsHub] listener adicionado", obterDiagnosticoGpsHub());
 
   if (connection) return connection;
@@ -73,24 +77,36 @@ export function iniciarGpsHub(
     .build();
 
   connection.on("PosicaoAtualizada", (payload: PosicaoRodoviariaV2Dto[]) => {
-    const veiculos = Array.isArray(payload)
-      ? payload.map((raw) => adaptarPosicaoRodoviariaV2(raw))
-      : [];
+    if (!Array.isArray(payload) || payload.length === 0) return;
+    const veiculos = gpsSnapshotGuard.filtrarSnapshot(payload
+      .filter((raw) => raw && typeof raw.ordem === "string" && raw.ordem.trim()
+        && codigoLinhaEsvaziada(raw) !== null)
+      .map((raw) => adaptarPosicaoRodoviariaV2(raw)));
+    if (veiculos.length === 0) return;
     console.log("🚍 realtime recebido:", veiculos.length);
     subscribers.forEach((fn) => fn(veiculos));
   });
 
-  connection.onreconnecting(() => console.log("🔄 reconectando SignalR..."));
-  connection.onreconnected(() => { geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); console.log("✅ reconectado"); });
-  connection.onclose(() => { geracaoConexao++; inscritas.clear(); console.log("❌ conexão encerrada"); });
+  connection.on("LinhaEsvaziada", (payload: unknown) => {
+    const codigo = codigoLinhaEsvaziada(payload);
+    if (!codigo) return;
+    gpsSnapshotGuard.registrarVazio(codigo);
+    emptySubscribers.forEach((fn) => fn(codigo));
+  });
+
+  connection.onreconnecting(() => { gpsSnapshotGuard.invalidarLeituras(); console.log("🔄 reconectando SignalR..."); });
+  connection.onreconnected(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); console.log("✅ reconectado"); });
+  connection.onclose(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); console.log("❌ conexão encerrada"); });
 
   return connection;
 }
 
 export function removerGpsHubListener(
   onUpdate: (veiculos: VeiculoMapaRodoviario[]) => void,
+  onEmpty?: (codigoLinha: string) => void,
 ): void {
   subscribers.delete(onUpdate);
+  if (onEmpty) emptySubscribers.delete(onEmpty);
   if (__DEV__) console.log("[GpsHub] listener removido", obterDiagnosticoGpsHub());
 }
 
@@ -105,6 +121,7 @@ export async function conectarGpsHub(): Promise<void> {
   }
 
   conexaoPendente ??= connection.start().then(() => {
+    gpsSnapshotGuard.invalidarLeituras();
     geracaoConexao++; inscritas.clear(); console.log("✅ SignalR conectado");
   }).catch((err) => { console.error("Erro ao conectar SignalR", err); })
     .finally(() => { conexaoPendente = null; });

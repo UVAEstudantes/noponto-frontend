@@ -9,6 +9,7 @@ export interface PresenceScope { enabled: boolean; now: number; lineCode: string
   knownVersions?: ReadonlySet<string>; visibleDirections?: ReadonlySet<string> }
 export type RoadPresenceState = 'em_viagem' | 'fim_percurso' | 'aguardando_saida' | 'indeterminado' | 'gps_desatualizado';
 export interface RoadEvidence {
+  lineCode?: string;
   identity: string; timestamp: number; candidate: string; count: number;
   arrivalDirection?: string; arrivalAt?: number; arrivalLine?: string; state: RoadPresenceState;
 }
@@ -70,7 +71,7 @@ export function projectRoadPresence(v: VeiculoMapa & {velocidade?: number},
   const count=same ? prior.count+(timestamp>prior.timestamp ? 1 : 0) : 1;
   let state: RoadPresenceState=candidate==='em_viagem' || count>=2 ? candidate : 'indeterminado';
   if (age>FRESH_MS) state='gps_desatualizado';
-  const evidence: RoadEvidence={identity,timestamp,candidate,count:Math.min(count,2),state,
+  const evidence: RoadEvidence={lineCode:v.codigoLinha?.trim().toUpperCase(),identity,timestamp,candidate,count:Math.min(count,2),state,
     arrivalDirection: state==='fim_percurso' ? v.sentidoId ?? undefined : arrival,
     arrivalAt:state==='fim_percurso' ? timestamp : prior?.arrivalAt,
     arrivalLine:state==='fim_percurso' ? v.linhaId ?? undefined : prior?.arrivalLine};
