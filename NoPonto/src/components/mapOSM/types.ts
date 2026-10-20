@@ -56,6 +56,9 @@ export interface LinhaParaMostrar {
     atualizadoEm?: string | null;
     fontePosicao?: string | null;
     qualidadePosicao?: string | null;
+    presencaEstado?: string;
+    presencaRotulo?: string;
+    presencaIdadeSegundos?: number;
   }[];
 }
 

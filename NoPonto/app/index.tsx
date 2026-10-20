@@ -753,7 +753,10 @@ const Home = () => {
           const veiculos = getVeiculosPorCodigo(
             l.linhaCodigo,
             padroesVersoesVisiveis,
-          ).filter((v) => v.linhaId === l.linhaId && (!sentidoIdFiltro || v.sentidoId === sentidoIdFiltro));
+            l.linhaId,
+          ).filter((v) => v.presencaEstado && !v.padraoVersaoId
+            ? (!v.linhaId || v.linhaId===l.linhaId) && (!sentidoIdFiltro || !v.sentidoId || v.sentidoId===sentidoIdFiltro)
+            : v.linhaId === l.linhaId && (!sentidoIdFiltro || v.sentidoId === sentidoIdFiltro));
           const paradas = l.mostrarParadas ? obterParadasLinha(l) : [];
 
           const geometriasVisiveis = padroesVisiveis.filter((padrao, index, todos) =>
@@ -807,6 +810,9 @@ const Home = () => {
             posicoes: veiculos.map((v) => ({
               id: v.id,
               idVisual: v.idVisual,
+              presencaEstado:v.presencaEstado,
+              presencaRotulo:v.presencaRotulo,
+              presencaIdadeSegundos:v.presencaIdadeSegundos,
               runtime: v.runtime,
               ordem: v.id,
               latitude: v.latitude,

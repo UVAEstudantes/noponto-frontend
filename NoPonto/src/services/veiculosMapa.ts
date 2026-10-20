@@ -1,5 +1,6 @@
 import type { RailVehicleForMap, RailVehicleSnapshot } from "./railRealtime";
 import type { CategoriaTransporteV2 } from "@/src/types/estruturaV2";
+import { inPresenceScope, physicalAge, RETENTION_MS, type PresenceScope } from './roadPresence';
 import {
   statusFonteFerroviaria,
   type VeiculoMapa,
@@ -119,8 +120,11 @@ export function adaptarPosicaoRodoviariaV2(
 /** Cada evento SignalR é um snapshot completo de uma linha. */
 export function reconciliarSnapshotsRodoviarios<T extends { linha: string }>(
   atuais: readonly T[], recebidos: readonly T[],
+  presence?: {enabled: boolean; now: number},
 ): T[] {
-  if (recebidos.length === 0) return [...atuais];
+  if (recebidos.length === 0) return presence?.enabled ? atuais.filter(v=>{
+    const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=RETENTION_MS;
+  }).slice(0,5000) : [...atuais];
   const porLinha = new Map<string, T[]>();
   recebidos.forEach((veiculo) => {
     const linha = veiculo.linha.trim().toUpperCase();
@@ -129,9 +133,21 @@ export function reconciliarSnapshotsRodoviarios<T extends { linha: string }>(
     porLinha.set(linha, grupo);
   });
   const linhasAtualizadas = new Set(porLinha.keys());
-  return atuais.filter((veiculo) =>
-    !linhasAtualizadas.has(veiculo.linha.trim().toUpperCase()))
+  const receivedIds = new Set(recebidos.map(v=>(v as unknown as VeiculoMapa).idVisual));
+  const result = atuais.filter((veiculo) =>
+    !linhasAtualizadas.has(veiculo.linha.trim().toUpperCase())
+      && (!presence?.enabled || !receivedIds.has((veiculo as unknown as VeiculoMapa).idVisual)))
     .concat(...porLinha.values());
+  if (presence?.enabled) {
+    const ids = new Set(result.map(v=>(v as unknown as VeiculoMapa).idVisual));
+    for (const v of atuais) {
+      const road = v as unknown as VeiculoMapa;
+      const age = physicalAge(road,presence.now);
+      if (!ids.has(road.idVisual) && age!==null && age<=RETENTION_MS) result.push(v);
+    }
+    return result.filter(v=>{const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=RETENTION_MS;}).slice(0,5000);
+  }
+  return result;
 }
 
 export function adaptarRailParaMapa(
@@ -172,7 +188,12 @@ export function adaptarRailParaMapa(
 export function filtrarVeiculosPorPadroesVisiveis<T extends VeiculoMapa>(
   vehicles: T[],
   padroesVersoesVisiveis?: ReadonlySet<string> | null,
+  presence?: PresenceScope,
 ) {
+  if (presence?.enabled) return vehicles.filter(vehicle => inPresenceScope(vehicle,presence)
+    && (!padroesVersoesVisiveis || (vehicle.padraoVersaoId != null
+      ? padroesVersoesVisiveis.has(vehicle.padraoVersaoId)
+        || (!!presence.knownVersions && !presence.knownVersions.has(vehicle.padraoVersaoId)) : true)));
   if (!padroesVersoesVisiveis) return vehicles;
   return vehicles.filter((vehicle) =>
     vehicle.padraoVersaoId != null
