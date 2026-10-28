@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Última posição física · laboratório sintético</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="core.js"></script>
+  <script defer src="fixtures.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">LABORATÓRIO LOCAL · DADOS 100% SINTÉTICOS</p>
+    <h1>Última posição física</h1>
+    <p class="intro">Uma observação de GPS informa onde o veículo foi localizado e há quanto tempo. Serviço informado e confirmação de saída são informações independentes.</p>
+    <section class="clockbar" aria-label="Relógio da demonstração">
+      <div><strong id="clock"></strong><span>Relógio da simulação · só a idade avança automaticamente</span></div>
+      <button id="pause" type="button">Pausar relógio</button>
+      <button id="advance" type="button">Avançar 30 s</button>
+      <button id="reset" type="button">Reiniciar fixtures</button>
+      <button id="geometry" type="button">Exibir perímetro sintético revisado</button>
+    </section>
+    <div class="layout">
+      <section class="diagram" aria-labelledby="diagram-title">
+        <h2 id="diagram-title">Instalação fictícia Alfa</h2>
+        <p>Esquema local, sem mapa real. O perímetro opcional é inteiramente fictício e não representa um terminal do Rio.</p>
+        <svg id="map" viewBox="0 0 900 440" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">Últimos pontos de GPS sintéticos em relação a uma âncora</title>
+          <desc id="map-desc">Anéis de 200 e 1000 metros ao redor da âncora fictícia. Os marcadores só mudam com uma nova fixture física.</desc>
+          <circle cx="450" cy="220" r="160" class="uncertain-ring" />
+          <circle cx="450" cy="220" r="32" class="near-ring" />
+          <rect id="synthetic-zone" x="436" y="206" width="28" height="28" class="trusted-zone" hidden />
+          <path d="M438 220h24M450 208v24" class="anchor" />
+          <text x="485" y="232" class="diagram-label">200 m</text>
+          <text x="615" y="232" class="diagram-label">1000 m</text>
+          <text x="20" y="420" class="diagram-label">Pontos observados · nenhuma projeção de trajeto</text>
+          <g id="markers"></g>
+        </svg>
+        <div class="legend"><span>● Último GPS recebido</span><span>+ Âncora sintética</span><span id="geometry-legend">Sem área “dentro do terminal”</span></div>
+      </section>
+      <section class="scenarios" aria-labelledby="scenarios-title">
+        <h2 id="scenarios-title">Receber uma fixture de SIM-A</h2>
+        <p>Estes botões simulam eventos locais. Recepção repetida não renova o GPS físico; serviço novo exige um novo fix.</p>
+        <div class="buttons">
+          <button type="button" data-scenario="repeat">Mesmo GPS, nova recepção</button>
+          <button type="button" data-scenario="regression">GPS regressivo</button>
+          <button type="button" data-scenario="service">Novo GPS, serviço F2</button>
+          <button type="button" data-scenario="unknown">Novo GPS, serviço ausente</button>
+          <button type="button" data-scenario="conflict">Conflito no mesmo timestamp</button>
+        </div>
+        <p id="event" role="status">Fixtures iniciais carregadas.</p>
+        <p class="note">Depois de um conflito de identidade, o marcador fica suspenso até reiniciar a demonstração. GPS parado não confirma próxima saída.</p>
+      </section>
+    </div>
+    <section aria-labelledby="observations-title">
+      <h2 id="observations-title">Observações físicas</h2>
+      <div id="cards" class="cards"></div>
+    </section>
+    <footer>PoC isolada · sem conexão a fontes, aplicativo ou pipeline operacional · sem ETA, extrapolação ou mapa remoto</footer>
+    <noscript>Ative JavaScript local para executar as fixtures desta demonstração.</noscript>
+  </main>
+</body>
+</html>
