@@ -192,10 +192,16 @@ test('generation-to-physical gap over 60 seconds is independent of physical age 
 });
 
 class Element {
-  constructor() { this.children = []; this.listeners = {}; this.attributes = {}; this.textContent = ''; this.dataset = {}; this.hidden = false; }
+  constructor() { this.children = []; this.listeners = {}; this.attributes = {}; this.textContent = ''; this.dataset = {}; }
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this.children = [...items]; }
   setAttribute(name, value) { this.attributes[name] = value; }
+  hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
+  toggleAttribute(name, force) {
+    const present = force === undefined ? !this.hasAttribute(name) : Boolean(force);
+    if (present) this.setAttribute(name, ''); else delete this.attributes[name];
+    return present;
+  }
   addEventListener(name, callback) { this.listeners[name] = callback; }
   click() { this.listeners.click(); }
 }
@@ -203,6 +209,7 @@ function browser() {
   const folder = __dirname;
   const ids = Object.fromEntries(['clock', 'pause', 'advance', 'reset', 'geometry', 'geometry-legend',
     'synthetic-zone', 'cards', 'markers', 'event'].map(id => [id, new Element()]));
+  ids['synthetic-zone'].setAttribute('hidden', ''); // Parsed SVG markup starts with this attribute.
   const buttons = ['repeat', 'regression', 'service', 'unknown', 'conflict'].map(name => {
     const element = new Element(); element.dataset.scenario = name; return element;
   });
@@ -238,7 +245,7 @@ test('browser buttons show proximity, synthetic trusted interior, service change
   const ui = browser();
   assert.match(cardText(ui.ids.cards.children[0]), /próxima ao terminal/);
   ui.ids.geometry.click();
-  assert.equal(ui.ids['synthetic-zone'].hidden, false);
+  assert.equal(ui.ids['synthetic-zone'].hasAttribute('hidden'), false);
   assert.match(cardText(ui.ids.cards.children[0]), /Última posição no terminal/);
   ui.buttons.service.click();
   assert.match(cardText(ui.ids.cards.children[0]), /Serviço informado F2/);
@@ -249,7 +256,39 @@ test('browser buttons show proximity, synthetic trusted interior, service change
   assert.match(cardText(ui.ids.cards.children[0]), /posição não confirmada/);
   ui.ids.reset.click();
   assert.equal(ui.ids.markers.children.length, 4);
-  assert.equal(ui.ids['synthetic-zone'].hidden, true);
+  assert.equal(ui.ids['synthetic-zone'].hasAttribute('hidden'), true);
+});
+
+test('SVG perimeter attribute is removed, restored and reset with spatial classification', () => {
+  const ui = browser(); const zone = ui.ids['synthetic-zone'];
+  assert.equal(zone.hasAttribute('hidden'), true);
+  assert.match(cardText(ui.ids.cards.children[0]), /próxima ao terminal/);
+  ui.ids.geometry.click();
+  assert.equal(zone.hasAttribute('hidden'), false);
+  assert.match(cardText(ui.ids.cards.children[0]), /Última posição no terminal/);
+  ui.ids.geometry.click();
+  assert.equal(zone.hasAttribute('hidden'), true);
+  assert.match(cardText(ui.ids.cards.children[0]), /próxima ao terminal/);
+  ui.ids.geometry.click(); ui.ids.reset.click();
+  assert.equal(zone.hasAttribute('hidden'), true);
+});
+
+test('nearby marker labels separate without changing observed dot coordinates', () => {
+  const ui = browser();
+  const [first, second] = ui.ids.markers.children;
+  const position = group => {
+    const [, x, y] = /^translate\(([-\d.]+),([-\d.]+)\)$/.exec(group.attributes.transform);
+    return { x: Number(x), y: Number(y) };
+  };
+  const box = group => {
+    const marker = position(group), label = group.children[1];
+    const x = marker.x + Number(label.attributes.x), y = marker.y + Number(label.attributes.y);
+    return { left: x, right: x + label.textContent.length * 9, top: y - 14, bottom: y + 4 };
+  };
+  const a = box(first), b = box(second);
+  assert.equal(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top, false);
+  assert.equal(first.children[0].attributes.r, '6');
+  assert.equal(second.children[0].attributes.r, '6');
 });
 
 test('browser repeat, regression and expiry do not fabricate a fresh location', () => {

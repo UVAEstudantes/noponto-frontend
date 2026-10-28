@@ -16,10 +16,11 @@
     byId('clock').textContent = new Date(nowMs).toLocaleTimeString('pt-BR', { timeZone: 'UTC' }) + ' UTC · simulação';
     byId('pause').textContent = paused ? 'Retomar relógio' : 'Pausar relógio';
     byId('cards').replaceChildren(); byId('markers').replaceChildren();
-    byId('synthetic-zone').hidden = !syntheticGeometry;
+    byId('synthetic-zone').toggleAttribute('hidden', !syntheticGeometry);
     byId('geometry').textContent = syntheticGeometry ? 'Ocultar perímetro sintético' : 'Exibir perímetro sintético revisado';
     byId('geometry-legend').textContent = syntheticGeometry ? 'Polígono fictício revisado para demonstrar inside_trusted' : 'Sem área “dentro do terminal”';
     const facility = syntheticGeometry ? fixtures.facilityWithSyntheticZone : fixtures.facility;
+    const labelBounds = [];
     for (const view of store.view(facility, nowMs)) {
       const card = add(byId('cards'), 'article', '', 'card');
       add(card, 'span', view.identity.vehicleId + (view.ageStatus === 'old' ? ' · antiga' : ' · última observação'),
@@ -35,12 +36,25 @@
         const point = view.marker, anchor = fixtures.facility.anchors[0];
         const east = (point.longitude - anchor.longitude) * Math.cos(anchor.latitude * Math.PI / 180) * Math.PI / 180 * 6371000;
         const north = (point.latitude - anchor.latitude) * Math.PI / 180 * 6371000;
+        const markerX = 450 + east * .16, markerY = 220 - north * .16;
         const group = document.createElementNS(svgNS, 'g');
-        group.setAttribute('transform', `translate(${450 + east * .16},${220 - north * .16})`);
+        group.setAttribute('transform', `translate(${markerX},${markerY})`);
         const dot = document.createElementNS(svgNS, 'circle');
         dot.setAttribute('r', '6'); dot.setAttribute('class', 'marker-dot' + (view.ageStatus === 'old' ? ' marker-old' : ''));
         const label = document.createElementNS(svgNS, 'text');
-        label.setAttribute('x', '10'); label.setAttribute('y', '4'); label.setAttribute('class', 'marker-label');
+        // Move only the label, never the observed marker. The boxes are conservative for the fixed SVG font.
+        const width = view.identity.vehicleId.length * 9;
+        const positions = [{ x: 12, y: -12 }, { x: 12, y: 22 },
+          { x: -width - 12, y: -12 }, { x: -width - 12, y: 22 }];
+        const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const chosen = positions.find(position => {
+          const box = { left: markerX + position.x, right: markerX + position.x + width,
+            top: markerY + position.y - 14, bottom: markerY + position.y + 4 };
+          if (labelBounds.some(existing => overlaps(box, existing))) return false;
+          labelBounds.push(box); return true;
+        }) || positions[0];
+        label.setAttribute('x', String(chosen.x)); label.setAttribute('y', String(chosen.y));
+        label.setAttribute('class', 'marker-label');
         label.textContent = view.identity.vehicleId;
         group.append(dot, label); byId('markers').append(group);
       }
