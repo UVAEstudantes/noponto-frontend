@@ -1,3 +1,4 @@
+import { usePhysicalPresence } from "@/src/services/physicalPresence";
 import { useFavoritos } from "@/src/hooks/useFavoritos";
 import { configurarFavoritas, linhasEfetivas, favoritasVisiveis, ehFerroviaria,
   LIMITE_FAVORITAS_VISIVEIS, type ViewModeMapa, type SearchCategoryMapa } from "@/src/services/linhasEfetivas";
@@ -125,6 +126,17 @@ const Home = () => {
     getVeiculosPorCodigo,
     veiculos,
   } = useMobilidadeRio({ enabled: telaAtiva, linhasRealtime: rodoviariasVisiveis });
+  const physicalVehicles = usePhysicalPresence(telaAtiva);
+  const physicalVehiclesVisible = useMemo(() => {
+    const operational = new Set(veiculos.filter((v) => v.runtime === "rodoviario")
+      .map((v) => `${v.tipoRota}:${v.codigoVeiculoOuTrem?.trim().toUpperCase()}`));
+    return physicalVehicles.filter((v) => {
+      const id = v.originalVehicleId.trim().toUpperCase();
+      const order = v.modal === "brt" && !id.startsWith("BRT-") ? `BRT-${id}` : id;
+      return !operational.has(`${v.modal}:${order}`);
+    });
+  }, [physicalVehicles, veiculos]);
+
   const veiculosRef = useRef(veiculos);
   const railVehiclesRef = useRef<RailVehicleForMap[]>([]);
   veiculosRef.current = veiculos;
@@ -920,6 +932,7 @@ const Home = () => {
         location={location}
         linhasParaMostrar={dadosParaMapa}
         railVehicles={railVehiclesVisiveis}
+        physicalVehicles={physicalVehiclesVisible}
         darkMode={temaAtual === "escuro"}
         estiloMapa={estiloMapaAtual}
         onStopPress={(parada) => {
@@ -976,6 +989,7 @@ const Home = () => {
         </Pressable>}
       <MapControls
         radarBottom={radarControlsBottom}
+        physicalVehicles={physicalVehiclesVisible}
         lateralidade={preferenciaLateralidade}
         modalAtivo={viewMode === "favoritos" ? "favoritos" : modalSelecionadoNome}
         location={location}

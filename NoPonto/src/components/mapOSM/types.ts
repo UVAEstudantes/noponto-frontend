@@ -1,3 +1,4 @@
+import type { PhysicalVehicle } from "@/src/services/physicalPresence";
 import { EstiloMapaId } from "@/src/constants/estilosMapa";
 import { Parada } from "@/src/types/transporte";
 import type { RailVehicleForMap } from "@/src/services/railRealtime";
@@ -71,6 +72,7 @@ export interface MapaOSMProps {
   estiloMapa?: EstiloMapaId;
   onStopPress?: (parada: Parada) => void;
   railVehicles?: RailVehicleForMap[];
+  physicalVehicles?: PhysicalVehicle[];
 }
 
 export interface MapaOSMRef {

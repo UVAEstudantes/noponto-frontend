@@ -37,3 +37,8 @@
 - Validado fluxo de handlers/hook/componente nativo/script injetado reais com transporte, executor React, DOM e MapLibre simulados: Marker/Popup/heading/DR/índice removidos e animação cancelada; outro marcador, HTML, geometria e handshake map_ready preservados. mapOSM.tsx revisado e inalterado; mapScript.ts só versionado na base autorizada. Smoke Android/browser/WebSocket real não executado; nenhum APK gerado.
 - Comparação com cópia inicial dos23caminhosWIP:13não relacionados idênticos porSHA256; cinco arquivos da base visual também byte a byte iguais; histórico anterior preservado integralmente como prefixo. Backend limpo em204caef. Sem alteração de main/PR, push, merge/rebase/reset/checkout, EAS, deploy, CI/CD, lockfile ou dependências.
 - VALIDACAO_REMOCOES_GPS.md documenta contrato, antes/depois, comandos/testes exatos, limites de memória/relógio e pendência de smoke. Guard em memória limitado a5000identidades/janelaGPS180s; evento sem cursor global não oferece ordenação durável entre fontes/processos. Commit da integração separado da base WIP.
+
+
+### 2026-10-28 — PhysicalPresence no mapa e radar
+- Coleção física independente, conexão SignalR compartilhada, flag EXPO_PUBLIC_PHYSICAL_PRESENCE_ENABLED OFF. Coordenadas fixas, idade física 300/600 s e deduplicação por namespace operacional; radar exige parada/modal/linha compatíveis. Sem ETA ou confirmação de partida.
+- Typecheck e testes de contrato/hub/WebView executados; WIP anterior preservado fora do commit. Aquisição SPPO real ainda excede o teto de 12 páginas: não há promessa de marcadores reais SPPO neste checkpoint.

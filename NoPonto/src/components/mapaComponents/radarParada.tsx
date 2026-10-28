@@ -1,3 +1,4 @@
+import { physicalAge, type PhysicalVehicle } from "@/src/services/physicalPresence";
 import React, { useEffect, useReducer, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Check, ChevronLeft, ChevronRight, MapPin, X } from "lucide-react-native";
@@ -20,11 +21,12 @@ interface Props {
   onVerTodos: () => void; onEvento: (evento: EventoParadaDto) => void;
   localizavel: (evento: EventoParadaDto) => boolean;
   viewportHeight: number | null;
+  physicalVehicles?: PhysicalVehicle[];
   onControlsBottomChange: (bottom: number | null) => void;
 }
 
 export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,
-  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange }: Props) {
+  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange, physicalVehicles = [] }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -65,6 +67,12 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;
   const metadata = radar.parada ? radar.metadados[radar.parada.parada.paradaId] : null;
+  const terminalVehicles = physicalVehicles.filter((vehicle) =>
+    (vehicle.facilityStopId === radar.parada?.parada.codigo
+      || vehicle.facilityStopId === radar.parada?.parada.paradaId)
+    && (modal === "todos" || vehicle.modal === modal)
+    && vehicle.lineId != null && radar.parada?.vinculos.some((v) => v.linhaId === vehicle.lineId)
+    && physicalAge(vehicle, radar.agora).visible);
   const nomeParada = metadata?.nome?.trim() || radar.parada?.parada.nome?.trim();
   // Somente apresentação: não reclassifica nem filtra os eventos recebidos.
   const apenasPartidas = radar.eventos.length > 0
@@ -164,6 +172,25 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
           </View>
         </Pressable>;
       })}
+      {terminalVehicles.length > 0 && <View style={{ borderTopWidth: 1, borderColor: cores.bordaSuave, marginTop: 9, paddingTop: 8 }}>
+        <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>
+          Veículos no terminal · partida não confirmada
+        </Text>
+        {terminalVehicles.map((vehicle) => {
+          const age = physicalAge(vehicle, radar.agora);
+          return <View key={vehicle.key} style={{ paddingVertical: 5, opacity: age.opacity }}>
+            <Text style={{ color: cores.textoPrimario, fontSize: 12 }}>
+              {vehicle.serviceCode ? `Linha ${vehicle.serviceCode} · ` : ""}Veículo {vehicle.originalVehicleId}
+            </Text>
+            <Text style={{ color: cores.textoSecundario, fontSize: 10 }}>
+              {vehicle.lineState === "Inherited" ? "Linha herdada" : vehicle.lineState === "Informed" ? "Linha informada" : "Linha não confirmada"}
+              {` · GPS há ${Math.floor(age.seconds / 60)} min`}
+              {age.delayed ? " · GPS atrasado" : ""}
+              {" · próximo ao terminal"}
+            </Text>
+          </View>;
+        })}
+      </View>}
       {radar.estado && <Text style={{ fontSize: 12, color: cores.textoSecundario, paddingVertical: 4 }}>{radar.estado}</Text>}
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>

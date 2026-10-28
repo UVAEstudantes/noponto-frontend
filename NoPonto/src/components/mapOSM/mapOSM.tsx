@@ -41,6 +41,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       estiloMapa = ESTILO_MAPA_PADRAO,
       onStopPress,
       railVehicles = [],
+      physicalVehicles = [],
       onReady,
     },
     ref,
@@ -180,6 +181,12 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       injectWebViewCommand(webViewRef,
         `if(window.updateRealtime) window.updateRealtime(${serialized});`);
     }, [mapReady, mapGeneration, realtimeLines, railVehiclesForMap]);
+
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef,
+        `if(window.updatePhysicalPresence) window.updatePhysicalPresence(${JSON.stringify(physicalVehicles)});`);
+    }, [mapReady, mapGeneration, physicalVehicles]);
 
     // Update "leve" e frequente: posição do usuário + heading/acurácia.
     useEffect(() => {

@@ -16,6 +16,43 @@ let sincronizacao: Promise<void> = Promise.resolve();
 let conexaoPendente: Promise<void> | null = null;
 let geracaoConexao = 0;
 
+const physicalListeners = new Set<(snapshot: unknown) => void>();
+const physicalOwners = new Map<symbol, Set<string>>();
+const physicalSubscribed = new Set<string>();
+let physicalSynchronization: Promise<void> = Promise.resolve();
+
+export function observePhysicalPresence(owner: symbol, stopIds: readonly string[],
+  listener: (snapshot: unknown) => void): () => void {
+  physicalListeners.add(listener);
+  physicalOwners.set(owner, new Set(stopIds));
+  // Reuse the one operational hub connection; no per-user HTTP polling.
+  iniciarGpsHub(physicalNoop);
+  void conectarGpsHub().then(reconcilePhysicalPresence);
+  return () => {
+    physicalListeners.delete(listener);
+    physicalOwners.delete(owner);
+    if (physicalOwners.size === 0) removerGpsHubListener(physicalNoop);
+    void reconcilePhysicalPresence();
+  };
+}
+const physicalNoop = (_: VeiculoMapaRodoviario[]) => {};
+
+function reconcilePhysicalPresence(): Promise<void> {
+  physicalSynchronization = physicalSynchronization.catch(() => undefined).then(async () => {
+    if (connection?.state !== signalR.HubConnectionState.Connected) return;
+    const desired = () => new Set([...physicalOwners.values()].flatMap((ids) => [...ids]));
+    for (const id of [...physicalSubscribed]) if (!desired().has(id)) {
+      await connection.invoke("CancelarPresencaFisica", id);
+      physicalSubscribed.delete(id);
+    }
+    for (const id of desired()) if (!physicalSubscribed.has(id) && desired().has(id)) {
+      await connection.invoke("InscreverPresencaFisica", id);
+      physicalSubscribed.add(id);
+    }
+  });
+  return physicalSynchronization;
+}
+
 // Um único hub e união das inscrições dos consumidores ativos. Reconciliar serialmente evita
 // que uma resposta atrasada reinscreva uma linha removida enquanto o invoke estava em andamento.
 export function atualizarInscricoesGps(dono: symbol, codigos: readonly string[]): Promise<void> {
@@ -94,9 +131,13 @@ export function iniciarGpsHub(
     emptySubscribers.forEach((fn) => fn(codigo));
   });
 
+  connection.on("PresencaFisicaAtualizada", (snapshot: unknown) => {
+    physicalListeners.forEach((listener) => listener(snapshot));
+  });
+
   connection.onreconnecting(() => { gpsSnapshotGuard.invalidarLeituras(); console.log("🔄 reconectando SignalR..."); });
-  connection.onreconnected(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); console.log("✅ reconectado"); });
-  connection.onclose(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); console.log("❌ conexão encerrada"); });
+  connection.onreconnected(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); physicalSubscribed.clear(); void reconcilePhysicalPresence(); console.log("✅ reconectado"); });
+  connection.onclose(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("❌ conexão encerrada"); });
 
   return connection;
 }
@@ -123,6 +164,7 @@ export async function conectarGpsHub(): Promise<void> {
   conexaoPendente ??= connection.start().then(() => {
     gpsSnapshotGuard.invalidarLeituras();
     geracaoConexao++; inscritas.clear(); console.log("✅ SignalR conectado");
+    void reconcilePhysicalPresence();
   }).catch((err) => { console.error("Erro ao conectar SignalR", err); })
     .finally(() => { conexaoPendente = null; });
   await conexaoPendente;

@@ -24,6 +24,7 @@ var filtrosMapa={${filtrosMapaJS}};
 var currentStyleId='${estiloMapaPadrao}';
 var isDark=false;
 var vehicleMarkers={},vehicleHeadings={},vehiclePopups={},animFrames={},drState={},vehicleIndexByOrder={};
+var physicalMarkers={},lastPhysicalPresence=[];
 var autoFollow=true,internalMove=false;
 var mapReady=false;
 var drInterval=null;
@@ -1288,6 +1289,46 @@ window.updateRealtime=function(data){
   });
   window.updateMap(Object.assign({},lastMapData,{linhas:linhas,
     railVehicles:data.railVehicles||[],realtimeOnly:true}));
+};
+
+window.updatePhysicalPresence=function(vehicles){
+  lastPhysicalPresence=Array.isArray(vehicles)?vehicles:[];
+  if(!map)return;
+  var visible={};
+  lastPhysicalPresence.forEach(function(v){
+    if(!v||!v.key||!Number.isFinite(v.latitude)||!Number.isFinite(v.longitude))return;
+    var age=(Date.now()-Date.parse(v.physicalAt))/1000;
+    if(!Number.isFinite(age)||age<0||age>=600)return;
+    var order=String(v.originalVehicleId||'').trim().toUpperCase();
+    var operationalOrder=v.modal==='brt'&&order.indexOf('BRT-')!==0?'BRT-'+order:order;
+    if(vehicleIndexByOrder[operationalOrder]&&vehicleMarkers[vehicleIndexByOrder[operationalOrder]])return;
+    visible[v.key]=true;
+    var marker=physicalMarkers[v.key];
+    if(!marker){
+      var el=document.createElement('div');
+      el.style.cssText='width:19px;height:19px;border-radius:50%;border:3px solid white;box-shadow:0 1px 5px #333;background:#7B61A8;cursor:pointer';
+      marker=new maplibregl.Marker({element:el,anchor:'center'})
+        .setLngLat([v.longitude,v.latitude]).addTo(map);
+      el.addEventListener('click',function(){
+        var current=(lastPhysicalPresence||[]).find(function(item){return item.key===v.key});
+        if(!current)return;
+        var ageMinutes=Math.floor(Math.max(0,Date.now()-Date.parse(current.physicalAt))/60000);
+        var lineText=current.serviceCode ? 'Linha '+current.serviceCode+
+          (current.lineState==='Inherited'?' (herdada)':' (informada)') : 'Linha não confirmada';
+        new maplibregl.Popup({offset:18}).setLngLat([current.longitude,current.latitude])
+          .setText('Veículo '+current.originalVehicleId+' · '+lineText+
+            ' · GPS há '+ageMinutes+' min · próximo ao terminal · partida não confirmada').addTo(map);
+      });
+      physicalMarkers[v.key]=marker;
+    }
+    marker.setLngLat([v.longitude,v.latitude]);
+    marker.getElement().style.opacity=age>=300?'0.55':'1';
+    var line=v.serviceCode ? 'Linha '+v.serviceCode+' ('+(v.lineState==='Inherited'?'herdada':'informada')+')' : 'Linha não confirmada';
+    marker.getElement().title='Veículo '+order+' · '+line+' · GPS há '+Math.floor(age/60)+' min · partida não confirmada';
+  });
+  Object.keys(physicalMarkers).forEach(function(key){
+    if(!visible[key]){physicalMarkers[key].remove();delete physicalMarkers[key]}
+  });
 };
 
 window.updateUser=updateUser;
