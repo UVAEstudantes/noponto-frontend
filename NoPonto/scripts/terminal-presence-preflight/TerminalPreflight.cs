@@ -45,9 +45,12 @@ public sealed class TerminalPreflight : IDisposable
     {
         [JsonIgnore] public List<Observation> Rows { get; }=[];
         public Dictionary<string,int> Rejected { get; }=[];
+        public Dictionary<string,int> RawProviders { get; }=[];
+        public Dictionary<string,int> ServerMinuteStatus { get; }=[];
         public bool Complete { get; set; }
         public string Reason { get; set; }="not_read";
         public DateTimeOffset Minute { get; set; }
+        public DateTimeOffset? CompletedAt { get; set; }
         public int Pages { get; set; }
         public int RawRecords { get; set; }
     }
@@ -63,10 +66,41 @@ public sealed class TerminalPreflight : IDisposable
         public int RawEntities { get; set; }
     }
     public sealed record Decision(string Relation, string Location, string FacilityId, string? LineSlice,
-        double AgeSeconds, bool AbsenceComparable);
+        double AgeSeconds, bool AbsenceComparable, string[] Reasons);
+    public sealed class DiagnosticCell
+    {
+        public int Observations { get; set; }
+        public int NoGtfsGlobal { get; set; }
+        public int AmbiguousIdentities { get; set; }
+        public int SourceConflicts { get; set; }
+        public Dictionary<string,int> PhysicalAgeAtComparison { get; }=[];
+        public Dictionary<string,int> PhysicalAgeAtAcquisition { get; }=[];
+        public Dictionary<string,int> NoGtfsPhysicalAgeAtComparison { get; }=[];
+        public Dictionary<string,int> InconclusiveReasons { get; }=[];
+        public Dictionary<string,int> PrimaryInconclusiveReason { get; }=[];
+        [JsonIgnore] public HashSet<string> Ids { get; }=new(StringComparer.Ordinal);
+        [JsonIgnore] public HashSet<SourceKey> SourceIds { get; }=[];
+        public int DistinctIdentities => Ids.Count;
+        public int DistinctSourceIdentities => SourceIds.Count;
+    }
+    public sealed class CrossRoundCounts
+    {
+        public int SameSourceIdentityBothRounds { get; set; }
+        public int NoGtfsBothRounds { get; set; }
+        public int PhysicalAdvanced { get; set; }
+        public int AdvancedWithin10Metres { get; set; }
+        public int NoGtfsPhysicalAdvancedWithin10Metres { get; set; }
+        public int AlignedNoGtfsPhysicalAdvancedWithin10Metres { get; set; }
+    }
     public sealed record RoundSummary(int Index, string Status, int ItsPages, int ItsRawRecords,
         int ItsPhysicalRecords, Dictionary<string,int> ItsRejected, int GtfsBeforeRecords, int GtfsAfterRecords,
-        Dictionary<string,int> Groups, Dictionary<string,int> Renewal);
+        Dictionary<string,int> Groups, Dictionary<string,int> Renewal,
+        Dictionary<string,DiagnosticCell> Diagnostics, Dictionary<string,CrossRoundCounts> CrossRound,
+        Dictionary<string,int> RawProviders, Dictionary<string,int> ServerMinuteStatus);
+
+    public readonly record struct SourceKey(string Provider,string Id);
+    private readonly record struct PresenceKey(string Facility,string Location,SourceKey Source);
+    private sealed record Candidate(Observation Row,bool NoGtfs,bool Comparable);
 
     private readonly TimeProvider _clock;
     private readonly Func<TimeSpan,CancellationToken,Task> _delay;
@@ -79,11 +113,15 @@ public sealed class TerminalPreflight : IDisposable
     private DateTimeOffset? _modified;
     private Dictionary<string,Observation> _previous=[];
     private HashSet<string> _previousQualified=[];
+    private Dictionary<PresenceKey,Candidate> _previousCandidates=[];
+    private readonly Dictionary<string,HashSet<string>> _seenFacilityIds=[];
     private readonly Dictionary<string,string> _routeCodes;
     private readonly Facility[] _facilities;
     public int ItsGets => _guard.ItsGets;
     public int GtfsGets => _guard.GtfsGets;
     public long BodyBytes => _guard.BodyBytes;
+    public Dictionary<string,int> DistinctIdentitiesAcrossCompleteRounds =>
+        _seenFacilityIds.ToDictionary(x=>x.Key,x=>x.Value.Count,StringComparer.Ordinal);
 
     public TerminalPreflight(HttpMessageHandler transport, TimeProvider clock,
         Func<TimeSpan,CancellationToken,Task> delay, Facility[] facilities, Dictionary<string,string> routeCodes)
@@ -97,7 +135,7 @@ public sealed class TerminalPreflight : IDisposable
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("NoPonto-Terminal-Preflight/1.0");
         _its=new GpsDatarioClient(_http,NullLogger<GpsDatarioClient>.Instance);
     }
-    public void Dispose() { _previous.Clear(); _previousQualified.Clear(); _cached=null; _http.Dispose(); }
+    public void Dispose() { _previous.Clear(); _previousQualified.Clear(); _previousCandidates.Clear(); _seenFacilityIds.Clear(); _cached=null; _http.Dispose(); }
     public static string Canonical(string value) => value.Trim().ToUpperInvariant();
     private static string? Text(string? value) => string.IsNullOrWhiteSpace(value)?null:value.Trim();
     private static readonly string[] TimeFormats=["yyyy-MM-dd'T'HH:mm:ss'Z'","yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'",
@@ -105,6 +143,10 @@ public sealed class TerminalPreflight : IDisposable
     private static DateTimeOffset? Timestamp(string? value) => DateTimeOffset.TryParseExact(value,TimeFormats,
         CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal|DateTimeStyles.AdjustToUniversal,out var t)?t:null;
     private static void Count(Dictionary<string,int> counts,string key) => counts[key]=counts.GetValueOrDefault(key)+1;
+    private static string AgeBand(double age) => age<0?"future_at_comparison":age<=30?"up_to_30s":
+        age<=60?"over_30_to_60s":age<=120?"over_60_to_120s":age<=180?"over_120_to_180s":"over_180s";
+    private static string ProviderBucket(string? provider) => Canonical(provider??"") switch
+    {"ZIRIX"=>"ZIRIX","CONECTA"=>"CONECTA",""=>"missing",_=>"other"};
     private void CheckTime() { if(_clock.GetElapsedTime(_began).TotalSeconds>=TotalSeconds)throw new Stop("pilot_deadline"); }
 
     public Observation? Physical(GpsDatarioVehicleDto row, out string reason)
@@ -153,6 +195,10 @@ public sealed class TerminalPreflight : IDisposable
                 result.RawRecords+=page.Data.Count;
                 foreach(var raw in page.Data)
                 {
+                    Count(result.RawProviders,ProviderBucket(raw?.Fornecedor));
+                    var server=Timestamp(raw?.DatetimeServidor);
+                    Count(result.ServerMinuteStatus,server==null?"missing_or_invalid":
+                        server>=minute&&server<minute.AddMinutes(1)?"within_requested_minute":"outside_requested_minute");
                     if(raw==null) {Count(result.Rejected,"invalid_row");continue;}
                     var observation=Physical(raw,out var reason);
                     if(observation==null)Count(result.Rejected,reason);else result.Rows.Add(observation);
@@ -161,7 +207,7 @@ public sealed class TerminalPreflight : IDisposable
                 if(cursor!=null&&(cursor.Length>48||!cursors.Add(cursor)))throw new Stop("its_cursor_invalid");
                 if(cursor!=null&&result.Pages>=ItsPagesPerRound)throw new Stop("its_pagination_incomplete");
             }while(cursor!=null);
-            result.Complete=true; result.Reason="complete";
+            result.Complete=true; result.Reason="complete";result.CompletedAt=_clock.GetUtcNow();
         }
         catch(Stop e) {result.Reason=e.Reason;}
         catch(OperationCanceledException) when(!ct.IsCancellationRequested) {result.Reason="its_timeout";}
@@ -250,28 +296,73 @@ public sealed class TerminalPreflight : IDisposable
         {
             if(present.Any(x=>x.PhysicalAt==row.PhysicalAt&&x.Position!=null&&
                 (Math.Abs(x.Position.Lat-row.Position.Lat)>.00001||Math.Abs(x.Position.Lon-row.Position.Lon)>.00001)))
-                return new("same_gps_coordinate_conflict",location,facility.Id,line,age,false);
+                return new("same_gps_coordinate_conflict",location,facility.Id,line,age,false,["same_gps_coordinate_conflict"]);
             var other=row.Service!=null&&present.Any(x=>x.Route!=null&&_routeCodes.TryGetValue(x.Route,out var code)&&code!=row.Service);
-            return new(other?"present_other_gtfs_line":"present_global_gtfs",location,facility.Id,line,age,false);
+            return new(other?"present_other_gtfs_line":"present_global_gtfs",location,facility.Id,line,age,false,[]);
         }
-        var aligned=its.Complete&&before.Complete&&after.Complete&&before.IdentityCoverage&&after.IdentityCoverage
-            &&(row.Provider is "ZIRIX" or "CONECTA")&&age is >=0 and <=60
-            &&row.ServerAt>=its.Minute&&row.ServerAt<its.Minute.AddMinutes(1)
-            &&before.GeneratedAt!=null&&after.GeneratedAt>before.GeneratedAt
-            &&new[]{before.GeneratedAt!.Value,after.GeneratedAt!.Value}.All(t=>t<=now&&(now-t).TotalSeconds<=90
-                &&Math.Abs((t-row.PhysicalAt).TotalSeconds)<=60);
-        return new(aligned?"not_observed_in_aligned_gtfs":"inconclusive_absence",location,facility.Id,line,age,aligned);
+        var reasons=AbsenceReasons(row,its,before,after,now,age);
+        var aligned=reasons.Length==0;
+        return new(aligned?"not_observed_in_aligned_gtfs":"inconclusive_absence",location,facility.Id,line,age,aligned,reasons);
+    }
+
+    // These are the same gates used before diagnostics; each failed gate is reported independently.
+    // Primary reason is the first entry, while all reasons are multi-label and may overlap.
+    private static string[] AbsenceReasons(Observation row,ItsRead its,Feed before,Feed after,DateTimeOffset now,double age)
+    {
+        var reasons=new List<string>();
+        if(!its.Complete)reasons.Add("its_incomplete");
+        if(!before.Complete)reasons.Add("gtfs_before_incomplete");
+        if(!after.Complete)reasons.Add("gtfs_after_incomplete");
+        if(!before.IdentityCoverage)reasons.Add("gtfs_before_identity_coverage_incomplete");
+        if(!after.IdentityCoverage)reasons.Add("gtfs_after_identity_coverage_incomplete");
+        if(row.Provider is not ("ZIRIX" or "CONECTA"))reasons.Add("provider_unverified");
+        if(age is <0 or >60)reasons.Add("physical_age_outside_0_to_60s");
+        if(row.ServerAt==null)reasons.Add("server_time_missing_or_invalid");
+        else if(row.ServerAt<its.Minute||row.ServerAt>=its.Minute.AddMinutes(1))reasons.Add("server_time_outside_requested_minute");
+        if(before.GeneratedAt==null)reasons.Add("gtfs_before_generation_missing");
+        if(after.GeneratedAt==null)reasons.Add("gtfs_after_generation_missing");
+        if(before.GeneratedAt!=null&&after.GeneratedAt!=null&&after.GeneratedAt<=before.GeneratedAt)
+            reasons.Add("gtfs_generation_not_advanced");
+        CheckGeneration(before.GeneratedAt,"before");CheckGeneration(after.GeneratedAt,"after");
+        return [..reasons];
+
+        void CheckGeneration(DateTimeOffset? generation,string side)
+        {
+            if(generation==null)return;
+            if(generation>now)reasons.Add("gtfs_"+side+"_generation_future");
+            else if((now-generation.Value).TotalSeconds>90)reasons.Add("gtfs_"+side+"_generation_older_than_90s");
+            if(Math.Abs((generation.Value-row.PhysicalAt).TotalSeconds)>60)
+                reasons.Add("gtfs_"+side+"_physical_gap_over_60s");
+        }
     }
 
     public RoundSummary Summarize(int index,ItsRead its,Feed before,Feed after)
     {
         var groups=new Dictionary<string,int>();var renewal=new Dictionary<string,int>();var current=new Dictionary<string,Observation>();
+        var diagnostics=new Dictionary<string,DiagnosticCell>();var cross=new Dictionary<string,CrossRoundCounts>();
+        var currentCandidates=new Dictionary<PresenceKey,Candidate>();
         var qualified=new HashSet<string>();
+        DiagnosticCell Cell(string facility,string location)
+        {
+            var key=facility+"/"+location;
+            if(!diagnostics.TryGetValue(key,out var cell))diagnostics[key]=cell=new DiagnosticCell();
+            return cell;
+        }
         foreach(var group in its.Rows.GroupBy(x=>x.Id,StringComparer.Ordinal))
         {
             var newest=group.Max(x=>x.PhysicalAt);var candidates=group.Where(x=>x.PhysicalAt==newest).ToArray();
             if(candidates.Any(x=>x.Service!=candidates[0].Service||Distance(x.Position,candidates[0].Position)>2))
-            {Count(groups,"identity_ambiguous");continue;}
+            {
+                Count(groups,"identity_ambiguous");
+                var providerConflict=candidates.Select(x=>x.Provider).Distinct(StringComparer.Ordinal).Count()>1;
+                foreach(var facility in _facilities)
+                    foreach(var location in candidates.Select(x=>Locate(x.Position,facility)).Where(x=>x!="outside").Distinct())
+                    {
+                        var cell=Cell(facility.Id,location);cell.AmbiguousIdentities++;
+                        if(providerConflict)cell.SourceConflicts++;
+                    }
+                continue;
+            }
             foreach(var row in candidates.DistinctBy(x=>x.Provider))
             {
                 var key=row.Provider+"|"+row.Id;current[key]=row;
@@ -279,6 +370,47 @@ public sealed class TerminalPreflight : IDisposable
                 {
                     var decision=Compare(row,its,before,after,facility);
                     if(decision.Location=="outside")continue;
+                    var cell=Cell(facility.Id,decision.Location);
+                    cell.Observations++;cell.Ids.Add(row.Id);cell.SourceIds.Add(new(row.Provider,row.Id));
+                    Count(cell.PhysicalAgeAtComparison,AgeBand(decision.AgeSeconds));
+                    if(its.CompletedAt is {} acquired)
+                        Count(cell.PhysicalAgeAtAcquisition,AgeBand((acquired-row.PhysicalAt).TotalSeconds));
+                    var noGtfs=decision.Relation is "inconclusive_absence" or "not_observed_in_aligned_gtfs";
+                    if(noGtfs)
+                    {
+                        cell.NoGtfsGlobal++;
+                        Count(cell.NoGtfsPhysicalAgeAtComparison,AgeBand(decision.AgeSeconds));
+                    }
+                    if(decision.Relation=="inconclusive_absence")
+                    {
+                        Count(cell.PrimaryInconclusiveReason,decision.Reasons[0]);
+                        foreach(var reason in decision.Reasons)Count(cell.InconclusiveReasons,reason);
+                    }
+                    if(decision.Relation=="same_gps_coordinate_conflict")cell.SourceConflicts++;
+                    var presenceKey=new PresenceKey(facility.Id,decision.Location,new(row.Provider,row.Id));
+                    currentCandidates[presenceKey]=new(row,noGtfs,decision.AbsenceComparable);
+                    if(its.Complete&&before.Complete&&after.Complete
+                        &&_previousCandidates.TryGetValue(presenceKey,out var oldCandidate))
+                    {
+                        var cellKey=facility.Id+"/"+decision.Location;
+                        if(!cross.TryGetValue(cellKey,out var overlap))cross[cellKey]=overlap=new CrossRoundCounts();
+                        overlap.SameSourceIdentityBothRounds++;
+                        if(noGtfs&&oldCandidate.NoGtfs)overlap.NoGtfsBothRounds++;
+                        if(row.PhysicalAt>oldCandidate.Row.PhysicalAt)
+                        {
+                            overlap.PhysicalAdvanced++;
+                            if(Distance(row.Position,oldCandidate.Row.Position)<=10)
+                            {
+                                overlap.AdvancedWithin10Metres++;
+                                if(noGtfs&&oldCandidate.NoGtfs)
+                                {
+                                    overlap.NoGtfsPhysicalAdvancedWithin10Metres++;
+                                    if(decision.AbsenceComparable&&oldCandidate.Comparable)
+                                        overlap.AlignedNoGtfsPhysicalAdvancedWithin10Metres++;
+                                }
+                            }
+                        }
+                    }
                     Count(groups,facility.Id+"/"+decision.Location+"/"+decision.Relation+"/"+(decision.LineSlice??(row.Service==null?"service_missing":"other_service")));
                     if(row.Trip==null)Count(groups,facility.Id+"/trip_missing");
                     if(row.Route==null)Count(groups,facility.Id+"/route_missing");
@@ -299,8 +431,19 @@ public sealed class TerminalPreflight : IDisposable
         }
         // Partial rounds never become a renewal baseline or an absence witness.
         if(its.Complete){_previous=current;_previousQualified=qualified;}else {_previous.Clear();_previousQualified.Clear();}
+        if(its.Complete&&before.Complete&&after.Complete)
+        {
+            _previousCandidates=currentCandidates;
+            foreach(var (cellKey,cell) in diagnostics)
+            {
+                if(!_seenFacilityIds.TryGetValue(cellKey,out var ids))_seenFacilityIds[cellKey]=ids=new(StringComparer.Ordinal);
+                ids.UnionWith(cell.Ids);
+            }
+        }
+        else _previousCandidates.Clear();
         return new(index,its.Complete&&before.Complete&&after.Complete?"complete_reads_check_alignment":"inconclusive",
-            its.Pages,its.RawRecords,its.Rows.Count,its.Rejected,before.RawEntities,after.RawEntities,groups,renewal);
+            its.Pages,its.RawRecords,its.Rows.Count,its.Rejected,before.RawEntities,after.RawEntities,
+            groups,renewal,diagnostics,cross,its.RawProviders,its.ServerMinuteStatus);
     }
 
     public async Task<object> RunAsync(CancellationToken ct=default)
@@ -338,6 +481,7 @@ public sealed class TerminalPreflight : IDisposable
         return new {status,itsGets=ItsGets,gtfsGets=GtfsGets,bodyBytes=BodyBytes,
             elapsedSeconds=_clock.GetElapsedTime(_began).TotalSeconds,
             trustedGeometryAvailable=_facilities.Any(x=>x.TrustedPolygon!=null),rounds=summaries,
+            distinctIdentitiesAcrossCompleteRounds=DistinctIdentitiesAcrossCompleteRounds,
             conclusion="aggregated observations only; no claim of boarding availability or network-wide coverage"};
     }
 

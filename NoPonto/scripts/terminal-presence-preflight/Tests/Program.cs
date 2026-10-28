@@ -23,6 +23,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("http_304_retains_generation_and_http_errors_stop", CacheAndErrors),
     ("duplicates_regression_and_conflicts_do_not_fake_gps_renewal", DuplicateAndRenewal),
     ("unreviewed_stops_only_prove_proximity", FacilityGeometry),
+    ("temporal_gate_reasons_preserve_absence_rules", TemporalGateReasons),
+    ("age_bands_separate_acquisition_from_comparison", AgeBands),
+    ("cross_round_correlation_requires_same_source_physical_time_and_place", CrossRoundCorrelation),
+    ("source_conflicts_and_ambiguous_identities_are_counted_locally", LocalConflicts),
+    ("simulated_provider_and_server_minute_counts_explain_volume_shape", ProviderAndMinuteCounts),
     ("serialized_results_contain_no_individual_fix_or_secret", Privacy)
 };
 var failed=0;
@@ -283,6 +288,133 @@ static Task FacilityGeometry()
     return Task.CompletedTask;
 }
 
+static Task TemporalGateReasons()
+{
+    var clock=new FakeClock(Start);using var probe=Make(clock,new QueueHandler((_,_)=>throw new Exception("unexpected HTTP")));
+    var row=probe.Physical(Vehicle(Start.AddSeconds(-20),server:Start.AddSeconds(-30)),out _)!;
+    var its=Its(Start.AddMinutes(-1).AddSeconds(-5),row);
+    var before=FeedAt(Start.AddSeconds(-25));var after=FeedAt(Start.AddSeconds(-10));
+    var good=probe.Compare(row,its,before,after,Facility());
+    True(good.AbsenceComparable);Equal(0,good.Reasons.Length);
+    var old=row with {PhysicalAt=Start.AddSeconds(-61)};
+    var aged=probe.Compare(old,its,before,after,Facility());
+    Equal("inconclusive_absence",aged.Relation);
+    Equal("physical_age_outside_0_to_60s",aged.Reasons.Single());
+    Equal("server_time_missing_or_invalid",probe.Compare(row with {ServerAt=null},its,before,after,Facility()).Reasons.Single());
+    Equal("server_time_outside_requested_minute",probe.Compare(row with {ServerAt=Start},its,before,after,Facility()).Reasons.Single());
+    Equal("provider_unverified",probe.Compare(row with {Provider="OTHER"},its,before,after,Facility()).Reasons.Single());
+    Equal("gtfs_generation_not_advanced",probe.Compare(row,its,before,FeedAt(before.GeneratedAt!.Value),Facility()).Reasons.Single());
+    Equal("gtfs_before_physical_gap_over_60s",probe.Compare(row,its,FeedAt(Start.AddSeconds(-85)),after,Facility()).Reasons.Single());
+    var stale=probe.Compare(row,its,FeedAt(Start.AddSeconds(-91)),after,Facility());
+    True(stale.Reasons.Contains("gtfs_before_generation_older_than_90s"));
+    True(stale.Reasons.Contains("gtfs_before_physical_gap_over_60s"));
+    before.IdentityCoverage=false;its.Complete=false;
+    var incomplete=probe.Compare(row,its,before,after,Facility());
+    True(incomplete.Reasons.Contains("its_incomplete"));
+    True(incomplete.Reasons.Contains("gtfs_before_identity_coverage_incomplete"));
+    return Task.CompletedTask;
+}
+
+static Task AgeBands()
+{
+    var clock=new FakeClock(Start);using var probe=Make(clock,new QueueHandler((_,_)=>throw new Exception("unexpected HTTP")));
+    var rows=new[]{30,60,120,180}.Select((seconds,i)=>new TerminalPreflight.Observation(
+        "SYNTH-"+i,"SYNTH-"+i,"ZIRIX",Anchor,Start.AddSeconds(-seconds),Start.AddSeconds(-30),
+        null,null,null,null,null)).ToArray();
+    var its=Its(Start.AddMinutes(-1).AddSeconds(-5),rows);its.CompletedAt=Start.AddSeconds(-10);
+    var summary=probe.Summarize(0,its,new(),new());
+    var cell=summary.Diagnostics["fixture-terminal/near_terminal"];
+    Equal(4,cell.Observations);Equal(4,cell.DistinctIdentities);Equal(4,cell.DistinctSourceIdentities);
+    Equal(4,cell.NoGtfsGlobal);
+    foreach(var band in new[]{"up_to_30s","over_30_to_60s","over_60_to_120s","over_120_to_180s"})
+        Equal(1,cell.NoGtfsPhysicalAgeAtComparison[band]);
+    Equal(1,cell.PhysicalAgeAtAcquisition["up_to_30s"]);
+    Equal(1,cell.PhysicalAgeAtAcquisition["over_30_to_60s"]);
+    Equal(1,cell.PhysicalAgeAtAcquisition["over_60_to_120s"]);
+    Equal(1,cell.PhysicalAgeAtAcquisition["over_120_to_180s"]);
+    Equal(4,cell.PrimaryInconclusiveReason["gtfs_before_incomplete"]);
+    Equal(2,cell.InconclusiveReasons["physical_age_outside_0_to_60s"]);
+    return Task.CompletedTask;
+}
+
+static Task CrossRoundCorrelation()
+{
+    var clock=new FakeClock(Start);using var probe=Make(clock,new QueueHandler((_,_)=>throw new Exception("unexpected HTTP")));
+    TerminalPreflight.Observation Row(string id,string provider,DateTimeOffset gps,TerminalPreflight.Point? point=null)
+        =>new(id,id,provider,point??Anchor,gps,clock.GetUtcNow().AddSeconds(-30),null,null,null,null,null);
+    var first=Its(Start.AddMinutes(-1).AddSeconds(-5),
+        Row("A","ZIRIX",Start.AddSeconds(-40)),Row("B","ZIRIX",Start.AddSeconds(-40)),
+        Row("C","ZIRIX",Start.AddSeconds(-40)),Row("D","ZIRIX",Start.AddSeconds(-40)),
+        Row("E","ZIRIX",Start.AddSeconds(-40)));
+    var firstGtfs=FeedAt(Start.AddSeconds(-25),id:"C");
+    probe.Summarize(0,first,firstGtfs,FeedAt(Start.AddSeconds(-5)));
+    clock.Advance(TimeSpan.FromSeconds(60));
+    var second=Its(clock.GetUtcNow().AddMinutes(-1).AddSeconds(-5),
+        Row("A","ZIRIX",clock.GetUtcNow().AddSeconds(-10)),
+        Row("B","CONECTA",clock.GetUtcNow().AddSeconds(-10)),
+        Row("C","ZIRIX",clock.GetUtcNow().AddSeconds(-10)),
+        Row("D","ZIRIX",Start.AddSeconds(-40)),
+        Row("E","ZIRIX",clock.GetUtcNow().AddSeconds(-10),new(-22.9003,-43.55)));
+    var summary=probe.Summarize(1,second,FeedAt(clock.GetUtcNow().AddSeconds(-25)),FeedAt(clock.GetUtcNow().AddSeconds(-5)));
+    var overlap=summary.CrossRound["fixture-terminal/near_terminal"];
+    Equal(4,overlap.SameSourceIdentityBothRounds); // B changed provider and cannot be silently joined.
+    Equal(3,overlap.NoGtfsBothRounds); // C was globally present in GTFS in round one.
+    Equal(3,overlap.PhysicalAdvanced); // D only changed server receipt time.
+    Equal(2,overlap.AdvancedWithin10Metres); // E moved beyond ten metres.
+    Equal(1,overlap.NoGtfsPhysicalAdvancedWithin10Metres);
+    Equal(1,overlap.AlignedNoGtfsPhysicalAdvancedWithin10Metres);
+    Equal(5,summary.Diagnostics["fixture-terminal/near_terminal"].DistinctIdentities);
+    Equal(5,probe.DistinctIdentitiesAcrossCompleteRounds["fixture-terminal/near_terminal"]);
+    var partial=Its(clock.GetUtcNow().AddMinutes(-1).AddSeconds(-5),
+        Row("A","ZIRIX",clock.GetUtcNow().AddSeconds(-5)));
+    partial.Complete=false;
+    Equal(0,probe.Summarize(2,partial,new(),new()).CrossRound.Count);
+    Equal(0,probe.Summarize(3,Its(clock.GetUtcNow().AddMinutes(-1).AddSeconds(-5),
+        Row("A","ZIRIX",clock.GetUtcNow().AddSeconds(-2))),
+        FeedAt(clock.GetUtcNow().AddSeconds(-25)),FeedAt(clock.GetUtcNow().AddSeconds(-5))).CrossRound.Count);
+    Equal(5,probe.DistinctIdentitiesAcrossCompleteRounds["fixture-terminal/near_terminal"]);
+    return Task.CompletedTask;
+}
+
+static Task LocalConflicts()
+{
+    var clock=new FakeClock(Start);using var probe=Make(clock,new QueueHandler((_,_)=>throw new Exception("unexpected HTTP")));
+    var first=probe.Physical(Vehicle(Start.AddSeconds(-20),"SYNTH-CONFLICT",server:Start.AddSeconds(-30)),out _)!;
+    var other=first with {Provider="CONECTA",Service="884"};
+    var summary=probe.Summarize(0,Its(Start.AddMinutes(-1).AddSeconds(-5),first,other),new(),new());
+    var cell=summary.Diagnostics["fixture-terminal/near_terminal"];
+    Equal(1,cell.AmbiguousIdentities);Equal(1,cell.SourceConflicts);Equal(0,cell.Observations);
+    var conflictingGtfs=FeedAt(Start.AddSeconds(-25),id:first.Id);
+    conflictingGtfs.Global[first.Id][0]=new(first.Id,first.PhysicalAt,new(-22.901,-43.55),null);
+    summary=probe.Summarize(1,Its(Start.AddMinutes(-1).AddSeconds(-5),first),conflictingGtfs,FeedAt(Start.AddSeconds(-10)));
+    cell=summary.Diagnostics["fixture-terminal/near_terminal"];
+    Equal(1,cell.SourceConflicts);Equal(0,cell.NoGtfsGlobal);
+    using var compatible=Make(new FakeClock(Start),new QueueHandler((_,_)=>throw new Exception("unexpected HTTP")));
+    summary=compatible.Summarize(0,Its(Start.AddMinutes(-1).AddSeconds(-5),first,
+        first with {Provider="CONECTA"}),new(),new());
+    cell=summary.Diagnostics["fixture-terminal/near_terminal"];
+    Equal(2,cell.Observations);Equal(1,cell.DistinctIdentities);Equal(2,cell.DistinctSourceIdentities);
+    return Task.CompletedTask;
+}
+
+static async Task ProviderAndMinuteCounts()
+{
+    var clock=new FakeClock(Start);var minute=Start.AddMinutes(-1).AddSeconds(-5);
+    var a=Vehicle(Start.AddSeconds(-20),"SYNTH-A",server:minute.AddSeconds(20));
+    var b=new GpsDatarioVehicleDto {IdVeiculo="SYNTH-B",Fornecedor="CONECTA",Sistema="sppo",Modo="onibus",
+        Latitude=-22.9,Longitude=-43.55,Datetime=Start.AddSeconds(-20).ToString("O"),DatetimeServidor=Start.ToString("O")};
+    var c=new GpsDatarioVehicleDto {IdVeiculo="SYNTH-C",Fornecedor="OTHER",Sistema="sppo",Modo="onibus",
+        Latitude=-22.9,Longitude=-43.55,Datetime=Start.AddSeconds(-20).ToString("O")};
+    var handler=new QueueHandler((_,_)=>TextResponse(Page(minute,[a,b,c])));
+    using var probe=Make(clock,handler);
+    var read=await probe.ReadItsAsync(minute);
+    True(read.Complete);Equal(1,handler.Requests);Equal(3,read.RawRecords);
+    Equal(1,read.RawProviders["ZIRIX"]);Equal(1,read.RawProviders["CONECTA"]);Equal(1,read.RawProviders["other"]);
+    Equal(1,read.ServerMinuteStatus["within_requested_minute"]);
+    Equal(1,read.ServerMinuteStatus["outside_requested_minute"]);
+    Equal(1,read.ServerMinuteStatus["missing_or_invalid"]);
+}
+
 static async Task Privacy()
 {
     var clock=new FakeClock(Start);
@@ -291,12 +423,12 @@ static async Task Privacy()
         if(request.RequestUri==TerminalPreflight.GtfsUri)return BinaryResponse(Gtfs(clock.GetUtcNow().AddSeconds(-1)));
         var minute=clock.GetUtcNow().AddMinutes(-1);
         minute=new DateTimeOffset(minute.Year,minute.Month,minute.Day,minute.Hour,minute.Minute,0,TimeSpan.Zero);
-        return TextResponse(Page(minute,[Vehicle(clock.GetUtcNow().AddSeconds(-10),"SECRET-VEHICLE-123",server:minute.AddSeconds(20),lat:-22.912345,lon:-43.556789)]));
+        return TextResponse(Page(minute,[Vehicle(clock.GetUtcNow().AddSeconds(-10),"SECRET-VEHICLE-123",server:minute.AddSeconds(20),lat:-22.900123,lon:-43.550789)]));
     });
     using var probe=Make(clock,handler);
     var report=JsonSerializer.Serialize(await probe.RunAsync());
-    True(!report.Contains("SECRET-VEHICLE-123")&&!report.Contains("-22.912345")&&
-        !report.Contains("-43.556789")&&!report.Contains("datetime_servidor")&&
+    True(!report.Contains("SECRET-VEHICLE-123")&&!report.Contains("-22.900123")&&
+        !report.Contains("-43.550789")&&!report.Contains("datetime_servidor")&&
         !report.Contains("Authorization")&&!report.Contains("its.mobilidade.rio"));
     True(handler.Requests<=14);
 }
