@@ -58,6 +58,8 @@ test('physical snapshots share the operational hub and reconcile after reconnect
   f.events.get('PresencaFisicaAtualizada')(snapshot);
   assert.deepEqual(received, [['map', snapshot], ['radar', snapshot]]);
 
+  f.connection.reconnecting();
+  assert.equal(received.at(-1)[1].resetPhysicalPresence, true);
   f.connection.reconnected();
   await tick(); await tick();
   assert.deepEqual(f.calls[1], ['InscreverPresencaFisica', 'terminal-a']);

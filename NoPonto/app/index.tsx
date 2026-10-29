@@ -989,7 +989,6 @@ const Home = () => {
         </Pressable>}
       <MapControls
         radarBottom={radarControlsBottom}
-        physicalVehicles={physicalVehiclesVisible}
         lateralidade={preferenciaLateralidade}
         modalAtivo={viewMode === "favoritos" ? "favoritos" : modalSelecionadoNome}
         location={location}
@@ -1024,7 +1023,7 @@ const Home = () => {
         limiteLinhasAtingido={linhasSelecionadas.length >= MAX_LINHAS}
       />
 
-      <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
+      <RadarParada physicalVehicles={physicalVehiclesVisible} viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
         lateralidade={preferenciaLateralidade}
         visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada}
         localizavel={(evento) => localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis) != null}

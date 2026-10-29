@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { physicalAge, type PhysicalVehicle } from "./physicalPresenceContract";
+import { physicalAge, physicalRadarEligible, physicalSnapshotIsNewer, type PhysicalVehicle } from "./physicalPresenceContract";
 
 const now = Date.parse("2026-10-28T12:00:00Z");
 const vehicle: PhysicalVehicle = {
@@ -24,4 +24,22 @@ for (const [seconds, visible, delayed, opacity] of [
 test("invalid or future physical timestamps never become visible", () => {
   assert.equal(physicalAge({ ...vehicle, physicalAt: "bad" }, now).visible, false);
   assert.equal(physicalAge(vehicle, now - 1).visible, false);
+});
+
+test("terminal vehicle is eligible at another served stop only for matching modal and line", () => {
+  const parked = { ...vehicle, lineId: "line-x", lineState: "Inherited" };
+  assert.equal(physicalRadarEligible(parked, "onibus", ["line-x"], now), true);
+  assert.equal(physicalRadarEligible(parked, "brt", ["line-x"], now), false);
+  assert.equal(physicalRadarEligible(parked, "onibus", ["line-y"], now), false);
+  assert.equal(physicalRadarEligible({ ...parked, speedKmh: null }, "onibus", ["line-x"], now), false);
+  assert.equal(physicalRadarEligible({ ...parked, lineState: "Conflict" }, "onibus", ["line-x"], now), false);
+});
+
+test("snapshot restart accepts newer publication and rejects delayed previous generation", () => {
+  const first = { publishedAt: new Date(now).toISOString(), generation: 99 };
+  const restarted = { publishedAt: new Date(now + 1000).toISOString(), generation: 1 };
+  assert.equal(physicalSnapshotIsNewer(restarted, first), true);
+  assert.equal(physicalSnapshotIsNewer(first, restarted), false);
+  assert.equal(physicalSnapshotIsNewer(first, first), false);
+  assert.equal(physicalSnapshotIsNewer({ ...first, publishedAt: "bad" }), false);
 });

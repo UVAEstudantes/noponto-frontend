@@ -1,3 +1,4 @@
+import { physicalRadarEligible, physicalFacilityName } from "@/src/services/physicalPresenceContract";
 import { physicalAge, type PhysicalVehicle } from "@/src/services/physicalPresence";
 import React, { useEffect, useReducer, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -68,11 +69,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;
   const metadata = radar.parada ? radar.metadados[radar.parada.parada.paradaId] : null;
   const terminalVehicles = physicalVehicles.filter((vehicle) =>
-    (vehicle.facilityStopId === radar.parada?.parada.codigo
-      || vehicle.facilityStopId === radar.parada?.parada.paradaId)
-    && (modal === "todos" || vehicle.modal === modal)
-    && vehicle.lineId != null && radar.parada?.vinculos.some((v) => v.linhaId === vehicle.lineId)
-    && physicalAge(vehicle, radar.agora).visible);
+    physicalRadarEligible(vehicle, modal, radar.parada?.vinculos.map((v) => v.linhaId) ?? [], radar.agora));
   const nomeParada = metadata?.nome?.trim() || radar.parada?.parada.nome?.trim();
   // Somente apresentação: não reclassifica nem filtra os eventos recebidos.
   const apenasPartidas = radar.eventos.length > 0
@@ -186,7 +183,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
               {vehicle.lineState === "Inherited" ? "Linha herdada" : vehicle.lineState === "Informed" ? "Linha informada" : "Linha não confirmada"}
               {` · GPS há ${Math.floor(age.seconds / 60)} min`}
               {age.delayed ? " · GPS atrasado" : ""}
-              {" · próximo ao terminal"}
+              {` · próximo a ${physicalFacilityName(vehicle.facilityStopId)}`}
             </Text>
           </View>;
         })}

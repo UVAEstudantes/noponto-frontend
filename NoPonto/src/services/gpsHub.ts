@@ -135,9 +135,9 @@ export function iniciarGpsHub(
     physicalListeners.forEach((listener) => listener(snapshot));
   });
 
-  connection.onreconnecting(() => { gpsSnapshotGuard.invalidarLeituras(); console.log("🔄 reconectando SignalR..."); });
+  connection.onreconnecting(() => { physicalListeners.forEach((fn) => fn({ resetPhysicalPresence: true })); gpsSnapshotGuard.invalidarLeituras(); console.log("🔄 reconectando SignalR..."); });
   connection.onreconnected(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); void reconciliarInscricoesGps(); physicalSubscribed.clear(); void reconcilePhysicalPresence(); console.log("✅ reconectado"); });
-  connection.onclose(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("❌ conexão encerrada"); });
+  connection.onclose(() => { physicalListeners.forEach((fn) => fn({ resetPhysicalPresence: true })); gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("❌ conexão encerrada"); });
 
   return connection;
 }

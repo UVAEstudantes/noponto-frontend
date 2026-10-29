@@ -42,3 +42,8 @@
 ### 2026-10-28 — PhysicalPresence no mapa e radar
 - Coleção física independente, conexão SignalR compartilhada, flag EXPO_PUBLIC_PHYSICAL_PRESENCE_ENABLED OFF. Coordenadas fixas, idade física 300/600 s e deduplicação por namespace operacional; radar exige parada/modal/linha compatíveis. Sem ETA ou confirmação de partida.
 - Typecheck e testes de contrato/hub/WebView executados; WIP anterior preservado fora do commit. Aquisição SPPO real ainda excede o teto de 12 páginas: não há promessa de marcadores reais SPPO neste checkpoint.
+
+
+### 2026-10-28 — Radar por linha e checkout PhysicalPresence reproduzível
+- Corrigida a prop física que o commit anterior passava ao MapControls; agora chega ao RadarParada. Verificado em worktree limpo sem WIP: typecheck aprovado. Radar aceita velocidade zero de linha realmente atendida em qualquer parada da linha, filtra modal/associação e mantém instalação de origem nomeada, separado de chegadas/ETA.
+- Desconexão limpa coleção física; ordenação aceita reinício do servidor e rejeita publicação antiga. Runner scripts/test-physical-presence.cjs independente do harness WIP: nove testes. Transporte SignalR backend testado em loopback; recepção/aparência em Expo real ainda pendentes por ausência de dispositivo/ADB. WIP e laboratórios preservados.

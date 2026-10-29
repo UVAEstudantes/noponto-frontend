@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { observePhysicalPresence } from "./gpsHub";
-import { physicalAge, type PhysicalVehicle } from "./physicalPresenceContract";
+import { physicalAge, physicalSnapshotIsNewer, type PhysicalVehicle } from "./physicalPresenceContract";
 export { physicalAge, type PhysicalVehicle } from "./physicalPresenceContract";
 
 export const PHYSICAL_PRESENCE_ENABLED =
@@ -34,14 +34,18 @@ export function usePhysicalPresence(enabled = true): PhysicalVehicle[] {
     }
     const owner = Symbol("physical-presence-map-radar");
     const stop = observePhysicalPresence(owner, PHYSICAL_TERMINAL_STOPS, (raw) => {
+      if (raw && typeof raw === "object" && "resetPhysicalPresence" in raw) {
+        setSnapshots({}); return;
+      }
       if (!validSnapshot(raw)) return;
-      setSnapshots((previous) => previous[raw.facilityStopId]?.generation >= raw.generation
+      setNow(Date.now());
+      setSnapshots((previous) => !physicalSnapshotIsNewer(raw, previous[raw.facilityStopId])
         ? previous : { ...previous, [raw.facilityStopId]: raw });
     });
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => { stop(); clearInterval(timer); };
   }, [enabled]);
-  return useMemo(() => !enabled ? [] : Object.values(snapshots).flatMap((snapshot) => snapshot.vehicles)
+  return useMemo(() => !enabled ? [] : Object.values(snapshots).flatMap((snapshot) => snapshot.vehicles.filter((v) => v && v.facilityStopId === snapshot.facilityStopId))
     .filter((vehicle) => Number.isFinite(vehicle.latitude) && Number.isFinite(vehicle.longitude)
       && vehicle.latitude >= -90 && vehicle.latitude <= 90
       && vehicle.longitude >= -180 && vehicle.longitude <= 180
