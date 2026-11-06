@@ -50,8 +50,8 @@ test('prioritaria posterior duas prioridades e veiculos distintos seguem N1', as
   const conteudo = multiplas.previa!.conteudo;
   assert.deepEqual(conteudo.prioridades.map(i => i.id), ['a1', 'a2', 'c']);
   const texto = textoNotificacaoRadar(conteudo);
-  assert.match(texto.body, /bus-a1[\s\S]*bus-a2[\s\S]*bus-c/);
-  assert.equal(texto.data.simulacao, false); assert.match(texto.body, /prevista às/);
+  assert.deepEqual(texto.data.candidatos.map(i => i.veiculoId), ['bus-a1', 'bus-a2', 'bus-c']);
+  assert.equal(texto.data.simulacao, false); assert.match(texto.body, /chega/); assert.doesNotMatch(texto.body, /veículo|NoPonto|prevista às/);
 });
 
 test('comparacao ignora relogio e pequena oscilacao mas publica mudanca relevante', async () => {
@@ -62,15 +62,15 @@ test('comparacao ignora relogio e pequena oscilacao mas publica mudanca relevant
   await h.sessao.observar(snapshot([evento('a', 'A', 360)])); assert.equal(h.envios.length, 2);
 });
 
-test('troca de parada sentido padrao ou linhas encerra e remove previsao anterior', async () => {
+test('troca de parada sentido padrao ou linhas reconfigura e remove previsao anterior', async () => {
   for (const contextoNovo of [{ ...contexto, paradaId: 'outro' },
     { ...contexto, vinculos: contexto.vinculos.map(v => ({ ...v, sentidoId: 'volta' })) },
     { ...contexto, vinculos: contexto.vinculos.map(v => ({ ...v, padraoVersaoId: 'v2' })) },
     { ...contexto, vinculos: contexto.vinculos.filter(v => v.linhaId !== 'A') }]) {
     const h = preparar(); await h.sessao.observar(snapshot()); await h.sessao.ativar();
     await h.sessao.observar(snapshot([], contextoNovo));
-    assert.equal(h.sessao.situacao.estado, 'encerrado'); assert.equal(h.remocoes.length, 1);
-    assert.equal(h.envios.length, 1);
+    assert.equal(h.sessao.situacao.estado, 'sem previsões'); assert.ok(h.remocoes.length >= 1);
+    assert.equal(h.envios.length, 1); assert.equal(h.permissoes.length, 1);
   }
 });
 
@@ -92,13 +92,15 @@ test('permissao negada nao ativa nem envia notificacao', async () => {
   assert.equal(h.envios.length, 0); assert.equal(h.remocoes.length, 1);
 });
 
-test('pausa durante permissao invalida ativacao tardia', async () => {
+test('pausa durante permissao preserva sessao sem publicar ate primeiro plano', async () => {
   let liberar!: () => void;
+  let pedidos = 0;
   const espera = new Promise<void>(resolve => { liberar = resolve; });
-  const h = preparar({ async autorizar() { await espera; return 'exibida'; } });
+  const h = preparar({ async autorizar() { pedidos++; await espera; return 'exibida'; } });
   const dados = snapshot(); await h.sessao.observar(dados); const ativacao = h.sessao.ativar();
   await h.sessao.observar({ ...dados, ativo: false }); liberar(); await ativacao;
-  assert.equal(h.envios.length, 0); assert.equal(h.sessao.situacao.estado, 'encerrado');
+  assert.equal(h.envios.length, 0); assert.equal(h.sessao.situacao.estado, 'pausado');
+  await h.sessao.observar(dados); assert.equal(h.envios.length, 1); assert.equal(pedidos, 1);
 });
 
 test('atualizacao em voo e encerramento nao ressuscitam notificacao antiga', async () => {
@@ -173,4 +175,97 @@ test('atualizacoes concorrentes coalescem ultimo snapshot sem publicar fora de o
   const ultima = h.sessao.observar(snapshot([evento('a', 'A', 300)]));
   liberar(); await Promise.all([ativacao, intermediaria, ultima]);
   assert.deepEqual(publicadas, [agora + 120000, agora + 300000]);
+});
+
+test('hierarquia protege chegada iminente mesmo com tres veiculos prioritarios', () => {
+  const c = snapshot([evento('c1', 'C', 300), evento('c2', 'C', 360), evento('c3', 'C', 420), evento('b', 'B', 60)]).previa!.conteudo;
+  const texto = textoNotificacaoRadar(c);
+  assert.match(texto.body, /B/);
+  assert.equal(texto.data.candidatos[0].id, 'b');
+});
+
+test('edicao reconfigura sessao ativa sem pedir permissao novamente', async () => {
+  const h = preparar(); await h.sessao.observar(snapshot()); await h.sessao.ativar();
+  await h.sessao.observar(snapshot([evento('c', 'C', 180)], { ...contexto, linhasPrioritarias: ['A'] }));
+  assert.equal(h.sessao.situacao.estado, 'ativo');
+  assert.equal(h.envios.length, 2); assert.equal(h.permissoes.length, 1);
+});
+
+test('troca rapida de parada invalida envio antigo e publica somente ultimo contexto', async () => {
+  let liberar!: () => void, validadeAntiga!: () => boolean;
+  const espera = new Promise<void>(r => { liberar = r; }), aceitos: string[] = [];
+  let chamadas = 0;
+  const h = preparar({ async publicar(c, vigente) {
+    if (++chamadas === 1) { validadeAntiga = vigente; await espera; }
+    if (!vigente()) return 'cancelada'; aceitos.push(c.chaveContexto); return 'exibida';
+  } });
+  await h.sessao.observar(snapshot()); const ativacao = h.sessao.ativar();
+  for (let i=0;i<10;i++) await Promise.resolve();
+  const novo = (id: string) => snapshot([{...evento(id),paradaId:id}], {...contexto,paradaId:id});
+  const intermediaria = h.sessao.observar(novo('p2'));
+  const ultima = h.sessao.observar(novo('p3'));
+  assert.equal(validadeAntiga(),false); liberar();
+  await Promise.all([ativacao,intermediaria,ultima]);
+  assert.deepEqual(aceitos,[novo('p3').previa!.conteudo.chaveContexto]);
+  assert.equal(h.sessao.situacao.estado,'ativo'); assert.equal(h.permissoes.length,1);
+});
+
+test('mudar prioridade e janela mantem notificacao unica com ultima selecao', async () => {
+  const exibidos = new Map<string, ReturnType<typeof textoNotificacaoRadar>>(); let permissoes=0, removidas=0;
+  const h = preparar({ async autorizar(){permissoes++;return 'exibida';},
+    async publicar(c,vigente){if(!vigente())return 'cancelada';exibidos.set('radar',textoNotificacaoRadar(c));return 'exibida';},
+    async remover(){removidas++;exibidos.delete('radar');return 'encerrada';} });
+  const eventos=[evento('a','A',60),evento('c','C',300)];
+  await h.sessao.observar(snapshot(eventos));await h.sessao.ativar();
+  const remocoesAntes=removidas;
+  await h.sessao.observar(snapshot(eventos,{...contexto,linhasPrioritarias:['A','C']}));
+  const ultimo=snapshot(eventos,{...contexto,linhasPrioritarias:['A']});ultimo.chave+=':janela15';
+  await h.sessao.observar(ultimo);
+  assert.equal(exibidos.size,1);assert.equal(permissoes,1);assert.equal(h.sessao.situacao.estado,'ativo');
+  assert.equal(removidas,remocoesAntes);
+  assert.match(exibidos.get('radar')!.body,/★ A/);assert.doesNotMatch(exibidos.get('radar')!.body,/★ C/);
+});
+
+test('edicao durante envio invalida revisao anterior sem nova permissao', async () => {
+  let liberar!:()=>void, antiga!:()=>boolean;let chamadas=0;
+  const aceitos:string[]=[],espera=new Promise<void>(r=>{liberar=r;});
+  const h=preparar({async publicar(c,vigente){
+    if(++chamadas===1){antiga=vigente;await espera;}
+    if(!vigente())return 'cancelada';aceitos.push(c.chaveContexto);return 'exibida';
+  }});
+  await h.sessao.observar(snapshot());const ativacao=h.sessao.ativar();
+  for(let i=0;i<10;i++)await Promise.resolve();
+  h.sessao.reconfigurar();assert.equal(antiga(),false);
+  const atual=snapshot([evento('a'),evento('c','C',300)],{...contexto,linhasPrioritarias:['A','C']});
+  const edicao=h.sessao.observar(atual);liberar();await Promise.all([ativacao,edicao]);
+  assert.deepEqual(aceitos,[atual.previa!.conteudo.chaveContexto]);assert.equal(h.permissoes.length,1);
+});
+
+test('conteudo compacto identifica parada veiculos e alternativas sem repetir marca', () => {
+  const dados=snapshot([evento('a','A',60),evento('b','A',120),evento('c','C',300),evento('d','B',400)]).previa!.conteudo;
+  dados.paradaNome='Terminal de teste';
+  const texto=textoNotificacaoRadar(dados);
+  assert.equal(texto.title,'Radar de Espera');assert.equal(texto.subtitle,'Terminal de teste');
+  assert.equal(texto.data.candidatos.length,3);assert.equal(new Set(texto.data.candidatos.map(i=>i.veiculoId)).size,3);
+  assert.equal(texto.data.alternativasAdicionais,1);assert.match(texto.body,/\+1 alternativas/);
+  assert.doesNotMatch(texto.body,/NoPonto|veículo|prevista às/);assert.equal(texto.body.split('\n').length,4);
+});
+
+test('revogacao de permissao encerra e nao republica automaticamente', async () => {
+  let permitida=true;
+  const h=preparar({async publicar(){return permitida?'exibida':'negada';}});
+  await h.sessao.observar(snapshot());await h.sessao.ativar();permitida=false;
+  await h.sessao.observar(snapshot([evento('a','A',400)]));
+  assert.equal(h.sessao.situacao.estado,'encerrado');assert.match(h.sessao.situacao.mensagem!,/negada/);
+  await h.sessao.observar(snapshot());assert.equal(h.sessao.situacao.estado,'encerrado');
+});
+
+test('presenca terminal confiavel publica categoria sem inventar ETA', async () => {
+  const dados=snapshot([]); dados.previa!.conteudo.terminal=[{id:'fisico',linhaId:'A',codigo:'838',desde:agora-120000}];
+  let texto: ReturnType<typeof textoNotificacaoRadar> | undefined;
+  const h=preparar({async publicar(c){texto=textoNotificacaoRadar(c);return 'exibida';}});
+  await h.sessao.observar(dados);await h.sessao.ativar();
+  assert.equal(h.sessao.situacao.estado,'ativo');assert.match(texto!.body,/1 veículo aguardando no terminal/);
+  assert.equal(texto!.data.candidatos.length,0);assert.doesNotMatch(texto!.body,/chega|saída/);
+  await h.sessao.observar(snapshot([]));assert.equal(h.sessao.situacao.estado,'sem previsões');assert.ok(h.remocoes.length);
 });

@@ -527,6 +527,9 @@ const Home = () => {
       &&(contextoDetalhe?consultaDetalhe.foreground:radarConsultado.foreground),contextoDetalhe?consultaDetalhe.eventos:radarConsultado.eventos);
   const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
   const acompanhamento = useRadarEspera({
+    selecaoDeliberada: Boolean(paradaSelecionada),
+    veiculosObservados: __DEV__ ? veiculos.flatMap(v => v.linhaId && v.codigoVeiculoOuTrem
+      ? [{ linhaId: v.linhaId, veiculoId: v.codigoVeiculoOuTrem }] : []) : undefined,
     parada: paradaSelecionada ? contextoDetalhe : radarConsultado.foraContexto ? null : radarConsultado.parada,
     consulta: paradaSelecionada ? consultaDetalhe : radarConsultado,
     modal: modalRadar, linhas: linhasSelecionadasFiltradas,

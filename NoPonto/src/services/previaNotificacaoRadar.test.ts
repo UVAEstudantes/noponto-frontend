@@ -48,6 +48,42 @@ const fisico = (state: TerminalPresence['state'] = 'No terminal'): TerminalPrese
   knownPattern: 'A-ida-v1', corridors: [], operationalConfirmed: false,
 });
 
+test('diagnostico distingue mapa sem evento metadado ausente e corte de vagas', () => {
+  const e=entrada([evento('a','A',60),evento('c1','C',300),evento('c2','C',360),evento('c3','C',420)]);
+  e.linhasPrioritarias=['C'];e.presencasFisicas=[{...fisico('A caminho'),order:'somente-mapa'}];
+  const motivos=new Map<string,string>();e.diagnosticar=d=>motivos.set(d.eventoId,d.motivo);
+  const p=previa(e)!;
+  assert.equal(p.candidatos.length,4);assert.equal(motivos.get('a'),'incluido_na_notificacao');
+  assert.equal(motivos.get('c3'),'elegivel_fora_das_tres_vagas');
+  assert.equal(motivos.get('mapa:A:somente-mapa'),'mapa_estimativa_fisica_sem_evento_da_parada');
+  e.itinerarios={A:{...itinerario('A'),padroesV2:itinerario('A').padroesV2!.map(p=>({...p,padraoOperacionalId:''}))},C:itinerario('C')};
+  previa(e);assert.equal(motivos.get('a'),'metadado_operacional_ausente');
+  // O callback registra a ausência de metadado antes do filtro N1; preserva ambos na auditoria direta.
+  const registros:string[]=[];e.diagnosticar=d=>{if(d.eventoId==='a')registros.push(d.motivo);};previa(e);
+  assert.ok(registros.includes('metadado_operacional_ausente'));
+});
+
+test('terminal apresenta espera observada sem misturar origem sentido idade ou ETA', () => {
+  const e=entrada();const v={...fisico(),terminalId:'parada',terminalName:'Terminal',dwellSince:agora-120000,
+    corridors:[{pattern:'A-ida-v1',originId:'parada',originName:'Terminal',stops:[],coords:[] as [number,number][]}]};
+  e.presencasFisicas=[v,{...v,key:'segundo',order:'outro',dwellSince:undefined}];
+  const p=previa(e)!;assert.equal(p.candidatos.length,0);assert.equal(p.conteudo.terminal!.length,2);
+  assert.equal(p.conteudo.terminal![0].desde,agora-120000);assert.equal(p.conteudo.terminal![1].desde,undefined);
+  for(const alteracao of [{terminalId:'outra'}, {physicalAt:agora-300001}, {knownPattern:'A-volta-v1'},
+    {validUntil:agora-1}, {state:'A caminho' as const}, {state:'Na região da origem' as const}]){
+    e.presencasFisicas=[{...v,...alteracao}];assert.equal(previa(e)!.conteudo.terminal!.length,0,JSON.stringify(alteracao));
+  }
+  e.presencasFisicas=[{...v,dwellSince:agora+1}];assert.equal(previa(e)!.conteudo.terminal![0].desde,undefined);
+  e.presencasFisicas=[v];e.consulta.agora=agora+300001;assert.equal(previa(e)!.conteudo.terminal,undefined);
+});
+
+test('saida prevista e chegada ao terminal preservam categorias de eventos distintos', () => {
+  const e=entrada([{...evento('saida','A',300),eventType:'DEPARTURE',stationRole:'Origin',scheduledAt:new Date(agora+300000).toISOString()},evento('chega','C',180)]);
+  const p=previa(e)!;
+  assert.deepEqual(p.candidatos.map(c=>c.evento.eventType),['ARRIVAL','DEPARTURE']);
+  assert.equal(p.conteudo.terminal!.length,0);
+});
+
 test('integra dois veiculos de A e destaca C prioritaria sem alterar os eventos', () => {
   const eventos = [evento('a2', 'A', 180), evento('c', 'C', 300), evento('a1', 'A', 60)];
   const e = entrada(eventos);

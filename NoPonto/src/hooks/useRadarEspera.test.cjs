@@ -60,10 +60,10 @@ test('hook limpa no background pausa e retoma somente com consulta ativa', async
   assert.equal(m.h.timerCount, 0); m.h.unmount();
 });
 
-test('selecao de linhas e preferencias encerram sessao e persistem somente preferencias', async () => {
+test('selecao de linhas e preferencias reconfiguram sessao e persistem somente preferencias', async () => {
   const m = montar(); await m.h.flush(); await m.h.output.ativar(); await m.h.flush();
   m.h.output.selecionarLinha('A'); m.render(); await m.h.flush();
-  assert.equal(m.h.output.estado, 'encerrado'); assert.deepEqual(m.h.output.selecionadas, ['C']);
+  assert.equal(m.h.output.estado, 'ativo'); assert.deepEqual(m.h.output.selecionadas, ['C']);
   assert.deepEqual(m.h.output.previa.candidatos.map(c => c.evento.linhaId), ['C']);
   m.h.output.definirJanela(15); m.render(); await m.h.flush();
   m.h.output.priorizarLinha('C'); m.render(); await m.h.flush();
@@ -86,15 +86,31 @@ test('storage faz roundtrip das preferencias e recusa sessao ou dados invalidos'
   valor = '{malformado'; assert.deepEqual(await store.carregarPreferenciasRadarEspera(), { prioritarias: [], janelaMinutos: 10 });
 });
 
-test('hook invalida sessao ao trocar contexto ou selecao original do mapa', async () => {
+test('hook reconfigura selecao e pausa contexto sem dados correspondentes', async () => {
   for (const modificar of [e => { e.parada.parada.paradaId = 'outra'; },
     e => { e.linhas[0].modoSentido = 'ida'; }, e => { e.linhas = e.linhas.slice(1); },
     e => { e.itinerarios.A.padroesV2[0].padraoOperacionalId = 'op-nova'; }]) {
     const m = montar(); await m.h.flush(); await m.h.output.ativar(); await m.h.flush();
     assert.equal(m.h.output.estado, 'ativo');
     modificar(m.e); m.render(); await m.h.flush();
-    assert.equal(m.h.output.estado, 'encerrado');
+    assert.notEqual(m.h.output.estado, 'encerrado');
     assert.equal(m.chamadas.filter(c => c === 'permissao').length, 1);
     m.h.unmount();
   }
+});
+
+test('navegar mapa pausa alvo e selecao deliberada troca parada sem nova ativacao', async () => {
+  const m=montar();await m.h.flush();await m.h.output.ativar();await m.h.flush();
+  const original=m.e.parada.parada;
+  m.e.parada={...m.e.parada,parada:{...original,paradaId:'nova',nome:'Nova parada'}};
+  m.e.consulta={...m.e.consulta,contextoConsulta:chaveContextoRadar(m.e.parada,'onibus'),
+    eventos:m.e.consulta.eventos.map(e=>({...e,paradaId:'nova'}))};
+  m.e.itinerarios=Object.fromEntries(Object.entries(m.e.itinerarios).map(([id,it])=>[id,{...it,
+    padroesV2:it.padroesV2.map(p=>({...p,paradas:[m.e.parada.parada]}))}]));
+  m.render();await m.h.flush();assert.equal(m.h.output.estado,'pausado');assert.equal(m.h.output.paradaNome,'Parada');
+  const antes=m.chamadas.filter(c=>typeof c==='object').length;
+  m.e.selecaoDeliberada=true;m.render();await m.h.flush();
+  assert.equal(m.h.output.estado,'ativo');assert.equal(m.h.output.paradaNome,'Nova parada');
+  assert.equal(m.chamadas.filter(c=>typeof c==='object').length,antes+1);
+  assert.equal(m.chamadas.filter(c=>c==='permissao').length,1);m.h.unmount();
 });
