@@ -5,6 +5,12 @@ import type {TerminalRadarVehicle} from './terminalTracking';
 const now=1000000;
 const bus=(key:string,extra:Partial<TerminalRadarVehicle>={}):TerminalRadarVehicle=>({key,order:key,lineId:'838',code:'838',physicalAt:now,validUntil:now+480000,terminalId:'origin',terminalName:'Terminal',state:'No terminal',knownPattern:'out',corridors:[],operationalConfirmed:false,...extra});
 const keys=(r:ReturnType<typeof passengerRadar>)=>r.map(r=>r.kind==='physical'?r.vehicle.key:r.arrival.id);
+
+test('chegada iminente precede previsao de 79 minutos mesmo com distancia maior',()=>{
+ const events=[{id:'855-longe',linhaId:'855',etaSeg:4740,distanciaMetros:100},
+  {id:'838-perto',linhaId:'838',etaSeg:60,distanciaMetros:800}];
+ assert.deepEqual(keys(passengerRadar([],events,'stop',now,2)),['838-perto','855-longe']);
+});
 test('terminal prioritizes proven dwell then numeric line and stable individual identity without inventing arrival time',()=>{
  const a=bus('a',{dwellSince:now-300000}),b=bus('b',{dwellSince:now-60000}),c=bus('c',{code:'855',lineId:'855'}),d=bus('d');
  const arrivals=[{id:'approach',linhaId:'838',codigo:'838',distanciaMetros:10}];

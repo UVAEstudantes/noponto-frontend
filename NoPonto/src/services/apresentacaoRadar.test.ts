@@ -4,6 +4,8 @@ import { chegadasDoRadar, resumoConsultaParada } from "./apresentacaoRadar";
 import type { EventoParadaDto } from "./eventosParada";
 import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
+import { passengerRadar } from './radarPassenger';
+import type { TerminalRadarVehicle } from './terminalTracking';
 
 const recebidoEm = Date.parse("2026-10-10T12:00:00Z");
 const evento: EventoParadaDto = { eventId: "scheduled-run", linhaId: "linha", codigoLinha: "Santa Cruz",
@@ -35,8 +37,19 @@ test("evento rodoviário preserva distância operacional e identidade exata", ()
   const [chegada] = chegadasDoRadar([rodoviario], null, [], recebidoEm, recebidoEm, road, []);
   assert.equal(chegada.referenciaDisponivel, true);
   assert.equal(chegada.distanciaMetros, 350);
+  assert.equal(chegada.vehicleId,'A123');
+  assert.equal(chegada.ocorrenciaParadaPadraoId,'oc');
   assert.equal(chegadasDoRadar([{ ...rodoviario, vehicleId: "outro" }], null, [], recebidoEm,
     recebidoEm, road, [])[0].referenciaDisponivel, false);
+});
+
+test('reconciliacao fisica preserva vehicleId mesmo sem codigoVeiculo nos dois paineis',()=>{
+  const e={...evento,linhaId:'838',vehicleId:'bus-a',codigoVeiculo:null,eventType:'ARRIVAL' as const};
+  const fisico:TerminalRadarVehicle={key:'fisico-a',lineId:'838',code:'838',order:'bus-a',physicalAt:recebidoEm,
+    validUntil:recebidoEm+60000,terminalId:'parada',terminalName:'Terminal',state:'No terminal',knownPattern:'v1',corridors:[],operationalConfirmed:true};
+  const c=chegadasDoRadar([e],null,[],recebidoEm,recebidoEm,[],[]);
+  assert.equal(passengerRadar([fisico],c,'parada',recebidoEm).length,1);
+  assert.equal(passengerRadar([fisico],c,'parada',recebidoEm,2)[0].kind,'physical');
 });
 
 test("disponibilidade para foco acompanha remoção e retorno do veículo renderizado", () => {
@@ -46,6 +59,8 @@ test("disponibilidade para foco acompanha remoção e retorno do veículo render
     chegadasDoRadar([e], null, [], recebidoEm, recebidoEm, veiculos, [])[0];
   assert.equal(apresentar(road).referenciaDisponivel, true);
   assert.equal(apresentar([]).referenciaDisponivel, false);
+  assert.equal(apresentar([]).etaSeg, 120);
+  assert.equal(apresentar([]).id, evento.eventId);
   assert.equal(apresentar(road).referenciaDisponivel, true);
   assert.equal(apresentar(road).qualidade, "Programado");
 });

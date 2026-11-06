@@ -33,7 +33,17 @@ export function passengerRadar<T extends PassengerArrival>(physical:readonly Ter
   const dwell=v.dwellSince!=null&&v.dwellSince<=v.physicalAt?-(v.physicalAt-v.dwellSince):0;
   return [stationary?(v.terminalId===stopId?-1:1):progressing?movingRank(d):4,stationary?Infinity:band(d),stationary?dwell:Infinity,v.code,v.key];
  };
- return rows.map(row=>({row,score:score(row)})).sort((a,b)=>{const x=a.score,y=b.score;return x[0]-y[0]||(x[1]===y[1]?0:x[1]-y[1])||(x[2]===y[2]?0:x[2]-y[2])||x[3].localeCompare(y[3],undefined,{numeric:true})||x[4].localeCompare(y[4]);}).slice(0,limit).map(r=>r.row);
+ const ordered=rows.map(row=>({row,score:score(row)})).sort((a,b)=>{const x=a.score,y=b.score;return x[0]-y[0]||(x[1]===y[1]?0:x[1]-y[1])||(x[2]===y[2]?0:x[2]-y[2])||x[3].localeCompare(y[3],undefined,{numeric:true})||x[4].localeCompare(y[4]);}).map(r=>r.row);
+ // Mantém as posições/categorias físicas; as vagas operacionais seguem ETA,
+ // nunca a distância antes do tempo. O resumo é um prefixo da lista completa.
+ const timed=(a:T)=>{const s=forecastSeconds(a,now);return Number.isFinite(s)&&s>=0?s:Infinity;};
+ const arrivalsOrdered=ordered.flatMap(r=>r.kind==='arrival'?[r]:[]).sort((a,b)=>{
+  const x=timed(a.arrival),y=timed(b.arrival);
+  const da=distance(a.arrival.distanciaRestanteMetros??a.arrival.distanciaMetros)??Infinity,db=distance(b.arrival.distanciaRestanteMetros??b.arrival.distanciaMetros)??Infinity;
+  return (x===y?0:x-y)||(da===db?0:da-db)||(a.arrival.eventId??a.arrival.id??'').localeCompare(b.arrival.eventId??b.arrival.id??'');
+ });
+ let index=0;
+ return ordered.map(r=>r.kind==='arrival'?arrivalsOrdered[index++]:r).slice(0,limit);
 }
 export function physicalPassengerLabel(v:TerminalRadarVehicle){
  if(v.state==='No terminal'){const minutes=v.dwellSince!=null?Math.floor((v.physicalAt-v.dwellSince)/60000):0;return minutes>=1?'No terminal há '+minutes+' min':'Em espera';}

@@ -32,7 +32,7 @@ export function useConsultaEventosParada(parada: ParadaRadar | null, modal: stri
 
   useEffect(() => {
     const atual = ++geracao.current;
-    if (!enabled || !chave) setConsulta(null);
+    if (!enabled || !foreground || !chave) setConsulta(null);
     if (!enabled || !foreground || !chave || !paradaId) return;
 
     let pendente = false;
@@ -83,11 +83,12 @@ export function useConsultaEventosParada(parada: ParadaRadar | null, modal: stri
   const statusConsulta: StatusConsultaParada = !chave ? "indisponivel"
     : !enabled || !foreground ? "pausado" : carregando ? temResposta ? "atualizando" : "carregando"
     : erro ? "erro" : "sucesso";
-  const eventos = eventosValidosRadar(resposta?.eventos ?? [], parada, recebidoEm, agoraEfetivo);
+  const eventosRecebidos = resposta?.eventos ?? [];
+  const eventos = enabled && foreground ? eventosValidosRadar(eventosRecebidos, parada, recebidoEm, agoraEfetivo) : [];
   // Derivado só dos eventos válidos do contexto atual; não existe mapa mutável de consulta antiga.
   const eventosPorId = useMemo(() => new Map(eventos.map((evento) => [evento.eventId, evento])), [eventos]);
   const atualizar = useCallback(() => atualizarRef.current(), []);
-  return { foreground, contextoConsulta: chave, statusConsulta, eventos, eventosPorId, recebidoEm,
+  return { foreground, contextoConsulta: chave, statusConsulta, eventos, eventosRecebidos, eventosPorId, recebidoEm,
     agora: agoraEfetivo, carregando, erro, temResposta, atualizadoEm: resposta?.recebidoEm ?? null,
     consultaConcluida: statusConsulta === "sucesso", atualizar };
 }

@@ -111,6 +111,40 @@ function sheet() {
   return { h, render(changes = {}) { props = { ...props, ...changes }; return h.render(() => Component(props)); } };
 }
 
+test('compacto usa mesma apresentacao do completo antes de ordenar ETA relativo e absoluto',()=>{
+ const h=criarHarness(),mocks=ui(h),cards=[];
+ const original=mocks['./radarVehicleCardView'].renderRadarVehicleCard;
+ mocks['./radarVehicleCardView']={renderRadarVehicleCard:c=>{cards.push(c);return original(c);}};
+ const Component=h.carregar('../components/mapaComponents/radarParada.tsx',mocks).default;
+ const base={linhaId:'838',codigoLinha:'838',vehicleId:'bus-a',paradaId:'A',sentidoId:'ida',padraoVersaoId:'v',eventType:'ARRIVAL',quality:'OperationalEstimate',source:'RealtimeEstimated'};
+ const radar={eventos:[{...base,eventId:'relativo',secondsUntilEvent:300},{...base,linhaId:'855',codigoLinha:'855',vehicleId:'bus-b',eventId:'absoluto',estimatedAt:new Date(h.now+240000).toISOString()}],
+  parada:{parada:{paradaId:'A',nome:'Bom Repouso'},vinculos:[]},metadados:{},contextoConsulta:'A',statusConsulta:'sucesso',
+  recebidoEm:h.now-180000,agora:h.now,atualizadoEm:h.now-180000,consultaConcluida:true,candidatos:[],atualizar(){},selecionar(){},selecaoAutomatica(){},carregarMetadados(){}};
+ h.render(()=>Component({radar,linhas:[],modal:'onibus',lateralidade:'destro',visivel:true,viewportHeight:800,
+  onControlsBottomChange(){},onVerTodos(){},onEvento(){},localizavel:()=>false}));
+ assert.deepEqual(cards.slice(-2).map(c=>[c.cardKey,c.title]),[['relativo','Chega em 2 min'],['absoluto','Chega em 4 min']]);
+ const {chegadasDoRadar}=require('../../services/apresentacaoRadar.ts');
+ const completo=chegadasDoRadar(radar.eventos,radar.parada,[],radar.recebidoEm,radar.agora,[],[]);
+ assert.deepEqual(completo.map(c=>[c.id,c.etaSeg]),[['relativo',120],['absoluto',240]]);h.unmount();
+});
+
+test('comparacao DEV e acionada por toque nos dois paineis e nao existe em producao',()=>{
+ const anterior=global.__DEV__;
+ try{for(const dev of [true,false]){
+  global.__DEV__=dev;let chamadas=0;
+  const h=criarHarness(),mocks=ui(h),Component=h.carregar('../components/mapaComponents/radarParada.tsx',mocks).default;
+  const radar={eventos:[],parada:null,metadados:{},contextoConsulta:'',statusConsulta:'sucesso',recebidoEm:h.now,agora:h.now,atualizadoEm:h.now,
+   consultaConcluida:true,candidatos:[],atualizar(){},selecionar(){},selecaoAutomatica(){},carregarMetadados(){}};
+  h.render(()=>Component({radar,linhas:[],modal:'onibus',lateralidade:'destro',visivel:true,viewportHeight:800,
+   onControlsBottomChange(){},onVerTodos(){},onEvento(){},localizavel:()=>false,onDiagnostico(){chamadas++;}}));
+  const botoes=()=>nodes(h.output).filter(n=>n.props?.accessibilityLabel==='Comparar Radares em desenvolvimento');
+  assert.equal(chamadas,0);assert.equal(botoes().length,dev?1:0);if(dev)botoes()[0].props.onPress();assert.equal(chamadas,dev?1:0);h.unmount();
+  const s=sheet();s.render({statusConsulta:'sucesso',onDiagnostico(){chamadas++;}});
+  const b=nodes(s.h.output).find(n=>n.props?.accessibilityLabel==='Comparar Radares em desenvolvimento');
+  assert.equal(!!b,dev);if(dev)b.props.onPress();assert.equal(chamadas,dev?2:0);s.h.unmount();
+ }}finally{if(anterior===undefined)delete global.__DEV__;else global.__DEV__=anterior;}
+});
+
 test("sheet não mostra vazio na primeira carga e confirma vazio somente após sucesso", () => {
   const { h, render } = sheet();
   assert.match(texto(render()), /Consultando próximos veículos/);

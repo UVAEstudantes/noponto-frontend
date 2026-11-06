@@ -12,10 +12,9 @@ import type { useRadarParada } from "@/src/hooks/useRadarParada";
 import type { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import type { EventoParadaDto } from "@/src/services/eventosParada";
 import { rotuloQualidadeEvento } from "@/src/services/eventosParada";
-import { instanteEventoRadar } from "@/src/services/radarParada";
 import { estadoInicialPainelRadar, reduzirEstadoPainelRadar } from "@/src/services/estadoPainelRadar";
 import { identidadeModalMapa } from "@/src/constants/modaisMapa";
-import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
+import { chegadasDoRadar, resumoConsultaParada } from "@/src/services/apresentacaoRadar";
 import {renderTerminalPresenceSection} from './terminalPresenceSection';
 import {renderRadarVehicleCard} from './radarVehicleCardView';
 import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
@@ -25,6 +24,7 @@ import RadarEsperaSection from './radarEsperaSection';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
+  onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
   terminalPresence?:TerminalPresence[];
   onTerminalVehicle?:(vehicle:TerminalRadarVehicle)=>void;
@@ -38,7 +38,7 @@ interface Props {
 }
 
 export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[], acompanhamento,
-  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
+  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle,onDiagnostico }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -46,7 +46,8 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const recolhido = estadoPainel.modo !== "aberto";
   const [conteudoMontado, setConteudoMontado] = useState(!recolhido);
 
-  const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],radar.eventos,radar.agora);
+  const chegadas = chegadasDoRadar(radar.eventos, radar.parada, linhas, radar.recebidoEm, radar.agora, [], []);
+  const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],chegadas,radar.agora);
   const temEventos = radar.eventos.length > 0 || terminalVehicles.length > 0;
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
@@ -82,7 +83,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const abaStyle = useAnimatedStyle(() => ({ opacity: progress.value,
     transform: [{ translateX: (1 - progress.value) * 65 * (ladoAba === "right" ? 1 : -1) }] }));
   if (!visivel) return null;
-  const compactos = passengerRadar(terminalVehicles,radar.eventos,radar.parada?.parada.paradaId,radar.agora,2);
+  const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const quantidade = radar.foraContexto ? 0 : new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []).size;
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;
@@ -174,10 +175,10 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       </View>
       {compactos.map((row,index)=>{
         if(row.kind==='physical')return renderTerminalPresenceSection([row.vehicle],radar.agora,cores,onTerminalVehicle,{first:index===0,dark:escuro,accent:cor,lineColors:Object.fromEntries(linhas.map(l=>[l.linhaId,l.cor]))});
-        const evento=row.arrival;
+        const chegada=row.arrival;
+        const evento=radar.eventos.find(e => e.eventId === chegada.id)!;
         const linha = linhas.find((item) => item.linhaId === evento.linhaId);
-        const instante = instanteEventoRadar(evento, radar.recebidoEm);
-        const minutos = instante == null ? null : Math.max(0, Math.ceil((instante - radar.agora) / 60000));
+        const minutos = chegada.etaSeg == null ? null : Math.ceil(chegada.etaSeg / 60);
         const destino = radar.parada?.vinculos.find((item) => item.linhaId === evento.linhaId
           && item.sentidoId === evento.sentidoId && item.padraoVersaoId === evento.padraoVersaoId)?.destino;
         return renderRadarVehicleCard({cardKey:evento.eventId,cores,accent:cor,badgeColor:linha?.cor??cor,dark:escuro,first:index===0,
@@ -199,6 +200,10 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento} />}
       {typeof __DEV__ !== 'undefined' && __DEV__ &&
         <PreviaNotificacaoRadarSection previa={radar.previaNotificacao ?? null} />}
+      {typeof __DEV__ !== 'undefined' && __DEV__ && onDiagnostico && <Pressable accessibilityRole="button"
+        accessibilityLabel="Comparar Radares em desenvolvimento" onPress={onDiagnostico} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Comparar Radares · DEV</Text>
+      </Pressable>}
         </ScrollView>
       </View>
     </Animated.View>}

@@ -30,6 +30,55 @@ function iniciar() {
   };
 }
 
+test('consulta vencida e GPS vencido nao permanecem nos consumidores', async()=>{
+ const {h,pedidos}=iniciar();
+ pedidos[0].resolve([{...evento('A','gps-antigo',4740),lastRealtimeEvidenceUtc:new Date(h.now-300001).toISOString()},evento('A','cache',4740)]);await h.flush();
+ assert.deepEqual([...h.output.eventosPorId.keys()],['cache']);
+ await h.avancar(300001);
+ assert.equal(h.output.eventos.length,0);h.unmount();
+});
+
+test('relogio sozinho nao comprova passagem e previsao vencida fica indisponivel',async()=>{
+ const {h,pedidos}=iniciar();pedidos[0].resolve([evento('A','a',1)]);await h.flush();
+ await h.avancar(2000);assert.equal(h.output.eventos.length,1);
+ const [c]=chegadasDoRadar(h.output.eventos,parada(),[],h.output.recebidoEm,h.output.agora,[],[]);
+ assert.equal(c.etaSeg,null);h.unmount();
+});
+
+test('resposta autoritativa apos passagem remove evento sem mistura com viagem nova',async()=>{
+ const {h,pedidos}=iniciar();pedidos[0].resolve([{...evento(),expectedRunId:'viagem-antiga'}]);await h.flush();
+ h.output.atualizar();pedidos[1].resolve([]);await h.flush();
+ assert.equal(h.output.eventos.length,0);assert.equal(h.output.eventosPorId.has('evento-A'),false);
+ h.output.atualizar();pedidos[2].resolve([{...evento('A','novo'),expectedRunId:'viagem-nova'}]);await h.flush();
+ assert.deepEqual(h.output.eventos.map(e=>[e.eventId,e.expectedRunId]),[['novo','viagem-nova']]);h.unmount();
+});
+
+test('falha preserva snapshot fresco mas nao renova validade do GPS ou consulta',async()=>{
+ const {h,pedidos}=iniciar();const recebido=h.now;
+ pedidos[0].resolve([{...evento('A','a',4740),lastRealtimeEvidenceUtc:new Date(h.now).toISOString()}]);await h.flush();
+ await h.avancar(30000);pedidos[1].reject(Error('offline'));await h.flush();
+ assert.equal(h.output.eventos.length,1);assert.equal(h.output.recebidoEm,recebido);
+ await h.avancar(270001);assert.equal(h.output.eventos.length,0);assert.equal(h.output.recebidoEm,recebido);h.unmount();
+});
+
+test('ver todos na mesma parada conserva consulta timestamp e ciclo de polling',async()=>{
+ const h=criarHarness(),pedidos=[];
+ const hook=h.carregar('useConsultaEventosParada.ts',{'../services/eventosParada':{buscarEventosParada(id){const p=adiada();pedidos.push({id,...p});return p.promise;}}}).useConsultaEventosParada;
+ const useRadar=h.carregar('useRadarParada.ts',{'./useConsultaEventosParada':{useConsultaEventosParada:hook},
+  '../services/radarParadaMetadata':{metadataParadaRadar:async()=>null}}).useRadarParada;
+ const stop={paradaId:'A',nome:'Bom Repouso',latitude:0,longitude:0,ordem:1,posicaoLinha:0};
+ const props={linhas:[{linhaId:'linha',ativa:true,modal:'brt',modoSentido:'ambos'}],modal:'brt',
+  itinerarios:{linha:{padroesV2:[{sentidoId:'ida',padraoVersaoId:'v1',sentidoNome:'Destino',paradas:[stop]}]}},
+  realtime:{},local:{latitude:0,longitude:0},enabled:true,paradaVisualizada:null};
+ const render=()=>h.render(()=>useRadar(props));render();pedidos[0].resolve([evento()]);await h.flush();
+ const recebido=h.output.recebidoEm,chave=h.output.contextoConsulta;
+ await h.avancar(1000);props.paradaVisualizada=stop;render();await h.flush();
+ assert.equal(pedidos.length,1);assert.equal(h.output.recebidoEm,recebido);assert.equal(h.output.contextoConsulta,chave);
+ assert.equal(chegadasDoRadar(h.output.eventos,h.output.parada,[],h.output.recebidoEm,h.output.agora,[],[])[0].etaSeg,119);
+ props.paradaVisualizada=null;render();await h.flush();assert.equal(pedidos.length,1);
+ await h.avancar(29000);assert.equal(pedidos.length,2);h.unmount();
+});
+
 test("A para B ignora sucesso tardio e protege eventos usados no foco", async () => {
   const { h, pedidos, escolher } = iniciar();
   escolher(parada("B"));
@@ -129,7 +178,7 @@ test("atualização preserva dados e erro não renova o horário da consulta", a
   h.unmount();
 });
 
-test("relógio compartilhado reduz ETA absoluto e relativo e expira após o instante", async () => {
+test("relogio compartilhado reduz ETA e torna previsao vencida indisponivel sem inferir passagem", async () => {
   const { h, pedidos } = iniciar();
   pedidos[0].resolve([evento("A", "relativo", 3), { ...evento("A", "absoluto", 999),
     estimatedAt: new Date(h.now + 5000).toISOString() }]); await h.flush();
@@ -140,9 +189,9 @@ test("relógio compartilhado reduz ETA absoluto e relativo e expira após o inst
   await h.avancar(1000);
   assert.deepEqual(apresentacao().map((e) => e.etaSeg), [0, 2]);
   await h.avancar(1000);
-  assert.deepEqual([...h.output.eventosPorId.keys()], ["absoluto"]);
+  assert.deepEqual(apresentacao().map(e=>e.etaSeg), [null,1]);
   await h.avancar(2000);
-  assert.equal(h.output.eventosPorId.size, 0);
+  assert.deepEqual(apresentacao().map(e=>e.etaSeg), [null,null]);
   assert.equal(pedidos.length, 1); // relógio não consulta a rede
   h.unmount();
 });
@@ -159,7 +208,7 @@ test("foreground revalida imediatamente e background pausa timers e invalida ped
   h.estado("active");
   assert.equal(pedidos.length, 3);
   assert.equal(h.output.eventosPorId.size, 0);
-  assert.equal(h.output.statusConsulta, "atualizando");
+  assert.equal(h.output.statusConsulta, "carregando");
   pedidos[2].resolve([evento("A", "atual")]); await h.flush();
   assert.deepEqual([...h.output.eventosPorId.keys()], ["atual"]);
   h.unmount();

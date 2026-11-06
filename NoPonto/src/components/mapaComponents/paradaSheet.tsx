@@ -20,6 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StatusConsultaParada } from "@/src/hooks/useConsultaEventosParada";
 import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
+import type { VinculoParada } from '@/src/services/radarParada';
 
 export interface LinhaParadaInfo {
   linhaId: string;
@@ -31,6 +32,12 @@ export interface LinhaParadaInfo {
 
 export interface ChegadaParadaInfo {
   id: string;
+  vehicleId?: string | null;
+  railVehicleId?: string | null;
+  expectedRunId?: string | null;
+  sentidoId?: string;
+  padraoOperacionalId?: string | null;
+  ocorrenciaParadaPadraoId?: string;
   padraoVersaoId?:string;
   paradaId?:string;
   linhaId?: string;
@@ -54,6 +61,9 @@ export interface ChegadaParadaInfo {
 }
 
 interface Props {
+  onDiagnostico?: () => void;
+  agora?: number;
+  vinculos?: readonly VinculoParada[];
   terminalPresence?:TerminalPresence[];
   onTerminalVehicle?:(vehicle:TerminalPresence)=>void;
   physicalVehicles?: PhysicalVehicle[];
@@ -85,6 +95,7 @@ function formatEta(segundos: number | null): string {
 }
 
 function copyEvento(c: ChegadaParadaInfo) {
+  if (c.etaSeg == null) return 'Sem previsão';
   if (c.etaSeg != null && c.etaSeg <= 45)
     return c.nextVehiclesMode === "Departures" ? "Saindo agora" : "Chegando agora";
   return `${c.nextVehiclesMode === "Departures" ? "Saída em" : "Chega em"} ${formatEta(c.etaSeg)}`;
@@ -125,6 +136,9 @@ function misturar(hex: string, fundo: string, alpha: number) {
 }
 
 const ParadaSheet = ({
+  onDiagnostico,
+  agora,
+  vinculos,
   terminalPresence = [],
   onTerminalVehicle,
   physicalModal = "onibus",
@@ -145,8 +159,8 @@ const ParadaSheet = ({
   onFechar,
 }: Props) => {
   const { cores, temaAtual } = useTema();
-  const physicalNow = Date.now();
-  const terminalVehicles = contextoIndisponivel||!['onibus','todos'].includes(physicalModal)?[]:terminalRadarVehicles(terminalPresence,parada?.paradaId,linhas.filter(l=>l.ativa).map(l=>({linhaId:l.linhaId})),chegadas,physicalNow);
+  const physicalNow = agora ?? Date.now();
+  const terminalVehicles = contextoIndisponivel||!['onibus','todos'].includes(physicalModal)?[]:terminalRadarVehicles(terminalPresence,parada?.paradaId,vinculos??linhas.filter(l=>l.ativa).map(l=>({linhaId:l.linhaId})),chegadas,physicalNow);
   const passengerRows=passengerRadar(terminalVehicles,chegadas,parada?.paradaId,physicalNow);
   const [physicalExpandedKey,setPhysicalExpandedKey]=useState<string|null>(null);
   const [physicalInfoKey,setPhysicalInfoKey]=useState<string|null>(null);
@@ -481,6 +495,10 @@ const ParadaSheet = ({
                   : chegadas.some((c) => c.tipoServico?.toLowerCase().includes("trem"))
                     ? "Próximos trens" : "Próximos ônibus"}
               </Text>
+              {typeof __DEV__ !== 'undefined' && __DEV__ && onDiagnostico && <Pressable accessibilityRole="button"
+                accessibilityLabel="Comparar Radares em desenvolvimento" onPress={onDiagnostico} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Comparar Radares · DEV</Text>
+              </Pressable>}
               {onAtualizar && !contextoIndisponivel && (
                 <Pressable
                   onPress={onAtualizar}
@@ -553,7 +571,7 @@ const ParadaSheet = ({
                   const statusLabel = formatStatus(c.status);
                   const confiancaLabel = formatConfianca(c.confianca);
                   const horarioLabel =
-                    c.horarioPrevistoLocal ?? formatEta(c.etaSeg);
+                    c.etaSeg == null ? 'Sem previsão' : c.horarioPrevistoLocal ?? formatEta(c.etaSeg);
                   const etaLabel = c.horarioPrevistoLocal ? copyEvento(c) : null;
                   const isAssinada = c.assinada !== false;
                   const itemOpacity = isAssinada ? 1 : 0.55;

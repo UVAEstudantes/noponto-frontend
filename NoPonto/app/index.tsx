@@ -20,10 +20,9 @@ import { useRadarParada } from "@/src/hooks/useRadarParada";
 import {useTerminalRadarCatalog,useTerminalRadarPresence} from '@/src/hooks/useTerminalRadar';
 import {mergeTerminalEvidence,mergeTerminalRadarLines} from '@/src/services/terminalRadarContext';
 import { usePhysicalPresence } from "@/src/services/physicalPresence";
-import { useConsultaEventosParada } from "@/src/hooks/useConsultaEventosParada";
-import { paradaDetalhadaRadar } from "@/src/services/radarParada";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
 import { useRadarEspera } from "@/src/hooks/useRadarEspera";
+import { compararSnapshotsRadar, type SnapshotDiagnosticoRadar } from '@/src/services/diagnosticoConsistenciaRadar';
 import { useIsFocused } from "@react-navigation/native";
 import {
   LinhaSelecionadaInfo,
@@ -318,9 +317,10 @@ const Home = () => {
   const radarLines=useMemo(()=>mergeTerminalRadarLines(linhasSelecionadasFiltradas,terminalCatalog),[linhasSelecionadasFiltradas,terminalCatalog]);
   const radarItineraries=useMemo(()=>({...itinerariosPorId,...terminalCatalog.itineraries}),[itinerariosPorId,terminalCatalog]);
   const radarConsultado = useRadarParada({ linhas: radarLines, modal: viewMode === "favoritos" ? "todos" : normalModal,
+    paradaVisualizada: paradaSelecionada,
     itinerarios: radarItineraries, realtime: estruturasRealtimePorVersao,
     local: location?.coords ?? null,
-    enabled: telaAtiva && !buscaAberta && !containerAberto && !paradaSelecionada });
+    enabled: telaAtiva && !buscaAberta && !containerAberto });
 
   useEffect(() => {
     let ativo = true;
@@ -517,17 +517,15 @@ const Home = () => {
   // ─── Paradas ──────────────────────────────────────────────────────────────
 
   const modalRadar = viewMode === "favoritos" ? "todos" : normalModal;
-  const contextoDetalhe = useMemo(() => paradaDetalhadaRadar(paradaSelecionada,
-    radarLines, modalRadar, radarItineraries, estruturasRealtimePorVersao),
-  [paradaSelecionada, radarLines, modalRadar, radarItineraries, estruturasRealtimePorVersao]);
-  const consultaDetalhe = useConsultaEventosParada(contextoDetalhe, modalRadar,
-    Boolean(paradaSelecionada) && telaAtiva && !buscaAberta && !containerAberto);
+  const contextoDetalhe = paradaSelecionada ? radarConsultado.parada : null;
+  const consultaDetalhe = radarConsultado;
   const scopedTerminalPresence=useTerminalRadarPresence(terminalCatalog,contextoDetalhe??radarConsultado.parada,
     terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radarConsultado.foraContexto||!!contextoDetalhe)
       &&(contextoDetalhe?consultaDetalhe.foreground:radarConsultado.foreground),contextoDetalhe?consultaDetalhe.eventos:radarConsultado.eventos);
   const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
   const acompanhamento = useRadarEspera({
-    selecaoDeliberada: Boolean(paradaSelecionada),
+    // Visualizar detalhes não transfere o alvo; selecionar no próprio Radar, sim.
+    selecaoDeliberada: !paradaSelecionada && radarConsultado.manual,
     veiculosObservados: __DEV__ ? veiculos.flatMap(v => v.linhaId && v.codigoVeiculoOuTrem
       ? [{ linhaId: v.linhaId, veiculoId: v.codigoVeiculoOuTrem }] : []) : undefined,
     parada: paradaSelecionada ? contextoDetalhe : radarConsultado.foraContexto ? null : radarConsultado.parada,
@@ -537,6 +535,14 @@ const Home = () => {
     realtime: estruturasRealtimePorVersao, presencasFisicas: radarTerminalPresence,
   });
   const radar = { ...radarConsultado, previaNotificacao: acompanhamento.previa };
+  const ultimoCompacto = useRef<SnapshotDiagnosticoRadar | null>(null);
+  if (__DEV__ && !paradaSelecionada && telaAtiva && !buscaAberta && !containerAberto) ultimoCompacto.current = { ...radarConsultado, presencasFisicas: radarTerminalPresence };
+  const diagnosticarRadares = __DEV__ ? () => {
+    const comparacao = compararSnapshotsRadar(ultimoCompacto.current, radarConsultado,
+      { paradaId: acompanhamento.paradaIdMonitorada, estado: acompanhamento.estado, previa: acompanhamento.previa }, radarTerminalPresence);
+    console.info('[Radar comparação DEV]', JSON.stringify(comparacao, null, 2));
+    Alert.alert('Comparação dos Radares · DEV', 'Snapshot limitado registrado no Metro. Inclui a última representação compacta, a consulta atual e o alvo do Radar de Espera. Nenhuma consulta adicional foi feita.');
+  } : undefined;
   const idsLinhasDetalhe = new Set(contextoDetalhe?.vinculos.map((item) => item.linhaId) ?? []);
   const linhasNaParada: LinhaParadaInfo[] = radarLines.filter((item) => item.ativa
     && idsLinhasDetalhe.has(item.linhaId)).map((item) => ({
@@ -874,6 +880,7 @@ const Home = () => {
       />
 
       <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
+        onDiagnostico={diagnosticarRadares}
         acompanhamento={acompanhamento}
         terminalPresence={radarTerminalPresence}
         onTerminalVehicle={focarVeiculoOrigem}
@@ -888,6 +895,9 @@ const Home = () => {
           setParadaExpandida(true);
         }} />
       <ParadaSheet
+        onDiagnostico={diagnosticarRadares}
+        agora={consultaDetalhe.agora}
+        vinculos={contextoDetalhe?.vinculos}
         terminalPresence={radarTerminalPresence}
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}

@@ -2,10 +2,11 @@ import type { LinhaSelecionadaInfo } from "../hooks/useMobilidadeRio";
 import type { ItinerarioLinha, Parada } from "../types/transporte";
 import { rotuloSentidoPublico, type ItinerarioPadraoVersaoV2 } from "../types/estruturaV2";
 import type { EventoParadaDto } from "./eventosParada";
+import { RADAR_PHYSICAL_MAX_MS } from './radarPassenger';
 
 export const RAIO_RADAR_METROS = 1000;
 export const HISTERESE_RADAR_METROS = 60;
-export interface VinculoParada { linhaId: string; sentidoId: string; padraoVersaoId: string; destino: string }
+export interface VinculoParada { linhaId: string; sentidoId: string; padraoVersaoId: string; padraoOperacionalId?: string | null; destino: string }
 export interface ParadaRadar { parada: Parada; distancia: number; vinculos: VinculoParada[] }
 export interface CoordenadasRadar { latitude: number; longitude: number }
 
@@ -33,6 +34,7 @@ export function paradasElegiveisRadar(linhas: readonly LinhaSelecionadaInfo[], m
     const todos = [...padroes, ...estruturas.map((item) => ({
       sentidoId: item.sentidoId, sentidoNome: rotuloSentidoPublico(item),
       padraoVersaoId: item.padraoVersaoId,
+      padraoOperacionalId: item.padraoOperacionalId,
       paradas: item.ocorrencias.map((ocorrencia) => ({ ...ocorrencia, codigo: ocorrencia.codigoParada })),
     }))];
     for (const padrao of todos.filter((item) => !sentido || item.sentidoId === sentido)) {
@@ -43,7 +45,7 @@ export function paradasElegiveisRadar(linhas: readonly LinhaSelecionadaInfo[], m
         if (!candidato.vinculos.some((item) => item.linhaId === linha.linhaId
           && item.padraoVersaoId === padrao.padraoVersaoId && item.sentidoId === padrao.sentidoId)) {
           candidato.vinculos.push({ linhaId: linha.linhaId, sentidoId: padrao.sentidoId,
-            padraoVersaoId: padrao.padraoVersaoId, destino: padrao.sentidoNome });
+            padraoVersaoId: padrao.padraoVersaoId, padraoOperacionalId: padrao.padraoOperacionalId, destino: padrao.sentidoNome });
         }
         porId.set(parada.paradaId, candidato);
       }
@@ -68,7 +70,7 @@ export function resolverParadaMonitorada(candidatos: readonly ParadaRadar[], atu
 
 export function chaveContextoRadar(parada: ParadaRadar | null, modal: string): string {
   return parada ? JSON.stringify([modal, parada.parada.paradaId,
-    parada.vinculos.map((item) => [item.linhaId, item.sentidoId, item.padraoVersaoId]).sort()]) : "";
+    parada.vinculos.map((item) => [item.linhaId, item.sentidoId, item.padraoVersaoId, item.padraoOperacionalId ?? null]).sort()]) : "";
 }
 
 // O raio limita descoberta, não o acompanhamento de uma parada explicitamente aberta.
@@ -96,15 +98,25 @@ export function eventosValidosRadar(eventos: readonly EventoParadaDto[], parada:
   if (!parada) return [];
   const ids = new Set<string>();
   return eventos.filter((evento) => {
-    const instante = instanteEventoRadar(evento, recebidoEm);
-    if (instante != null && instante < agora) return false;
-    if (evento.paradaId !== parada.parada.paradaId || ids.has(evento.eventId)) return false;
-    if (!parada.vinculos.some((item) => item.linhaId === evento.linhaId
-      && item.sentidoId === evento.sentidoId && item.padraoVersaoId === evento.padraoVersaoId)) return false;
+    if (motivoExclusaoEventoRadar(evento, parada, recebidoEm, agora) || ids.has(evento.eventId)) return false;
     ids.add(evento.eventId);
     return true;
   }).sort((a, b) => (instanteEventoRadar(a, recebidoEm) ?? Infinity)
     - (instanteEventoRadar(b, recebidoEm) ?? Infinity) || a.eventId.localeCompare(b.eventId));
+}
+
+/** Um ETA vencido não é prova de passagem. A resposta nova substitui a anterior. */
+export function motivoExclusaoEventoRadar(evento: EventoParadaDto, parada: ParadaRadar | null,
+  recebidoEm: number, agora: number): string | null {
+  if (!parada || evento.paradaId !== parada.parada.paradaId) return 'parada_incompativel';
+  if (!Number.isFinite(recebidoEm) || !Number.isFinite(agora) || recebidoEm > agora || agora - recebidoEm > RADAR_PHYSICAL_MAX_MS) return 'consulta_vencida_ou_invalida';
+  if (evento.lastRealtimeEvidenceUtc != null) {
+    const evidencia = Date.parse(evento.lastRealtimeEvidenceUtc);
+    if (!Number.isFinite(evidencia) || evidencia > agora || agora - evidencia > RADAR_PHYSICAL_MAX_MS) return 'gps_vencido_ou_invalido';
+  }
+  if (!parada.vinculos.some(v => v.linhaId === evento.linhaId && v.sentidoId === evento.sentidoId
+    && v.padraoVersaoId === evento.padraoVersaoId && (v.padraoOperacionalId == null || v.padraoOperacionalId === evento.padraoOperacionalId))) return 'vinculo_operacional_incompativel';
+  return null;
 }
 
 export function doisEventosRadar(eventos: readonly EventoParadaDto[], recebidoEm = Date.now()) {

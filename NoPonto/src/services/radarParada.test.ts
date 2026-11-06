@@ -22,6 +22,7 @@ const itinerario: ItinerarioLinha = { linha: "084", modal: "brt", segmentos: [],
 const itinerarios = { linha: itinerario };
 const now = Date.parse("2026-10-10T12:00:00Z");
 const evento: EventoParadaDto = { eventId: "e1", linhaId: "linha", codigoLinha: "084",
+  padraoOperacionalId: 'v-ida',
   modal: "onibus", tipoRota: "brt", sentidoId: "ida", padraoVersaoId: "v-ida", paradaId: a.paradaId,
   ocorrenciaParadaPadraoId: "oc-1", eventType: "ARRIVAL", source: "RealtimeEstimated",
   quality: "OperationalEstimate", isEstimated: true, secondsUntilEvent: 60 };
@@ -46,6 +47,7 @@ test("detalhe fica indisponível para linha sentido ou modal incompatível e rec
 test("chave de consulta distingue parada modal sentido e versão sem depender da ordem dos vínculos", () => {
   const contexto = paradaDetalhadaRadar(a, [linha], "brt", itinerarios)!;
   const chave = chaveContextoRadar(contexto, "brt");
+  assert.notEqual(chaveContextoRadar({ ...contexto, vinculos: contexto.vinculos.map(v => ({ ...v, padraoOperacionalId: 'nova-operacao' })) }, 'brt'), chave);
   assert.notEqual(chaveContextoRadar({ ...contexto, parada: b }, "brt"), chave);
   assert.notEqual(chaveContextoRadar(contexto, "todos"), chave);
   assert.notEqual(chaveContextoRadar({ ...contexto,
@@ -94,17 +96,18 @@ test("troca automática ocorre quando uma parada ganha mais que a margem de esta
   assert.equal(escolherParadaAutomatica([{ ...candidatos[0], distancia: 10 },
     { ...candidatos[1], distancia: 200 }], b.paradaId)?.parada.paradaId, a.paradaId);
 });
-test("filtro exige parada, linha, sentido e versão exatos e rejeita ETA vencido", () => {
+test("filtro exige parada linha sentido versao e operacao sem inferir passagem pelo ETA", () => {
   const parada = paradasElegiveisRadar([linha], "brt", itinerarios, local)[0];
   const invalidos = [
     { ...evento, eventId: "outra-linha", linhaId: "inativa" },
     { ...evento, eventId: "outra-parada", paradaId: b.paradaId },
     { ...evento, eventId: "outro-sentido", sentidoId: "volta" },
     { ...evento, eventId: "outra-versao", padraoVersaoId: "v-volta" },
-    { ...evento, eventId: "vencido", secondsUntilEvent: -1 },
+    { ...evento, eventId: "outra-operacao", padraoOperacionalId: 'outra' },
   ];
   assert.deepEqual(eventosValidosRadar([evento, evento, ...invalidos], parada, now, now).map((item) => item.eventId), ["e1"]);
-  assert.equal(eventosValidosRadar([evento], parada, now, now + 61000).length, 0);
+  assert.equal(eventosValidosRadar([evento], parada, now, now + 61000).length, 1);
+  assert.equal(eventosValidosRadar([evento], parada, now, now + 300001).length, 0);
   assert.equal(eventosValidosRadar([evento], null, now, now).length, 0);
 });
 test("sem ETA ou distância mantém indisponibilidade, sem inventar previsão", () => {

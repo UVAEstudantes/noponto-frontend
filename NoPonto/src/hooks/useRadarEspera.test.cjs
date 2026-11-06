@@ -114,3 +114,16 @@ test('navegar mapa pausa alvo e selecao deliberada troca parada sem nova ativaca
   assert.equal(m.chamadas.filter(c=>typeof c==='object').length,antes+1);
   assert.equal(m.chamadas.filter(c=>c==='permissao').length,1);m.h.unmount();
 });
+
+test('visualizar outra parada nao transfere acompanhamento e voltar retoma o alvo original',async()=>{
+ const m=montar();await m.h.flush();await m.h.output.ativar();await m.h.flush();
+ const original=m.e.parada;
+ m.e.selecaoDeliberada=false;m.e.parada={...original,parada:{...original.parada,paradaId:'visualizada'}};
+ m.render();await m.h.flush();
+ assert.equal(m.h.output.paradaIdMonitorada,'stop');assert.equal(m.h.output.estado,'pausado');assert.equal(m.h.output.previa,null);
+ const quantidade=m.chamadas.filter(c=>typeof c==='object').length;
+ m.e.parada=original;m.render();await m.h.flush();
+ assert.equal(m.h.output.paradaIdMonitorada,'stop');assert.equal(m.h.output.estado,'ativo');
+ assert.equal(m.chamadas.filter(c=>typeof c==='object').length,quantidade+1);
+ assert.equal(m.chamadas.filter(c=>c==='permissao').length,1);m.h.unmount();
+});

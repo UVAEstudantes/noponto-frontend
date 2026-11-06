@@ -90,6 +90,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
   };
   return { ...situacao, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
     paradaNome: ancoragem.current?.nome ?? entrada.parada?.parada.nome ?? 'Selecione uma parada',
+    paradaIdMonitorada: ancoragem.current?.id ?? null,
     podeAtivar: Platform.OS === 'android' && ativo && previa != null && ids.length > 0,
     ativar: () => {
       if (entrada.parada) ancoragem.current = { id: entrada.parada.parada.paradaId, nome: entrada.parada.parada.nome };
