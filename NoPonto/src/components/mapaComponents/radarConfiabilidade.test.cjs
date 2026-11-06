@@ -35,11 +35,46 @@ function ui(h) {
     "expo-blur": { BlurView: "BlurView" },
   };
   mocks["./radarVehicleCardView"]=h.carregar("../components/mapaComponents/radarVehicleCardView.tsx",mocks);
+  mocks["./previaNotificacaoRadarSection"]=h.carregar("../components/mapaComponents/previaNotificacaoRadarSection.tsx",mocks);
   return { ...mocks, "./physicalPresenceSection":
     h.carregar("../components/mapaComponents/physicalPresenceSection.tsx", mocks),
     "./terminalPresenceSection":h.carregar("../components/mapaComponents/terminalPresenceSection.tsx",mocks) };
 }
 const vazio = "Nenhum próximo veículo previsto nesta seleção.";
+
+test('Radar encaminha previa N3-A somente em desenvolvimento', () => {
+  const anterior = global.__DEV__;
+  try {
+    for (const dev of [true, false]) {
+      global.__DEV__ = dev;
+      const h = criarHarness(), mocks = ui(h);
+      const Section = mocks['./previaNotificacaoRadarSection'].default;
+      const Component = h.carregar('../components/mapaComponents/radarParada.tsx', mocks).default;
+      const previa = { contexto: { paradaId: 'A' }, candidatos: [],
+        conteudo: { chaveContexto: 'A', destaque: null, prioridades: [], alternativas: [] } };
+      const radar = { eventos: [], parada: null, metadados: {}, contextoConsulta: 'A',
+        statusConsulta: 'sucesso', carregando: false, atualizadoEm: h.now, agora: h.now,
+        recebidoEm: h.now, consultaConcluida: true, candidatos: [], previaNotificacao: previa,
+        atualizar() {}, selecionar() {}, selecaoAutomatica() {}, carregarMetadados() {} };
+      const render = () => h.render(() => Component({ radar, linhas: [], modal: 'onibus',
+        lateralidade: 'destro', visivel: true, viewportHeight: 800, onControlsBottomChange() {},
+        onVerTodos() {}, onEvento() {}, localizavel: () => false }));
+      render();
+      const sections = () => nodes(h.output).filter(n => n.type === Section);
+      assert.equal(sections().length, dev ? 1 : 0);
+      if (dev) {
+        assert.equal(sections()[0].props.previa, previa);
+        radar.previaNotificacao = null;
+        render();
+        assert.equal(sections()[0].props.previa, null);
+      }
+      h.unmount();
+    }
+  } finally {
+    if (anterior === undefined) delete global.__DEV__;
+    else global.__DEV__ = anterior;
+  }
+});
 
 test('radar closes on first press and incoming updates cannot reopen its touch overlay',()=>{
  const h=criarHarness();const Component=h.carregar('../components/mapaComponents/radarParada.tsx',ui(h)).default;

@@ -19,11 +19,13 @@ import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
 import {renderTerminalPresenceSection} from './terminalPresenceSection';
 import {renderRadarVehicleCard} from './radarVehicleCardView';
 import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
+import PreviaNotificacaoRadarSection from './previaNotificacaoRadarSection';
+import type { PreviaNotificacaoRadar } from '@/src/services/previaNotificacaoRadar';
 
 interface Props {
   terminalPresence?:TerminalPresence[];
   onTerminalVehicle?:(vehicle:TerminalRadarVehicle)=>void;
-  radar: ReturnType<typeof useRadarParada>; linhas: LinhaSelecionadaInfo[];
+  radar: ReturnType<typeof useRadarParada> & { previaNotificacao?: PreviaNotificacaoRadar }; linhas: LinhaSelecionadaInfo[];
   modal: string; lateralidade: string; visivel: boolean;
   onVerTodos: () => void; onEvento: (evento: EventoParadaDto) => void;
   localizavel: (evento: EventoParadaDto) => boolean;
@@ -191,6 +193,8 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
+      {typeof __DEV__ !== 'undefined' && __DEV__ &&
+        <PreviaNotificacaoRadarSection previa={radar.previaNotificacao ?? null} />}
         </ScrollView>
       </View>
     </Animated.View>}
