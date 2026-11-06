@@ -93,9 +93,11 @@ pnpm exec expo start --dev-client --tunnel
 
 Abra **NoPonto Dev** e leia o QR code do Metro ou informe a URL exibida no
 launcher do development client. O tunnel precisa de acesso à internet.
-Em Configurações, toque **Testar notificação**, autorize notificações e confira
+Em Configurações, toque **Exibir: 838 chegando em 5 min**, autorize notificações e confira
 a bandeja Android com o app aberto. Os dados são simulados e a notificação é
 silenciosa. Recusar a permissão deve apenas exibir a mensagem da N2-A.
+Para atualizar e encerrar essa mesma simulação, veja
+[o roteiro da N2-B](radar-notificacoes-n2b.md).
 
 ## Verificações sem build
 
