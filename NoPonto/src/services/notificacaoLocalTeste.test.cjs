@@ -59,12 +59,8 @@ function carregar({ granted = true, canAskAgain = true, aceitar = true,
     dismissAllNotificationsAsync() { assert.fail('Remoção global proibida'); },
     cancelAllScheduledNotificationsAsync() { assert.fail('Cancelamento global proibido'); },
   };
-  const filename = path.join(__dirname, 'notificacaoLocalTeste.ts');
-  const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  const exports = {};
-  vm.runInNewContext(output, { exports, __DEV__: dev,
+  const cache = new Map();
+  const sandbox = { __DEV__: dev,
     // Sem espera real: o teste de timeout percorre deterministicamente as tentativas.
     setTimeout(callback) {
       if (pausarTemporizadores) temporizadores.push(callback);
@@ -73,10 +69,24 @@ function carregar({ granted = true, canAskAgain = true, aceitar = true,
     require(id) {
       if (id === 'react-native') return { Platform: { OS: os } };
       if (id === 'expo-notifications') return notifications;
+      if (id === './notificacaoLocalCanal') return carregarModulo('notificacaoLocalCanal.ts');
       throw Error(`Dependencia inesperada: ${id}`);
     },
-  }, { filename });
-  return { api: exports, chamadas, pedidos, apresentadas, handler: () => handler,
+  };
+  function carregarModulo(nome) {
+    if (cache.has(nome)) return cache.get(nome);
+    const filename = path.join(__dirname, nome), exports = {};
+    cache.set(nome, exports);
+    const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    vm.runInNewContext(output, { ...sandbox, exports }, { filename });
+    return exports;
+  }
+  const api = carregarModulo('notificacaoLocalTeste.ts');
+  return { api, criarCanal: carregarModulo('notificacaoLocalCanal.ts').criarCanalNotificacaoLocal,
+    real: carregarModulo('notificacaoRadarLocal.ts'),
+    chamadas, pedidos, apresentadas, handler: () => handler,
     falhar(value) { falha = value; },
     adiarApresentacao() { apresentar = false; pausarTemporizadores = true; },
     avancarConsulta() { temporizadores.shift()(); },
@@ -256,4 +266,50 @@ test('revisao antiga na bandeja nao libera atualizacao nem encerramento', async 
   assert.equal(await atualizacao, 'exibida');
   assert.equal(await encerramento, 'encerrada');
   assert.deepEqual([...h.apresentadas.keys()], ['outra-notificacao']);
+});
+
+test('Radar real e simulacao coexistem e encerramento nao modifica outra identidade', async () => {
+  const h = carregar();
+  await h.api.testarNotificacaoLocal();
+  const idSimulacao = h.api.IDENTIFICADOR_RADAR_TESTE, sim = h.apresentadas.get(idSimulacao);
+  const real = h.real.clienteRadarEspera;
+  assert.notEqual(h.real.IDENTIFICADOR_RADAR_ESPERA, idSimulacao);
+  assert.equal(await real.autorizar(), 'exibida');
+  for (const body of ['A chegando', 'C chegando']) {
+    assert.equal(await real.publicar({ title: 'Radar real', body, data: { simulacao: false } }), 'exibida');
+  }
+  assert.equal(h.apresentadas.size, 3);
+  assert.equal(h.apresentadas.get(idSimulacao), sim);
+  assert.equal((await h.handler().handleNotification(sim)).shouldShowList, true);
+  assert.equal((await h.handler().handleNotification(h.apresentadas.get(h.real.IDENTIFICADOR_RADAR_ESPERA))).shouldShowList, true);
+  await real.remover();
+  assert.equal(h.apresentadas.get(idSimulacao), sim);
+  assert.equal(h.apresentadas.has(h.real.IDENTIFICADOR_RADAR_ESPERA), false);
+  await real.publicar({ body: 'novo real' });
+  await h.api.encerrarNotificacaoLocal();
+  assert.equal(h.apresentadas.has(h.real.IDENTIFICADOR_RADAR_ESPERA), true);
+});
+
+test('atualizacao automatica real nunca solicita permissao e validade impede envio', async () => {
+  const h = carregar({ granted: false });
+  assert.equal(await h.real.clienteRadarEspera.publicar({ body: 'real' }), 'negada');
+  assert.equal(h.chamadas.some(c => c[0] === 'solicitar'), false);
+  const autorizado = carregar();
+  assert.equal(await autorizado.real.clienteRadarEspera.publicar({ body: 'cancelado' }, false, () => false), 'cancelada');
+  assert.equal(autorizado.pedidos.length, 0);
+});
+
+test('pausa durante confirmacao nativa cancela somente publicacao real em voo', async () => {
+  const h = carregar(); await h.api.testarNotificacaoLocal();
+  const sim = h.apresentadas.get(h.api.IDENTIFICADOR_RADAR_TESTE);
+  h.adiarApresentacao(); h.bloquearConsulta();
+  let vigente = true;
+  const real = h.real.clienteRadarEspera;
+  const publicacao = real.publicar({ body: 'real' }, false, () => vigente);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  vigente = false; real.invalidar(); const encerramento = real.remover();
+  h.apresentarUltima(); h.liberarConsulta();
+  assert.equal(await publicacao, 'cancelada'); assert.equal(await encerramento, 'encerrada');
+  assert.equal(h.apresentadas.get(h.api.IDENTIFICADOR_RADAR_TESTE), sim);
+  assert.equal(h.apresentadas.has(h.real.IDENTIFICADOR_RADAR_ESPERA), false);
 });

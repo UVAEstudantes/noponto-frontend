@@ -31,6 +31,7 @@ function storage(mock) {
   return load("storage.ts", {
     "@react-native-async-storage/async-storage": mock,
     "@/src/constants/estilosMapa": {},
+    "./preferenciasRadarEspera": load('preferenciasRadarEspera.ts', {}),
   });
 }
 

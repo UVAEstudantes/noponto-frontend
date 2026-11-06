@@ -21,8 +21,11 @@ import {renderRadarVehicleCard} from './radarVehicleCardView';
 import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
 import PreviaNotificacaoRadarSection from './previaNotificacaoRadarSection';
 import type { PreviaNotificacaoRadar } from '@/src/services/previaNotificacaoRadar';
+import RadarEsperaSection from './radarEsperaSection';
+import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
+  acompanhamento?: ControleRadarEspera;
   terminalPresence?:TerminalPresence[];
   onTerminalVehicle?:(vehicle:TerminalRadarVehicle)=>void;
   radar: ReturnType<typeof useRadarParada> & { previaNotificacao?: PreviaNotificacaoRadar }; linhas: LinhaSelecionadaInfo[];
@@ -34,7 +37,7 @@ interface Props {
   onControlsBottomChange: (bottom: number | null) => void;
 }
 
-export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[],
+export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[], acompanhamento,
   onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
@@ -193,6 +196,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
+      {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento} />}
       {typeof __DEV__ !== 'undefined' && __DEV__ &&
         <PreviaNotificacaoRadarSection previa={radar.previaNotificacao ?? null} />}
         </ScrollView>

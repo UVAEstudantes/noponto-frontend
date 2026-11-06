@@ -23,7 +23,7 @@ import { usePhysicalPresence } from "@/src/services/physicalPresence";
 import { useConsultaEventosParada } from "@/src/hooks/useConsultaEventosParada";
 import { paradaDetalhadaRadar } from "@/src/services/radarParada";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
-import { criarPreviaNotificacaoRadar } from "@/src/services/previaNotificacaoRadar";
+import { useRadarEspera } from "@/src/hooks/useRadarEspera";
 import { useIsFocused } from "@react-navigation/native";
 import {
   LinhaSelecionadaInfo,
@@ -526,15 +526,14 @@ const Home = () => {
     terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radarConsultado.foraContexto||!!contextoDetalhe)
       &&(contextoDetalhe?consultaDetalhe.foreground:radarConsultado.foreground),contextoDetalhe?consultaDetalhe.eventos:radarConsultado.eventos);
   const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
-  // N3-A: prévia derivada dos mesmos snapshots; sem envio ou consulta adicional.
-  const radar = { ...radarConsultado, previaNotificacao: criarPreviaNotificacaoRadar({
+  const acompanhamento = useRadarEspera({
     parada: paradaSelecionada ? contextoDetalhe : radarConsultado.foraContexto ? null : radarConsultado.parada,
     consulta: paradaSelecionada ? consultaDetalhe : radarConsultado,
     modal: modalRadar, linhas: linhasSelecionadasFiltradas,
     itinerarios: { ...terminalCatalog.itineraries, ...itinerariosPorId },
     realtime: estruturasRealtimePorVersao, presencasFisicas: radarTerminalPresence,
-    linhasPrioritarias: [],
-  }) };
+  });
+  const radar = { ...radarConsultado, previaNotificacao: acompanhamento.previa };
   const idsLinhasDetalhe = new Set(contextoDetalhe?.vinculos.map((item) => item.linhaId) ?? []);
   const linhasNaParada: LinhaParadaInfo[] = radarLines.filter((item) => item.ativa
     && idsLinhasDetalhe.has(item.linhaId)).map((item) => ({
@@ -872,6 +871,7 @@ const Home = () => {
       />
 
       <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
+        acompanhamento={acompanhamento}
         terminalPresence={radarTerminalPresence}
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}

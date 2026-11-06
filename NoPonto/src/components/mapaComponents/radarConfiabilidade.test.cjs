@@ -36,6 +36,7 @@ function ui(h) {
   };
   mocks["./radarVehicleCardView"]=h.carregar("../components/mapaComponents/radarVehicleCardView.tsx",mocks);
   mocks["./previaNotificacaoRadarSection"]=h.carregar("../components/mapaComponents/previaNotificacaoRadarSection.tsx",mocks);
+  mocks["./radarEsperaSection"]=h.carregar("../components/mapaComponents/radarEsperaSection.tsx",mocks);
   return { ...mocks, "./physicalPresenceSection":
     h.carregar("../components/mapaComponents/physicalPresenceSection.tsx", mocks),
     "./terminalPresenceSection":h.carregar("../components/mapaComponents/terminalPresenceSection.tsx",mocks) };

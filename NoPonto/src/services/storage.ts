@@ -5,6 +5,17 @@ import {
   validarEstiloMapa,
 } from "@/src/constants/estilosMapa";
 import { NomeTema } from "@/src/constants/tema";
+import { normalizarPreferenciasRadar, type PreferenciasRadarEspera } from './preferenciasRadarEspera';
+
+const CHAVE_RADAR_ESPERA = '@radarEsperaPreferencias';
+export async function carregarPreferenciasRadarEspera(): Promise<PreferenciasRadarEspera> {
+  try { return normalizarPreferenciasRadar(JSON.parse(await AsyncStorage.getItem(CHAVE_RADAR_ESPERA) ?? 'null')); }
+  catch { return normalizarPreferenciasRadar(null); }
+}
+/** Whitelist: jamais grava sessão ativa, parada ou conteúdo de notificação. */
+export async function salvarPreferenciasRadarEspera(preferencias: PreferenciasRadarEspera) {
+  await AsyncStorage.setItem(CHAVE_RADAR_ESPERA, JSON.stringify(normalizarPreferenciasRadar(preferencias)));
+}
 
 export type PreferenciaTema = NomeTema | "sistema";
 export type PreferenciaLateralidade = "destro" | "canhoto";
