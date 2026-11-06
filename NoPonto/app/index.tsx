@@ -23,6 +23,7 @@ import { usePhysicalPresence } from "@/src/services/physicalPresence";
 import { useConsultaEventosParada } from "@/src/hooks/useConsultaEventosParada";
 import { paradaDetalhadaRadar } from "@/src/services/radarParada";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
+import { criarPreviaNotificacaoRadar } from "@/src/services/previaNotificacaoRadar";
 import { useIsFocused } from "@react-navigation/native";
 import {
   LinhaSelecionadaInfo,
@@ -316,7 +317,7 @@ const Home = () => {
   const terminalCatalog=useTerminalRadarCatalog(terminalRadarEnabled&&!!location);
   const radarLines=useMemo(()=>mergeTerminalRadarLines(linhasSelecionadasFiltradas,terminalCatalog),[linhasSelecionadasFiltradas,terminalCatalog]);
   const radarItineraries=useMemo(()=>({...itinerariosPorId,...terminalCatalog.itineraries}),[itinerariosPorId,terminalCatalog]);
-  const radar = useRadarParada({ linhas: radarLines, modal: viewMode === "favoritos" ? "todos" : normalModal,
+  const radarConsultado = useRadarParada({ linhas: radarLines, modal: viewMode === "favoritos" ? "todos" : normalModal,
     itinerarios: radarItineraries, realtime: estruturasRealtimePorVersao,
     local: location?.coords ?? null,
     enabled: telaAtiva && !buscaAberta && !containerAberto && !paradaSelecionada });
@@ -521,10 +522,19 @@ const Home = () => {
   [paradaSelecionada, radarLines, modalRadar, radarItineraries, estruturasRealtimePorVersao]);
   const consultaDetalhe = useConsultaEventosParada(contextoDetalhe, modalRadar,
     Boolean(paradaSelecionada) && telaAtiva && !buscaAberta && !containerAberto);
-  const scopedTerminalPresence=useTerminalRadarPresence(terminalCatalog,contextoDetalhe??radar.parada,
-    terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radar.foraContexto||!!contextoDetalhe)
-      &&(contextoDetalhe?consultaDetalhe.foreground:radar.foreground),contextoDetalhe?consultaDetalhe.eventos:radar.eventos);
+  const scopedTerminalPresence=useTerminalRadarPresence(terminalCatalog,contextoDetalhe??radarConsultado.parada,
+    terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radarConsultado.foraContexto||!!contextoDetalhe)
+      &&(contextoDetalhe?consultaDetalhe.foreground:radarConsultado.foreground),contextoDetalhe?consultaDetalhe.eventos:radarConsultado.eventos);
   const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
+  // N3-A: prévia derivada dos mesmos snapshots; sem envio ou consulta adicional.
+  const radar = { ...radarConsultado, previaNotificacao: criarPreviaNotificacaoRadar({
+    parada: paradaSelecionada ? contextoDetalhe : radarConsultado.foraContexto ? null : radarConsultado.parada,
+    consulta: paradaSelecionada ? consultaDetalhe : radarConsultado,
+    modal: modalRadar, linhas: linhasSelecionadasFiltradas,
+    itinerarios: { ...terminalCatalog.itineraries, ...itinerariosPorId },
+    realtime: estruturasRealtimePorVersao, presencasFisicas: radarTerminalPresence,
+    linhasPrioritarias: [],
+  }) };
   const idsLinhasDetalhe = new Set(contextoDetalhe?.vinculos.map((item) => item.linhaId) ?? []);
   const linhasNaParada: LinhaParadaInfo[] = radarLines.filter((item) => item.ativa
     && idsLinhasDetalhe.has(item.linhaId)).map((item) => ({
