@@ -2,54 +2,83 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { criarHarness } = require('../../hooks/radarTestHarness.cjs');
 const { temas } = require('../../constants/tema.ts');
-function nodes(v) { return Array.isArray(v) ? v.flatMap(nodes) : v && typeof v === 'object' ? [v, ...nodes(v.props?.children)] : []; }
-function texto(v) { return Array.isArray(v) ? v.map(texto).join(' ') : v && typeof v === 'object' ? texto(v.props?.children) : v == null || typeof v === 'boolean' ? '' : String(v); }
-test('controles de espera expandem selecionam priorizam configuram e encerram', () => {
-  const h = criarHarness(), chamadas = [];
-  const c = { estado: 'encerrado', mensagem: null, solicitando: false, erroPreferencias: null,
-    carregado: true, podeAtivar: true, selecionadas: ['A'], preferencias: { prioritarias: [], janelaMinutos: 10 },
-    disponiveis: [{ linhaId: 'A', linhaCodigo: '838' }, { linhaId: 'C', linhaCodigo: '855' }],
-    selecionarLinha: id => chamadas.push(['linha', id]), priorizarLinha: id => chamadas.push(['prioridade', id]),
-    definirJanela: n => chamadas.push(['janela', n]), ativar: () => chamadas.push(['ativar']), encerrar: () => chamadas.push(['encerrar']) };
-  let tema = 'claro';
-  const Component = h.carregar('../components/mapaComponents/radarEsperaSection.tsx', {
-    'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView' },
-    'lucide-react-native': { ChevronDown: 'ChevronDown', ChevronRight: 'ChevronRight' },
-    '@/src/hooks/useTema': { useTema: () => ({ cores: temas[tema].cores }) },
-  }).default;
-  const render = () => h.render(() => Component({ controle: c }));
-  const botao = label => nodes(h.output).find(n => n.props?.accessibilityLabel === label);
-  render(); assert.equal(botao('Radar de Espera').props.accessibilityState.expanded, false);
-  assert.ok(botao('Ativar acompanhamento')); assert.equal(botao('Acompanhar linha 838'), undefined);
-  botao('Radar de Espera').props.onPress(); render();
-  assert.match(texto(h.output), /somente com o aplicativo aberto/);
-  assert.equal(botao('Acompanhar linha 838').props.accessibilityState.checked, true);
-  assert.equal(botao('Priorizar linha 855').props.disabled, true);
-  botao('Acompanhar linha 855').props.onPress(); botao('Priorizar linha 838').props.onPress();
-  botao('Aumentar antecedência').props.onPress(); botao('Ativar acompanhamento').props.onPress();
-  c.estado='ativo';render();assert.equal(botao('Ativar acompanhamento'),undefined);botao('Encerrar').props.onPress();
-  assert.deepEqual(chamadas, [['linha', 'C'], ['prioridade', 'A'], ['janela', 11], ['ativar'], ['encerrar']]);
-  for (const minutos of [2, 15]) {
-    c.preferencias.janelaMinutos = minutos; render();
-    assert.equal(botao('Diminuir antecedência').props.disabled, minutos === 2);
-    assert.equal(botao('Aumentar antecedência').props.disabled, minutos === 15);
-  }
-  c.estado = 'pausado'; c.podeAtivar = false; render(); assert.equal(botao('Retomar').props.disabled, true);
-  for (const t of ['claro', 'escuro']) {
-    tema = t; render();
-    assert.equal(nodes(botao('Radar de Espera')).find(n => n.type === 'Text' && texto(n).includes('Radar de Espera')).props.style.color, temas[t].cores.textoPrimario);
-  }
-  const scroll=nodes(h.output).find(n=>n.type==='ScrollView'&&n.props.horizontal);
-  assert.equal(scroll.props.style.maxHeight,56);
-  assert.equal(botao('Priorizar linha 838').props.style.minWidth,44);
-  assert.equal(botao('Acompanhar linha 838').props.style.minHeight,44);
-  const devAnterior=global.__DEV__;
-  try {
-    c.diagnosticos=[{eventoId:'a',linhaId:'838',veiculoId:'bus-a',motivo:'eta_indisponivel'}];
-    c.previa={conteudo:{terminal:[{id:'fisico',codigo:'838',desde:Date.parse('2026-11-06T12:00:00Z')}]}};
-    global.__DEV__=false;render();assert.doesNotMatch(texto(h.output),/eta_indisponivel|Diagnóstico de seleção/);
-    assert.match(texto(h.output),/aguardando\s+no terminal/);assert.match(texto(h.output),/espera observada desde/);
-    global.__DEV__=true;render();assert.match(texto(h.output),/bus-a\s+·\s+eta_indisponivel/);
-  } finally {global.__DEV__=devAnterior;}
-  assert.equal(h.timerCount, 0); h.unmount();
+const nodes = v => Array.isArray(v) ? v.flatMap(nodes) : v && typeof v === 'object' ? [v, ...nodes(v.props?.children)] : [];
+const texto = v => Array.isArray(v) ? v.map(texto).join(' ') : v && typeof v === 'object' ? texto(v.props?.children) : v == null || typeof v === 'boolean' ? '' : String(v);
+function montar(estado = 'encerrado') {
+ const h=criarHarness(), chamadas=[]; let tema='claro';
+ const c={estado,paradaNome:'Bom Repouso',carregado:true,podeConfigurar:true,podeSolicitarAtivacao:true,selecionadas:['A'],outraParada:false,
+ preferencias:{prioritarias:[],janelaMinutos:10},destinos:{A:'Terminal Magarça',B:'Campo Grande'},
+ disponiveis:[{linhaId:'A',linhaCodigo:'838',cor:'#007AFF'},{linhaId:'B',linhaCodigo:'884',cor:'#FF6600'}],
+ aplicarConfiguracao:(...args)=>chamadas.push(['salvar',...args]),ativar:()=>chamadas.push(['ativar']),encerrar:()=>chamadas.push(['encerrar'])};
+ const Component=h.carregar('../components/mapaComponents/radarEsperaSection.tsx',{
+ 'react-native':Object.fromEntries(['Modal','View','Text','Pressable','ScrollView','StatusBar'].map(n=>[n,n])),
+ 'lucide-react-native':Object.fromEntries(['ArrowLeft','Check','ChevronRight','Headphones','Star'].map(n=>[n,n])),
+ 'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:32})},
+ '@/src/hooks/useTema':{useTema:()=>({cores:temas[tema].cores,temaAtual:tema})}}).default;
+ const render=()=>h.render(()=>Component({controle:c})); const botao=label=>nodes(h.output).find(n=>n.props?.accessibilityLabel===label);
+ render();return {h,c,chamadas,render,botao,tema:t=>{tema=t;render();},abrir:()=>{botao('Gerenciar Radar de Espera').props.onPress();render();}};
+}
+test('resumo compacto abre configuracao sem checkboxes nem previa DEV no mapa',()=>{
+ const m=montar();assert.equal(m.botao('Acompanhar linha 838'),undefined);assert.equal(nodes(m.h.output).filter(n=>n.type==='Pressable').length,1);
+ m.abrir();assert.ok(m.botao('Acompanhar linha 838'));assert.match(texto(m.h.output),/Em breve/);
+ assert.equal(nodes(m.h.output).filter(n=>n.type==='Headphones').length,1);assert.equal(m.h.timerCount,0);
+ nodes(m.h.output).find(n=>n.type==='Modal').props.onRequestClose();m.render();assert.equal(m.botao('Acompanhar linha 838'),undefined);assert.deepEqual(m.chamadas,[]);
+});
+test('rascunho cancela ao voltar e salva uma vez sem reativar sessao ativa',()=>{
+ const m=montar('ativo');m.abrir();m.botao('Acompanhar linha 884').props.onPress();m.render();
+ m.botao('Priorizar linha 884').props.onPress();m.render();m.botao('5 minutos de antecedência').props.onPress();m.render();assert.deepEqual(m.chamadas,[]);
+ m.botao('Voltar do Radar de Espera').props.onPress();m.render();m.abrir();assert.equal(m.botao('Acompanhar linha 884').props.accessibilityState.checked,false);
+ m.botao('Priorizar linha 838').props.onPress();m.render();m.botao('Salvar alterações').props.onPress();m.render();
+ assert.deepEqual(m.chamadas,[['salvar',['A'],['A'],10]]);
+});
+test('desmarcar linha remove prioridade e antecedencia preserva limites e valores intermediarios',()=>{
+ const m=montar();m.abrir();assert.equal(m.botao('Priorizar linha 884').props.disabled,true);
+ m.botao('Priorizar linha 838').props.onPress();m.render();m.botao('Acompanhar linha 838').props.onPress();m.render();
+ assert.equal(m.botao('Priorizar linha 838').props.accessibilityState.checked,false);assert.equal(m.botao('Ativar Radar').props.disabled,true);
+ m.botao('Acompanhar linha 838').props.onPress();m.render();m.botao('Aumentar antecedência').props.onPress();m.render();
+ m.botao('Ativar Radar').props.onPress();m.render();assert.deepEqual(m.chamadas,[['salvar',['A'],[],11],['ativar']]);
+ m.abrir();for(const n of [2,15]){m.botao(`${n} minutos de antecedência`).props.onPress();m.render();assert.equal(m.botao(n===2?'Diminuir antecedência':'Aumentar antecedência').props.disabled,true);}
+});
+test('tema dinamico preserva rascunho e usa superficies escuras areas seguras e controles acessiveis',()=>{
+ const m=montar('ativo');m.abrir();m.botao('Priorizar linha 838').props.onPress();m.render();
+ for(const t of ['claro','escuro']){m.tema(t);const ns=nodes(m.h.output);
+ assert.ok(ns.some(n=>n.props?.style?.backgroundColor===temas[t].cores.fundoApp));
+ assert.ok(ns.some(n=>n.props?.style?.paddingBottom===32));
+ assert.equal(ns.find(n=>n.type==='StatusBar').props.barStyle,t==='escuro'?'light-content':'dark-content');
+ assert.equal(m.botao('Priorizar linha 838').props.accessibilityState.checked,true);
+ assert.equal(m.botao('Priorizar linha 838').props.style.minWidth,44);
+ if(t==='escuro')assert.equal(ns.some(n=>n.props?.style?.backgroundColor==='#FFFFFF'),false);
+ }
+ assert.deepEqual(m.chamadas,[]);m.botao('Encerrar acompanhamento').props.onPress();m.render();assert.deepEqual(m.chamadas,[['encerrar']]);
+});
+test('outra parada informa alvo e bloqueia salvar sem transferir sessao',()=>{
+ const m=montar('pausado');m.c.outraParada=true;m.c.podeConfigurar=false;m.render();m.abrir();
+ assert.match(texto(m.h.output),/Monitorando\s+Bom Repouso/);assert.equal(m.botao('Acompanhar linha 838'),undefined);assert.equal(m.botao('Salvar alterações').props.disabled,true);assert.deepEqual(m.chamadas,[]);
+});
+
+
+test('mudanca de contexto durante edicao impede salvar rascunho antigo',()=>{
+ const m=montar('ativo');m.c.chaveConfiguracao='original';m.render();m.abrir();
+ m.c.chaveConfiguracao='novo';m.render();assert.equal(m.botao('Salvar alterações').props.disabled,true);
+ m.botao('Salvar alterações').props.onPress();m.render();assert.deepEqual(m.chamadas,[]);assert.match(texto(m.h.output),/O contexto mudou/);
+});
+
+test('permissao negada fica visivel na configuracao e falha nativa permite retomar',()=>{
+ const m=montar();m.abrir();m.botao('Ativar Radar').props.onPress();m.render();
+ m.c.mensagem='Permissão de notificações negada.';m.render();assert.match(texto(m.h.output),/Permissão de notificações negada/);assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));
+ m.c.estado='pausado';m.c.mensagem='Falha na notificação.';m.c.podeAtivar=true;m.render();
+ m.botao('Retomar').props.onPress();assert.deepEqual(m.chamadas.at(-1),['ativar']);
+ m.c.podeAtivar=false;m.render();assert.equal(m.botao('Retomar').props.disabled,true);
+});
+
+test('configuracao mostra ETA mais proximo da linha e bloqueia edicao durante carregamento',()=>{
+ const m=montar();m.c.previa={candidatos:[{evento:{linhaId:'A'},etaSeg:300},{evento:{linhaId:'A'},etaSeg:120}],conteudo:{}};m.render();m.abrir();
+ assert.match(texto(m.h.output),/Previsão\s+·\s+2\s+min/);assert.match(texto(m.h.output),/Sem previsão elegível/);
+ m.c.podeConfigurar=false;m.render();assert.equal(m.botao('Acompanhar linha 838').props.disabled,true);assert.equal(m.botao('Ativar Radar').props.disabled,true);
+});
+
+test('consulta indisponivel impede ativacao mas permite editar rascunho',()=>{
+ const m=montar();m.c.podeSolicitarAtivacao=false;m.render();m.abrir();
+ assert.equal(m.botao('Ativar Radar').props.disabled,true);assert.equal(m.botao('Acompanhar linha 838').props.disabled,false);
+ m.botao('Ativar Radar').props.onPress();m.render();assert.deepEqual(m.chamadas,[]);assert.match(texto(m.h.output),/Aguarde uma consulta válida/);
 });

@@ -18,7 +18,6 @@ import { chegadasDoRadar, resumoConsultaParada } from "@/src/services/apresentac
 import {renderTerminalPresenceSection} from './terminalPresenceSection';
 import {renderRadarVehicleCard} from './radarVehicleCardView';
 import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
-import PreviaNotificacaoRadarSection from './previaNotificacaoRadarSection';
 import type { PreviaNotificacaoRadar } from '@/src/services/previaNotificacaoRadar';
 import RadarEsperaSection from './radarEsperaSection';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
@@ -198,8 +197,6 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
       {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento} />}
-      {typeof __DEV__ !== 'undefined' && __DEV__ &&
-        <PreviaNotificacaoRadarSection previa={radar.previaNotificacao ?? null} />}
       {typeof __DEV__ !== 'undefined' && __DEV__ && onDiagnostico && <Pressable accessibilityRole="button"
         accessibilityLabel="Comparar Radares em desenvolvimento" onPress={onDiagnostico} style={{ minHeight: 44, justifyContent: 'center' }}>
         <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Comparar Radares · DEV</Text>

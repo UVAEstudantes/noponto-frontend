@@ -14,6 +14,7 @@ export interface CoresTema {
   textoSecundario: string;
   textoInverso: string;
   textoDestaque: string;
+  textoSobrePrimario: string;
   iconePrimario: string;
   iconeSecundario: string;
   borda: string;
@@ -46,6 +47,7 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       textoSecundario: "#8E8E93",
       textoInverso: "#F2F4F7",
       textoDestaque: "#FFC107",
+      textoSobrePrimario: "#1E1E1E",
       iconePrimario: "#FFC107",
       iconeSecundario: "#8E8E93",
       borda: "#DEDEDE",
@@ -72,6 +74,7 @@ export const temas: Record<NomeTema, TemaAplicacao> = {
       textoSecundario: "#B2BAC2",
       textoInverso: "#1E1E1E",
       textoDestaque: "#FFC107",
+      textoSobrePrimario: "#1E1E1E",
       iconePrimario: "#FFC107",
       iconeSecundario: "#D0D6DC",
       borda: "#343A40",

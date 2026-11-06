@@ -91,9 +91,25 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
   return { ...situacao, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
     paradaNome: ancoragem.current?.nome ?? entrada.parada?.parada.nome ?? 'Selecione uma parada',
     paradaIdMonitorada: ancoragem.current?.id ?? null,
+    outraParada: mudouAutomaticamente,
+    chaveConfiguracao: chave,
+    motivoPausa: mudouAutomaticamente ? 'Outra parada visualizada' : !foreground ? 'Aplicativo fora do primeiro plano'
+      : !ativo ? 'Consulta indisponível' : situacao.mensagem ? 'Falha ao atualizar' : null,
+    podeConfigurar: carregado && entrada.parada != null && !mudouAutomaticamente,
+    podeSolicitarAtivacao: Platform.OS === 'android' && ativo,
+    destinos: Object.fromEntries(disponiveis.map(l => [l.linhaId,
+      [...new Set(entrada.parada?.vinculos.filter(v => v.linhaId === l.linhaId).map(v => v.destino))].join(' · ')])),
+    aplicarConfiguracao(selecionadas: string[], prioritarias: string[], janelaMinutos: number) {
+      if (!carregado || mudouAutomaticamente || !entrada.parada) return;
+      const novas = [...new Set(selecionadas)].filter(id => disponiveis.some(l => l.linhaId === id));
+      linhasEmMemoria = novas; setMonitoradas(novas);
+      salvar(normalizarPreferenciasRadar({ prioritarias: prioritarias.filter(id => novas.includes(id)), janelaMinutos }));
+    },
     podeAtivar: Platform.OS === 'android' && ativo && previa != null && ids.length > 0,
     ativar: () => {
       if (entrada.parada) ancoragem.current = { id: entrada.parada.parada.paradaId, nome: entrada.parada.parada.nome };
+      // O formulário pode ativar antes do efeito de observação do componente pai.
+      void sessao.observar(atual.current);
       return sessao.ativar();
     }, encerrar: () => { ancoragem.current = null; return sessao.encerrar(); },
     selecionarLinha(id: string) {

@@ -43,7 +43,7 @@ function ui(h) {
 }
 const vazio = "Nenhum próximo veículo previsto nesta seleção.";
 
-test('Radar encaminha previa N3-A somente em desenvolvimento', () => {
+test('Radar compacto nao renderiza previa DEV em nenhum ambiente', () => {
   const anterior = global.__DEV__;
   try {
     for (const dev of [true, false]) {
@@ -62,13 +62,7 @@ test('Radar encaminha previa N3-A somente em desenvolvimento', () => {
         onVerTodos() {}, onEvento() {}, localizavel: () => false }));
       render();
       const sections = () => nodes(h.output).filter(n => n.type === Section);
-      assert.equal(sections().length, dev ? 1 : 0);
-      if (dev) {
-        assert.equal(sections()[0].props.previa, previa);
-        radar.previaNotificacao = null;
-        render();
-        assert.equal(sections()[0].props.previa, null);
-      }
+      assert.equal(sections().length, 0);
       h.unmount();
     }
   } finally {

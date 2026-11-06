@@ -127,3 +127,30 @@ test('visualizar outra parada nao transfere acompanhamento e voltar retoma o alv
  assert.equal(m.chamadas.filter(c=>typeof c==='object').length,quantidade+1);
  assert.equal(m.chamadas.filter(c=>c==='permissao').length,1);m.h.unmount();
 });
+
+test('salvar configuracao aplica lote preserva sessao e persiste prioridades e janela sem permissao repetida',async()=>{
+ const m=montar();await m.h.flush();await m.h.output.ativar();await m.h.flush();
+ const permissoes=m.chamadas.filter(c=>c==='permissao').length;
+ m.h.output.aplicarConfiguracao(['A','C','inexistente'],['A','inexistente'],11);m.render();await m.h.flush();
+ assert.equal(m.h.output.estado,'ativo');assert.deepEqual(m.h.output.selecionadas,['A','C']);
+ assert.deepEqual(m.h.output.preferencias,{prioritarias:['A'],janelaMinutos:11});
+ assert.deepEqual(m.salvas.at(-1),{prioritarias:['A'],janelaMinutos:11});assert.equal(m.chamadas.filter(c=>c==='permissao').length,permissoes);
+ m.h.output.aplicarConfiguracao(['C'],['A','C'],15);m.render();await m.h.flush();
+ assert.deepEqual(m.h.output.preferencias.prioritarias,['C']);assert.equal(m.h.output.estado,'ativo');m.h.unmount();
+});
+test('configuracao de outra parada nao altera preferencias nem selecao do acompanhamento',async()=>{
+ const m=montar();await m.h.flush();await m.h.output.ativar();await m.h.flush();
+ m.e.parada={...m.e.parada,parada:{...m.e.parada.parada,paradaId:'outra'}};m.render();await m.h.flush();
+ assert.equal(m.h.output.podeConfigurar,false);const antes=m.h.output.preferencias;
+ m.h.output.aplicarConfiguracao(['A'],['A'],15);m.render();await m.h.flush();
+ assert.deepEqual(m.h.output.preferencias,antes);assert.deepEqual(m.salvas,[]);assert.equal(m.h.output.paradaIdMonitorada,'stop');m.h.unmount();
+});
+
+test('ativacao usa rascunho salvo antes do efeito de observacao do pai',async()=>{
+ const m=montar();await m.h.flush();
+ m.h.output.aplicarConfiguracao(['A'],['A'],3);m.h.render(undefined,false);
+ await m.h.output.ativar();
+ const publicadas=m.chamadas.filter(c=>typeof c==='object');assert.equal(publicadas.length,1);
+ assert.deepEqual(publicadas[0].data.candidatos.map(c=>c.linhaId),['A']);
+ await m.h.flush();assert.equal(m.h.output.estado,'ativo');m.h.unmount();
+});
