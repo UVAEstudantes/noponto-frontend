@@ -43,6 +43,18 @@ test("ordenação e refresh preservam eventId", () => {
   assert.equal(ordenarEventosParada([{ ...later, secondsUntilEvent: 10 }])[0].eventId, "stable");
 });
 
+test("ordena horários mistos na mesma referência temporal preservando tipo e identidade", () => {
+  const recebidoEm = Date.parse("2026-10-23T12:00:00Z");
+  const relativo = { ...base, eventId: "relativo", secondsUntilEvent: 300 };
+  const absoluto = { ...base, eventId: "absoluto", eventType: "DEPARTURE" as const,
+    scheduledAt: "2026-10-23T12:00:30Z" };
+  const semHorario = { ...base, eventId: "sem-horario" };
+  const ordenados = ordenarEventosParada([relativo, semHorario, absoluto], recebidoEm);
+  assert.deepEqual(ordenados.map((x) => x.eventId), ["absoluto", "relativo", "sem-horario"]);
+  assert.equal(ordenados[0], absoluto);
+  assert.equal(ordenados[0].eventType, "DEPARTURE");
+});
+
 test("evento rodoviário seleciona o marcador existente sem criar outro", () => {
   const road = [{ ordem: "A123" }] as VeiculoMapaRodoviario[];
   assert.deepEqual(localizarVeiculoDoEvento({ ...base, vehicleId: "A123" }, road, []),

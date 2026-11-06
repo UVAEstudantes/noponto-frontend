@@ -1,8 +1,13 @@
+import {passengerRadar} from '@/src/services/radarPassenger';
+import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
+import {renderTerminalPresenceSection} from './terminalPresenceSection';
+import {renderRadarVehicleCard} from './radarVehicleCardView';
+import {terminalRadarVehicles,type TerminalPresence} from '@/src/services/terminalTracking';
 import { useTema } from "@/src/hooks/useTema";
 import { Parada } from "@/src/types/transporte";
 import { BusFront, ChevronDown, ChevronRight, ChevronUp, Clock3,
   Map, MapPin, RefreshCw, TrainFront, X } from "lucide-react-native";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -13,6 +18,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { StatusConsultaParada } from "@/src/hooks/useConsultaEventosParada";
+import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
 
 export interface LinhaParadaInfo {
   linhaId: string;
@@ -24,6 +31,8 @@ export interface LinhaParadaInfo {
 
 export interface ChegadaParadaInfo {
   id: string;
+  padraoVersaoId?:string;
+  paradaId?:string;
   linhaId?: string;
   codigo: string;
   cor: string;
@@ -45,6 +54,10 @@ export interface ChegadaParadaInfo {
 }
 
 interface Props {
+  terminalPresence?:TerminalPresence[];
+  onTerminalVehicle?:(vehicle:TerminalPresence)=>void;
+  physicalVehicles?: PhysicalVehicle[];
+  physicalModal?: string;
   visivel: boolean;
   parada: Parada | null;
   linhas: LinhaParadaInfo[];
@@ -52,6 +65,9 @@ interface Props {
   carregandoChegadas?: boolean;
   erroChegadas?: string | null;
   atualizadoEm?: number | null;
+  statusConsulta: StatusConsultaParada;
+  contextoIndisponivel?: boolean;
+  onRecuperarContexto?: () => void;
   onAtualizar?: () => void;
   onFocarVeiculo?: (chegada: ChegadaParadaInfo) => void;
   expandido: boolean;
@@ -72,12 +88,6 @@ function copyEvento(c: ChegadaParadaInfo) {
   if (c.etaSeg != null && c.etaSeg <= 45)
     return c.nextVehiclesMode === "Departures" ? "Saindo agora" : "Chegando agora";
   return `${c.nextVehiclesMode === "Departures" ? "Saída em" : "Chega em"} ${formatEta(c.etaSeg)}`;
-}
-
-function formatAtualizacao(ts: number | null | undefined): string | null {
-  if (!ts) return null;
-  const diff = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  return `Atualizado ha ${formatEta(diff)}`;
 }
 
 function formatStatus(status?: number | null): string | null {
@@ -115,6 +125,9 @@ function misturar(hex: string, fundo: string, alpha: number) {
 }
 
 const ParadaSheet = ({
+  terminalPresence = [],
+  onTerminalVehicle,
+  physicalModal = "onibus",
   visivel,
   parada,
   linhas,
@@ -122,6 +135,9 @@ const ParadaSheet = ({
   carregandoChegadas,
   erroChegadas,
   atualizadoEm,
+  statusConsulta,
+  contextoIndisponivel = false,
+  onRecuperarContexto,
   onAtualizar,
   onFocarVeiculo,
   expandido,
@@ -129,7 +145,15 @@ const ParadaSheet = ({
   onFechar,
 }: Props) => {
   const { cores, temaAtual } = useTema();
+  const physicalNow = Date.now();
+  const terminalVehicles = contextoIndisponivel||!['onibus','todos'].includes(physicalModal)?[]:terminalRadarVehicles(terminalPresence,parada?.paradaId,linhas.filter(l=>l.ativa).map(l=>({linhaId:l.linhaId})),chegadas,physicalNow);
+  const passengerRows=passengerRadar(terminalVehicles,chegadas,parada?.paradaId,physicalNow);
+  const [physicalExpandedKey,setPhysicalExpandedKey]=useState<string|null>(null);
+  const [physicalInfoKey,setPhysicalInfoKey]=useState<string|null>(null);
+  const [visibleResults,setVisibleResults]=useState(20);
+  useEffect(()=>{setVisibleResults(20);setPhysicalExpandedKey(null);setPhysicalInfoKey(null);},[parada?.paradaId]);
   const [chegadaExpandidaId, setChegadaExpandidaId] = React.useState<string | null>(null);
+  const [conteudoMontado, setConteudoMontado] = React.useState(visivel);
   const insets = useSafeAreaInsets();
   const screenH = Dimensions.get("window").height;
   const bottomInset = Math.max(insets.bottom, 8);
@@ -147,6 +171,7 @@ const ParadaSheet = ({
 
   useEffect(() => {
     if (visivel) {
+      setConteudoMontado(true);
       height.value = withTiming(expandido ? EXPANDED_H : COLLAPSED_H, {
         duration: 240,
         easing: Easing.out(Easing.cubic),
@@ -163,6 +188,8 @@ const ParadaSheet = ({
       translateY.value = withTiming(screenH, {
         duration: 200,
         easing: Easing.out(Easing.cubic),
+      }, (finished) => {
+        if (finished) runOnJS(setConteudoMontado)(false);
       });
       overlayOpacity.value = withTiming(0, { duration: 160 });
       detailsOpacity.value = withTiming(0, { duration: 120 });
@@ -217,9 +244,10 @@ const ParadaSheet = ({
     });
 
   const hasLinhas = linhas.length > 0;
-  const hasChegadas = chegadas.length > 0;
-  const atualizadoLabel = formatAtualizacao(atualizadoEm);
+  const hasChegadas = passengerRows.length > 0;
+  const atualizadoLabel = resumoConsultaParada(statusConsulta, atualizadoEm ?? null);
 
+  if (!visivel && !conteudoMontado) return null;
   return (
     <>
       <Animated.View
@@ -236,7 +264,7 @@ const ParadaSheet = ({
           overlayStyle,
         ]}
       >
-        <Pressable style={{ flex: 1 }} onPress={onFechar} />
+        <Pressable style={{ flex: 1 }} onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar detalhes da parada" hitSlop={6} />
       </Animated.View>
 
       <Animated.View
@@ -308,11 +336,11 @@ const ParadaSheet = ({
                     marginTop: 2,
                   }}
                 >
-                  {parada?.ordem != null ? `Parada #${parada.ordem}` : ""}
+                  Ponto de embarque
                 </Text>
               </View>
               <Pressable
-                onPress={onFechar}
+                onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar detalhes da parada" hitSlop={6}
                 style={{
                   width: 32,
                   height: 32,
@@ -325,6 +353,16 @@ const ParadaSheet = ({
                 <X size={16} color={cores.textoSecundario} />
               </Pressable>
             </View>
+
+            {contextoIndisponivel && <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+              <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: cores.textoPrimario }}>
+                Esta parada não está disponível nas linhas, sentidos ou modal selecionados. A parada aberta foi mantida.
+              </Text>
+              {onRecuperarContexto && <Pressable onPress={onRecuperarContexto} accessibilityRole="button"
+                style={{ minHeight: 44, justifyContent: "center" }}>
+                <Text style={{ fontSize: 12, color: cores.textoPrimario, fontWeight: "600" }}>Voltar à seleção automática</Text>
+              </Pressable>}
+            </View>}
 
             <View style={{ paddingTop: 4 }}>
               {hasLinhas ? (
@@ -364,7 +402,7 @@ const ParadaSheet = ({
                       </View>
                     );
                   })}
-                </ScrollView>
+            </ScrollView>
               ) : (
                 <Text
                   style={{
@@ -443,9 +481,12 @@ const ParadaSheet = ({
                   : chegadas.some((c) => c.tipoServico?.toLowerCase().includes("trem"))
                     ? "Próximos trens" : "Próximos ônibus"}
               </Text>
-              {onAtualizar && (
+              {onAtualizar && !contextoIndisponivel && (
                 <Pressable
                   onPress={onAtualizar}
+                  disabled={carregandoChegadas}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: Boolean(carregandoChegadas), busy: Boolean(carregandoChegadas) }}
                   style={{
                     paddingHorizontal: 10,
                     paddingVertical: 6,
@@ -462,14 +503,14 @@ const ParadaSheet = ({
                       color: cores.textoPrimario,
                     }}
                   >
-                    Atualizar
+                    {erroChegadas ? "Tentar novamente" : "Atualizar"}
                   </Text>
                   </View>
                 </Pressable>
               )}
             </View>
 
-            {carregandoChegadas ? (
+            {!contextoIndisponivel && (carregandoChegadas ? (
               <Text
                 style={{
                   fontSize: 11,
@@ -477,7 +518,7 @@ const ParadaSheet = ({
                   marginBottom: 8,
                 }}
               >
-                Atualizando previsoes...
+                {atualizadoLabel}
               </Text>
             ) : erroChegadas ? (
               <Text
@@ -487,7 +528,7 @@ const ParadaSheet = ({
                   marginBottom: 8,
                 }}
               >
-                Falha ao carregar eventos: {erroChegadas}
+                {atualizadoLabel} {atualizadoEm != null ? "Exibindo dados da consulta anterior." : "Tente novamente."}
               </Text>
             ) : atualizadoLabel ? (
               <Text
@@ -499,14 +540,16 @@ const ParadaSheet = ({
               >
                 {atualizadoLabel}
               </Text>
-            ) : null}
+            ) : null)}
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: navSpacer }}
             >
-              {erroChegadas ? null : hasChegadas ? (
-                chegadas.map((c) => {
+              {contextoIndisponivel ? null : hasChegadas ? (
+                  passengerRows.slice(0,visibleResults).map((row)=>{
+                  if(row.kind==='physical')return renderTerminalPresenceSection([row.vehicle],physicalNow,cores,onTerminalVehicle,{sheet:true,dark:temaAtual==='escuro',lineColors:Object.fromEntries(linhas.map(l=>[l.linhaId,l.cor])),expandedKey:physicalExpandedKey,infoKey:physicalInfoKey,onToggleInfo:key=>setPhysicalInfoKey(current=>current===key?null:key),forecasts:row.relatedArrivals?.flatMap(a=>a.horarioPrevistoLocal?[a.horarioPrevistoLocal]:a.etaSeg!=null?[formatEta(a.etaSeg)]:[]),onToggle:key=>setPhysicalExpandedKey(current=>current===key?null:key)});
+                  const c=row.arrival;
                   const statusLabel = formatStatus(c.status);
                   const confiancaLabel = formatConfianca(c.confianca);
                   const horarioLabel =
@@ -516,8 +559,6 @@ const ParadaSheet = ({
                   const itemOpacity = isAssinada ? 1 : 0.55;
                   const isRealtime = c.qualidade === "Ao vivo";
                   const isEstimated = c.qualidade === "Estimado";
-                  const fundoCard = misturar(cores.textoPrimario, cores.fundoPainel,
-                    temaAtual === "escuro" ? 0.035 : 0.025);
                   const fundoStatus = isRealtime
                     ? misturar("#10B981", cores.fundoCard, temaAtual === "escuro" ? 0.20 : 0.12)
                     : isEstimated
@@ -536,52 +577,11 @@ const ParadaSheet = ({
                     : misturar(c.cor, cores.fundoCard, 0.25);
                   const itemExpandido = chegadaExpandidaId === c.id;
 
-                  return (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => setChegadaExpandidaId((current) => current === c.id ? null : c.id)}
-                      style={{
-                        flexDirection: "column",
-                        paddingVertical: 10,
-                        paddingHorizontal: 12,
-                        borderRadius: 12,
-                        backgroundColor: fundoCard,
-                        borderWidth: 1,
-                        borderColor: cores.bordaSuave,
-                        marginBottom: 8,
-                        opacity: itemOpacity,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                      <View style={{ width: 38, height: 38, borderRadius: 12, alignItems: "center",
-                        justifyContent: "center", backgroundColor: misturar(indicadorCor, cores.fundoCard, 0.16),
-                        marginRight: 10 }}>
-                        {c.tipoServico?.toLowerCase().includes("trem")
-                          ? <TrainFront size={19} color={indicadorCor} />
-                          : <BusFront size={19} color={indicadorCor} />}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            fontWeight: "700",
-                            color: textoPrimario,
-                          }}
-                        >
-                          {c.codigo}
-                        </Text>
-                        {c.destino && (
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: cores.textoSecundario,
-                              marginTop: 2,
-                            }}
-                          >
-                            {c.destino}
-                          </Text>
-                        )}
-                        <Text
+                  return renderRadarVehicleCard({cardKey:c.id,cores,accent:c.cor,badgeColor:indicadorCor,dark:temaAtual==='escuro',sheet:true,opacity:itemOpacity,
+                    onPress:()=>setChegadaExpandidaId(current=>current===c.id?null:c.id),
+                    badge:c.tipoServico?.toLowerCase().includes('trem')?<TrainFront size={19} color={indicadorCor}/>:<BusFront size={19} color={indicadorCor}/>,
+                    title:c.codigo,titleColor:textoPrimario,subtitle:c.destino??undefined,
+                    metadata:<><Text
                           style={{
                             fontSize: 10,
                             color: cores.textoSecundario,
@@ -620,9 +620,8 @@ const ParadaSheet = ({
                               Confianca {confiancaLabel}
                             </Text>
                           )}
-                        </View>
-                      </View>
-                      <View style={{ alignItems: "flex-end" }}>
+                        </View></>,
+                    trailing:<View style={{ alignItems: "flex-end",maxWidth:110,marginLeft:8,flexShrink:0 }}>
                         <Text
                           style={{
                             fontSize: 13,
@@ -640,7 +639,7 @@ const ParadaSheet = ({
                               marginTop: 2,
                             }}
                           >
-                            {etaLabel}
+                            {c.etaSeg!=null?`${c.eventType==='DEPARTURE'?'Sai':'Chega'} em ${Math.max(0,Math.ceil(c.etaSeg/60))} min`:etaLabel}
                           </Text>
                         )}
                         {c.distanciaMetros != null && (
@@ -667,9 +666,8 @@ const ParadaSheet = ({
                         )}
                         {itemExpandido ? <ChevronUp size={15} color={cores.textoSecundario} />
                           : <ChevronRight size={15} color={cores.textoSecundario} />}
-                      </View>
-                      </View>
-                      {itemExpandido && (
+                      </View>,
+                    children:itemExpandido && (
                         <View style={{ width: "100%", marginTop: 10, paddingTop: 10,
                           borderTopWidth: 1, borderTopColor: cores.bordaSuave }}>
                           <View style={{ flexDirection: "row", gap: 6 }}>
@@ -694,11 +692,10 @@ const ParadaSheet = ({
                             <Text style={{ color: corStatus, fontSize: 11, fontWeight: "700" }}>Mostrar no mapa</Text>
                           </Pressable>}
                         </View>
-                      )}
-                    </Pressable>
-                  );
+                      )
+                  });
                 })
-              ) : (
+              ) : statusConsulta === "sucesso" ? (
                 <Text
                   style={{
                     fontSize: 12,
@@ -706,9 +703,10 @@ const ParadaSheet = ({
                     marginTop: 4,
                   }}
                 >
-                  Sem previsao para esta parada.
+                  Nenhum próximo veículo previsto nesta seleção.
                 </Text>
-              )}
+              ) : null}
+                  {passengerRows.length>visibleResults&&<Pressable accessibilityRole="button" onPress={()=>setVisibleResults(n=>n+20)} style={{minHeight:44,justifyContent:"center",alignItems:"center"}}><Text style={{color:cores.iconePrimario,fontWeight:"700"}}>Mostrar mais ônibus</Text></Pressable>}
             </ScrollView>
           </Animated.View>
         )}

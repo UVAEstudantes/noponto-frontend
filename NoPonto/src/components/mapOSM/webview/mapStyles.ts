@@ -1,6 +1,15 @@
 // Responsabilidade: CSS do mapa renderizado dentro da WebView.
 // Mantemos este bloco isolado para facilitar ajustes visuais sem tocar na lógica JS do mapa.
 export const MAP_WEBVIEW_STYLES = `
+    /* R28: content only; marker anchoring and popup positioning stay unchanged. */
+    .popup-card[data-road]{max-height:min(48vh,300px);overflow-y:auto;overscroll-behavior:contain;gap:8px}
+    .popup-card[data-road] .popup-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .popup-card[data-road] .popup-details.open{max-height:min(30vh,190px);overflow-y:auto}
+    .popup-card[data-road][data-empty-details="true"] .popup-toggle,.popup-card[data-road][data-empty-details="true"] .popup-details{display:none}
+    .popup-card[data-road] .popup-stat-value{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .popup-status[data-stale="true"]{background:#fef3c7;color:#92400e}
+    .popup-status[data-stale="true"]:before{background:#b7791f}
+    .gps-warning{font-size:10px;color:#92400e}.gps-warning:empty{display:none}
     html,body{height:100%;width:100%;margin:0;padding:0;background:#f0f0f0}
     #map{height:100%;width:100%;position:absolute;top:0;left:0}
     .maplibregl-canvas{outline:none}

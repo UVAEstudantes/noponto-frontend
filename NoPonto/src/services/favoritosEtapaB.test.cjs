@@ -1,3 +1,4 @@
+/* global __dirname */
 // Preparado para execução manual. Não executado durante a implementação.
 const assert = require("node:assert/strict");
 const test = require("node:test");

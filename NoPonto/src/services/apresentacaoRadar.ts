@@ -4,6 +4,19 @@ import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
 import { localizarVeiculoDoEvento, rotuloQualidadeEvento, type EventoParadaDto } from "./eventosParada";
 import { instanteEventoRadar, type ParadaRadar } from "./radarParada";
+import type { StatusConsultaParada } from "../hooks/useConsultaEventosParada";
+
+export function resumoConsultaParada(status: StatusConsultaParada, atualizadoEm: number | null) {
+  const horario = atualizadoEm == null ? null : new Date(atualizadoEm)
+    .toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const ultimaConsulta = horario ? `Última consulta às ${horario}.` : "Nenhuma consulta concluída.";
+  if (status === "indisponivel") return "Consulta indisponível neste contexto.";
+  if (status === "carregando") return "Consultando próximos veículos…";
+  if (status === "atualizando") return `Atualizando… ${ultimaConsulta}`;
+  if (status === "erro") return `Falha ao atualizar. ${ultimaConsulta}`;
+  if (status === "pausado") return `Consulta pausada. ${ultimaConsulta}`;
+  return ultimaConsulta;
+}
 
 export function chegadasDoRadar(eventos: readonly EventoParadaDto[], parada: ParadaRadar | null,
   linhas: readonly LinhaSelecionadaInfo[], recebidoEm: number, agora: number,
@@ -15,6 +28,7 @@ export function chegadasDoRadar(eventos: readonly EventoParadaDto[], parada: Par
       || (evento.expectedRunId && item.railRunId === evento.expectedRunId));
     return {
       id: evento.eventId, linhaId: evento.linhaId, codigo: evento.codigoLinha,
+      padraoVersaoId:evento.padraoVersaoId,paradaId:evento.paradaId,
       cor: linha?.cor ?? "#94A3B8", assinada: Boolean(linha),
       ordem: evento.codigoVeiculo ?? evento.trainCode ?? undefined,
       eventType: evento.eventType,

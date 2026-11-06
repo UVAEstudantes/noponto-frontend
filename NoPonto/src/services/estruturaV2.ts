@@ -28,6 +28,15 @@ export class CacheEstruturalPorVersao<T> {
 
 const itinerariosPorVersao =
   new CacheEstruturalPorVersao<ItinerarioPadraoVersaoV2 | null>();
+const terminaisPorLinha=new CacheEstruturalPorVersao<string[]|null>();
+export async function obterTerminaisOficiaisV2(codigo:string,linhaId:string){
+  return await terminaisPorLinha.get(linhaId,async()=>{
+    const linhas=await listarLinhasV2(codigo,1,50);
+    const linha=linhas.find(l=>l.linhaId===linhaId&&l.codigo===codigo);
+    const names=[linha?.terminalA,linha?.terminalB].filter((s):s is string=>!!s?.trim());
+    return names.length?names:null;
+  })??[];
+}
 
 export interface FiltrosLinhasV2 {
   modalId?: string;
@@ -71,4 +80,4 @@ export function obterItinerarioPadraoVersaoV2(padraoVersaoId: string) {
   );
 }
 
-export function limparCacheEstruturalV2ParaTestes() { itinerariosPorVersao.clear() }
+export function limparCacheEstruturalV2ParaTestes() { itinerariosPorVersao.clear();terminaisPorLinha.clear(); }

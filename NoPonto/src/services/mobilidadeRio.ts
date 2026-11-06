@@ -22,6 +22,8 @@ import { api } from "./api";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { listarLinhasV2, type FiltrosLinhasV2 } from "./estruturaV2";
 import { adaptarPosicaoRodoviariaV2 } from "./veiculosMapa";
+import { gpsSnapshotGuard, normalizarCodigoLinha } from "./gpsSnapshotGuard";
+import { traceRoadBatch, traceRoadRequest, traceRoadRaw } from './roadPresenceDiagnostics';
 import { apresentarLinhaBusca } from "./searchPresentation";
 import { criarFiltroModalBusca } from "./searchModalFilter";
 import type { CategoriaTransporteV2 } from "@/src/types/estruturaV2";
@@ -353,12 +355,24 @@ export async function buscarProximosVeiculosParada(
 export async function buscarVeiculosPorLinha(
   codigoLinha: string,
 ): Promise<VeiculoTempoReal[]> {
+  const codigo = normalizarCodigoLinha(codigoLinha);
+  if (!codigo) return [];
+  const leitura = gpsSnapshotGuard.capturarLeitura(codigo);
   const response = await api.get<VeiculosLinhaDto>(
-    `/veiculos/linha/${codigoLinha}`,
+    `/veiculos/linha/${encodeURIComponent(codigo)}`,
   );
-  if (!response.ok || !response.data) return [];
-  return response.data.posicoes
-    .map((posicao) => adaptarPosicaoRodoviariaV2(posicao));
+  if (!response.ok || !response.data || !gpsSnapshotGuard.leituraAtual(leitura)) {
+    traceRoadRequest('rest_response',codigo,!response.ok||!response.data?'http_failure_or_missing_body':'late_read_invalidated');return [];
+  }
+  traceRoadBatch('rest_received',response.data.posicoes);
+  if (!response.data.posicoes.length) traceRoadRequest('rest_received',codigo,'empty_http_snapshot_not_explicit_removal');
+  return gpsSnapshotGuard.filtrarSnapshot(response.data.posicoes
+    .filter((posicao) => {
+      const sameLine=normalizarCodigoLinha(posicao.codigoLinha)===codigo;
+      if(!sameLine)traceRoadRaw('rest_line_filter',posicao,'different_requested_line',false);
+      return sameLine;
+    })
+    .map((posicao) => adaptarPosicaoRodoviariaV2(posicao)));
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

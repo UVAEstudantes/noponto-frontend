@@ -1,3 +1,4 @@
+/* global __dirname */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,6 +14,7 @@ function render(name, width, metadataName) {
     useEffect: noop, useReducer: (_, initial) => [initial, noop], useState: initial => [initial, noop] };
   const filename = path.join(__dirname, '../components/mapaComponents/radarParada.tsx');
   const m = new Module(filename, module);
+  m.filename = filename; m.paths = Module._nodeModulePaths(path.dirname(filename));
   const colors = new Proxy({}, { get: () => '#112233' });
   const mocks = {
     react: { __esModule: true, default: React, ...React },
@@ -29,7 +31,22 @@ function render(name, width, metadataName) {
     '@/src/services/estadoPainelRadar': { estadoInicialPainelRadar: { modo: 'aberto' }, reduzirEstadoPainelRadar: noop },
     '@/src/constants/modaisMapa': { identidadeModalMapa: () => ({ Icon: 'ModalIcon', cor: '#112233' }) },
   };
-  m.require = id => { assert.ok(Object.hasOwn(mocks, id), 'Unexpected dependency: ' + id); return mocks[id]; };
+  function compile(filename) {
+    const nested = new Module(filename, module);
+    nested.filename = filename; nested.paths = Module._nodeModulePaths(path.dirname(filename));
+    nested.require = id => {
+      if (Object.hasOwn(mocks, id)) return mocks[id];
+      if (id.startsWith('@/') || id.startsWith('.')) {
+        const resolved = Module._resolveFilename(id, nested);
+        return compile(resolved);
+      }
+      assert.fail('Unexpected dependency: ' + id);
+    };
+    nested._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {fileName: filename,
+      compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true}}).outputText, filename);
+    return nested.exports;
+  }
+  m.require = id => Object.hasOwn(mocks, id) ? mocks[id] : compile(Module._resolveFilename(id, m));
   m._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React,
   }, fileName: filename }).outputText, filename);

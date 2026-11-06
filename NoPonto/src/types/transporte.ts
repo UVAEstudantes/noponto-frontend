@@ -20,6 +20,7 @@ export type VeiculoTempoReal =
   import("@/src/services/veiculosMapa").VeiculoMapaRodoviario;
 
 export interface ItinerarioLinha {
+  terminaisOficiais?: string[];
   linha: string;
   modal: ModalApiTransporte;
   /**
@@ -131,6 +132,7 @@ export interface GeometriaItem {
 }
 
 export interface Parada {
+  distanciaMetros?:number|null;
   paradaId: string;
   codigo?: string;
   nome: string;

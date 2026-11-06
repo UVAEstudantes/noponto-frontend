@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chegadasDoRadar } from "./apresentacaoRadar";
+import { chegadasDoRadar, resumoConsultaParada } from "./apresentacaoRadar";
 import type { EventoParadaDto } from "./eventosParada";
 import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
@@ -37,4 +37,25 @@ test("evento rodoviário preserva distância operacional e identidade exata", ()
   assert.equal(chegada.distanciaMetros, 350);
   assert.equal(chegadasDoRadar([{ ...rodoviario, vehicleId: "outro" }], null, [], recebidoEm,
     recebidoEm, road, [])[0].referenciaDisponivel, false);
+});
+
+test("disponibilidade para foco acompanha remoção e retorno do veículo renderizado", () => {
+  const road = [{ ordem: "A123" }] as VeiculoMapaRodoviario[];
+  const e = { ...evento, modal: "onibus" as const, vehicleId: "A123" };
+  const apresentar = (veiculos: VeiculoMapaRodoviario[]) =>
+    chegadasDoRadar([e], null, [], recebidoEm, recebidoEm, veiculos, [])[0];
+  assert.equal(apresentar(road).referenciaDisponivel, true);
+  assert.equal(apresentar([]).referenciaDisponivel, false);
+  assert.equal(apresentar(road).referenciaDisponivel, true);
+  assert.equal(apresentar(road).qualidade, "Programado");
+});
+
+test("resumo identifica consulta HTTP sem prometer evidência operacional recente", () => {
+  assert.equal(resumoConsultaParada("carregando", null), "Consultando próximos veículos…");
+  assert.equal(resumoConsultaParada("indisponivel", null), "Consulta indisponível neste contexto.");
+  assert.equal(resumoConsultaParada("erro", null), "Falha ao atualizar. Nenhuma consulta concluída.");
+  const horario = new Date(recebidoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  assert.equal(resumoConsultaParada("sucesso", recebidoEm), `Última consulta às ${horario}.`);
+  assert.equal(resumoConsultaParada("atualizando", recebidoEm), `Atualizando… Última consulta às ${horario}.`);
+  assert.equal(resumoConsultaParada("erro", recebidoEm), `Falha ao atualizar. Última consulta às ${horario}.`);
 });

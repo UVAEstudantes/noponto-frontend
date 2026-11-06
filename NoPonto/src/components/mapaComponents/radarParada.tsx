@@ -1,7 +1,9 @@
+import {passengerRadar} from '@/src/services/radarPassenger';
+import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
 import React, { useEffect, useReducer, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Check, ChevronLeft, ChevronRight, MapPin, X } from "lucide-react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, X } from "lucide-react-native";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { hexParaRgba } from "@/src/utils/cores";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,27 +12,37 @@ import type { useRadarParada } from "@/src/hooks/useRadarParada";
 import type { LinhaSelecionadaInfo } from "@/src/hooks/useMobilidadeRio";
 import type { EventoParadaDto } from "@/src/services/eventosParada";
 import { rotuloQualidadeEvento } from "@/src/services/eventosParada";
-import { doisEventosRadar, instanteEventoRadar } from "@/src/services/radarParada";
+import { instanteEventoRadar } from "@/src/services/radarParada";
 import { estadoInicialPainelRadar, reduzirEstadoPainelRadar } from "@/src/services/estadoPainelRadar";
 import { identidadeModalMapa } from "@/src/constants/modaisMapa";
+import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
+import {renderTerminalPresenceSection} from './terminalPresenceSection';
+import {renderRadarVehicleCard} from './radarVehicleCardView';
+import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
 
 interface Props {
+  terminalPresence?:TerminalPresence[];
+  onTerminalVehicle?:(vehicle:TerminalRadarVehicle)=>void;
   radar: ReturnType<typeof useRadarParada>; linhas: LinhaSelecionadaInfo[];
   modal: string; lateralidade: string; visivel: boolean;
   onVerTodos: () => void; onEvento: (evento: EventoParadaDto) => void;
   localizavel: (evento: EventoParadaDto) => boolean;
   viewportHeight: number | null;
+  physicalVehicles?: PhysicalVehicle[];
   onControlsBottomChange: (bottom: number | null) => void;
 }
 
-export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,
-  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange }: Props) {
+export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[],
+  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [estadoPainel, enviarAcaoPainel] = useReducer(reduzirEstadoPainelRadar, estadoInicialPainelRadar);
   const recolhido = estadoPainel.modo !== "aberto";
-  const temEventos = radar.eventos.length > 0;
+  const [conteudoMontado, setConteudoMontado] = useState(!recolhido);
+
+  const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],radar.eventos,radar.agora);
+  const temEventos = radar.eventos.length > 0 || terminalVehicles.length > 0;
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
   useEffect(() => {
@@ -51,7 +63,12 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
     onControlsBottomChange(visivel && !recolhido && alturaPainel > 0
       ? bottom + Math.min(alturaPainel, alturaDisponivel) + 2 + 12 : null);
   }, [visivel, recolhido, alturaPainel, alturaDisponivel, bottom, onControlsBottomChange]);
-  useEffect(() => { progress.value = withTiming(recolhido ? 1 : 0, { duration: 260 }); }, [recolhido, progress]);
+  useEffect(() => {
+    if (!recolhido) setConteudoMontado(true);
+    progress.value = withTiming(recolhido ? 1 : 0, { duration: 260 }, (finished) => {
+      if (finished && recolhido) runOnJS(setConteudoMontado)(false);
+    });
+  }, [recolhido, progress]);
   useEffect(() => { if (!visivel) setSeletor(false); }, [visivel]);
   const painelStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: progress.value * width * (ladoAba === "right" ? 1 : -1) }],
@@ -60,7 +77,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const abaStyle = useAnimatedStyle(() => ({ opacity: progress.value,
     transform: [{ translateX: (1 - progress.value) * 65 * (ladoAba === "right" ? 1 : -1) }] }));
   if (!visivel) return null;
-  const compactos = doisEventosRadar(radar.eventos, radar.recebidoEm).slice(0, 2);
+  const compactos = passengerRadar(terminalVehicles,radar.eventos,radar.parada?.parada.paradaId,radar.agora,2);
   const quantidade = radar.foraContexto ? 0 : new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []).size;
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;
@@ -75,8 +92,10 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
     ? `${apenasPartidas ? "Saindo de" : `Chegando ${preposicao}`} ${nomeParada}`
     : "Parada não selecionada";
   const metros = (value: number) => value >= 1000 ? `${(value / 1000).toFixed(1)} km` : `${Math.round(value)} m`;
+  const corConsulta = radar.statusConsulta === "erro" ? cores.perigo
+    : radar.statusConsulta === "sucesso" ? cores.sucesso : cores.textoSecundario;
   return <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 22 }]}>
-    <Animated.View pointerEvents={recolhido ? "none" : "auto"}
+    {(!recolhido || conteudoMontado) && <Animated.View pointerEvents={recolhido ? "none" : "auto"}
       accessibilityElementsHidden={recolhido} importantForAccessibility={recolhido ? "no-hide-descendants" : "auto"}
       style={[{ position: "absolute", left: Math.max(14, insets.left + 8), right: Math.max(14, insets.right + 8),
         bottom, borderRadius: 26, backgroundColor: "transparent",
@@ -95,7 +114,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 }}>
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: cores.sucesso }} />
+        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: corConsulta }} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text accessibilityLabel={titulo}
             style={{ fontSize: 13, fontWeight: "700", color: cores.textoPrimario }}>
@@ -135,34 +154,38 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
           <ChevronRight size={15} color={escuro ? cores.iconePrimario : "#956000"} />
         </Pressable>
       </View>
-      {compactos.map((evento, index) => {
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <Text accessibilityLiveRegion="polite" style={{ flex: 1, fontSize: 11, color: corConsulta }}>
+          {resumoConsultaParada(radar.statusConsulta, radar.atualizadoEm)}
+        </Text>
+        <Pressable onPress={radar.atualizar} disabled={radar.carregando || !radar.contextoConsulta}
+          accessibilityRole="button" accessibilityLabel={radar.erro ? "Tentar atualizar novamente" : "Atualizar próximos veículos"}
+          accessibilityState={{ disabled: radar.carregando || !radar.contextoConsulta, busy: radar.carregando }}
+          style={{ minHeight: 44, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 5,
+            opacity: radar.carregando || !radar.contextoConsulta ? 0.5 : 1 }}>
+          <RefreshCw size={14} color={cores.textoPrimario} />
+          <Text style={{ fontSize: 11, color: cores.textoPrimario }}>{radar.erro ? "Tentar novamente" : "Atualizar"}</Text>
+        </Pressable>
+      </View>
+      {compactos.map((row,index)=>{
+        if(row.kind==='physical')return renderTerminalPresenceSection([row.vehicle],radar.agora,cores,onTerminalVehicle,{first:index===0,dark:escuro,accent:cor,lineColors:Object.fromEntries(linhas.map(l=>[l.linhaId,l.cor]))});
+        const evento=row.arrival;
         const linha = linhas.find((item) => item.linhaId === evento.linhaId);
         const instante = instanteEventoRadar(evento, radar.recebidoEm);
         const minutos = instante == null ? null : Math.max(0, Math.ceil((instante - radar.agora) / 60000));
         const destino = radar.parada?.vinculos.find((item) => item.linhaId === evento.linhaId
           && item.sentidoId === evento.sentidoId && item.padraoVersaoId === evento.padraoVersaoId)?.destino;
-        return <Pressable key={evento.eventId} onPress={() => onEvento(evento)} disabled={!localizavel(evento)}
-          accessibilityRole="button" accessibilityLabel={`${evento.codigoLinha}, ${evento.eventType === "DEPARTURE" ? "saída" : "chegada"}, ${minutos == null ? "horário indisponível" : `${minutos} minutos`}`}
-          style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 9, paddingVertical: 6,
-            borderRadius: 17, minHeight: 52, marginTop: index ? 5 : 0, borderWidth: 1,
-            borderColor: index === 0 ? `${cor}40` : cores.bordaSuave,
-            backgroundColor: index === 0 ? hexParaRgba(escuro ? cores.fundoCard : "#FFFAEB", 0.96) : hexParaRgba(cores.fundoCard, 0.96) }}>
-          <View style={{ minWidth: 40, maxWidth: 90, minHeight: 40, borderRadius: 12, paddingHorizontal: 6,
-            alignItems: "center", justifyContent: "center", backgroundColor: linha?.cor ?? cor }}>
-            <Text numberOfLines={1} style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{linha?.linhaCodigo ?? evento.codigoLinha}</Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={{ color: cores.textoPrimario, fontSize: 13, fontWeight: "700" }}>{destino || linha?.nomeExibicao || evento.codigoLinha}</Text>
-            <Text numberOfLines={1} style={{ color: cores.textoSecundario, fontSize: 10, marginTop: 3 }}>{rotuloQualidadeEvento(evento)}</Text>
-          </View>
-          <View style={{ alignItems: "flex-end", maxWidth: 110 }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: index ? cores.textoPrimario : cores.sucesso }}>
-              {evento.eventType === "DEPARTURE" ? "Saída" : "Chegada"} {minutos == null ? "—" : minutos === 0 ? "agora" : `${minutos} min`}
+        return renderRadarVehicleCard({cardKey:evento.eventId,cores,accent:cor,badgeColor:linha?.cor??cor,dark:escuro,first:index===0,
+          onPress:()=>onEvento(evento),disabled:!localizavel(evento),
+          accessibilityLabel:`${evento.codigoLinha}, ${evento.eventType === "DEPARTURE" ? "saída" : "chegada"}, ${minutos == null ? "horário indisponível" : `${minutos} minutos`}`,
+          badge:<Text numberOfLines={1} style={{color:'#FFFFFF',fontSize:16,fontWeight:'800'}}>{linha?.linhaCodigo??evento.codigoLinha}</Text>,
+          title:minutos==null?'Sem previsão':evento.eventType==='DEPARTURE'?`Saída em ${minutos} min`:`Chega em ${minutos} min`,subtitle:destino||linha?.nomeExibicao,
+          trailing:<View style={{ alignItems: "flex-end", maxWidth: 110 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoSecundario }}>
+              {rotuloQualidadeEvento(evento)}
             </Text>
-            {evento.distanciaRestanteMetros != null && evento.distanciaRestanteMetros >= 0 &&
-              <Text style={{ fontSize: 10, color: cores.textoSecundario, marginTop: 3 }}>{metros(evento.distanciaRestanteMetros)}</Text>}
           </View>
-        </Pressable>;
+        });
       })}
       {radar.estado && <Text style={{ fontSize: 12, color: cores.textoSecundario, paddingVertical: 4 }}>{radar.estado}</Text>}
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
@@ -170,7 +193,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       </Pressable>}
         </ScrollView>
       </View>
-    </Animated.View>
+    </Animated.View>}
     <Animated.View pointerEvents={recolhido ? "auto" : "none"} accessibilityElementsHidden={!recolhido}
       importantForAccessibility={!recolhido ? "no-hide-descendants" : "auto"}
       style={[{ position: "absolute", [ladoAba]: Math.max(0, insets[ladoAba]), bottom: bottom + 30,

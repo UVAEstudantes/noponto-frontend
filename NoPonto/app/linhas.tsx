@@ -836,6 +836,7 @@ const Linhas = () => {
           presencaEstado:v.presencaEstado,
           presencaRotulo:v.presencaRotulo,
           presencaIdadeSegundos:v.presencaIdadeSegundos,
+          gpsAtrasado:v.gpsAtrasado,
           runtime: v.runtime,
           latitude: v.latitude,
           longitude: v.longitude,

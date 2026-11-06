@@ -5,7 +5,6 @@ import LinhasContainer, {
   PROXIMO_SENTIDO,
 } from "@/src/components/mapaComponents/linhasContainer";
 import ParadaSheet, {
-  ChegadaParadaInfo,
   LinhaParadaInfo,
 } from "@/src/components/mapaComponents/paradaSheet";
 import MapaOSM from "@/src/components/mapOSM/mapOSM";
@@ -15,7 +14,14 @@ import SearchSections from "@/src/components/searchSections";
 import BuscaMapa from "@/src/components/mapaComponents/buscaMapa";
 import MapControls from "@/src/components/mapaComponents/mapControls";
 import RadarParada from "@/src/components/mapaComponents/radarParada";
+import {terminalVehicleFocus,type TerminalPresence} from '@/src/services/terminalTracking';
+import {geometryForMap,stopsForMap} from '@/src/services/hybridGps';
 import { useRadarParada } from "@/src/hooks/useRadarParada";
+import {useTerminalRadarCatalog,useTerminalRadarPresence} from '@/src/hooks/useTerminalRadar';
+import {mergeTerminalEvidence,mergeTerminalRadarLines} from '@/src/services/terminalRadarContext';
+import { usePhysicalPresence } from "@/src/services/physicalPresence";
+import { useConsultaEventosParada } from "@/src/hooks/useConsultaEventosParada";
+import { paradaDetalhadaRadar } from "@/src/services/radarParada";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
 import { useIsFocused } from "@react-navigation/native";
 import {
@@ -24,13 +30,9 @@ import {
 } from "@/src/hooks/useMobilidadeRio";
 import { useTema } from "@/src/hooks/useTema";
 import { useRailRealtime } from "@/src/hooks/useRailRealtime";
-import type { RailVehicleForMap } from "@/src/services/railRealtime";
 import { buscarModais, buscarOpcoesPorNome, buscarSugestoesBusca } from "@/src/services/mobilidadeRio";
 import {
-  buscarEventosParada,
-  filtrarEventosPorContexto,
   localizarVeiculoDoEvento,
-  rotuloQualidadeEvento,
   type EventoParadaDto,
 } from "@/src/services/eventosParada";
 import {
@@ -125,9 +127,19 @@ const Home = () => {
     getVeiculosPorCodigo,
     veiculos,
   } = useMobilidadeRio({ enabled: telaAtiva, linhasRealtime: rodoviariasVisiveis });
-  const veiculosRef = useRef(veiculos);
-  const railVehiclesRef = useRef<RailVehicleForMap[]>([]);
-  veiculosRef.current = veiculos;
+  const physicalVehicles = usePhysicalPresence(telaAtiva);
+  const [terminalPresence,setTerminalPresence]=useState<TerminalPresence[]>([]);
+  const physicalVehiclesVisible = useMemo(() => {
+    // Keep validated positive evidence available to the map's timestamp arbitrator.
+    // Operational objects and arrival/ETA collections remain unchanged.
+    return physicalVehicles.filter(v => {
+      const order=v.originalVehicleId.trim().toUpperCase();
+      const operational=veiculos.find(op => op.runtime==='rodoviario' && op.tipoRota===v.modal
+        && op.codigoVeiculoOuTrem?.trim().toUpperCase()===(v.modal==='brt'&&!order.startsWith('BRT-')?'BRT-'+order:order));
+      return !operational || (operational.linhaId===v.lineId
+        && Date.parse(v.physicalAt)>Date.parse(operational.atualizadoEm||''));
+    });
+  }, [physicalVehicles, veiculos]);
 
   // ─── Modal ativo do mapa ──────────────────────────────────────────────────
   const [modais, setModais] = useState<ModalTransporteDto[]>([]);
@@ -178,7 +190,6 @@ const Home = () => {
     null,
   );
   const [paradaExpandida, setParadaExpandida] = useState(false);
-  const [paradaDoRadar, setParadaDoRadar] = useState(false);
 
   useEffect(() => {
     async function requestLocationPermissions() {
@@ -198,10 +209,6 @@ const Home = () => {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/\s+/g, " ")
       .trim();
-  }, []);
-
-  const normalizarCodigo = useCallback((valor: string) => {
-    return valor.trim().toUpperCase();
   }, []);
 
   const corRamalTrem = useCallback(
@@ -305,11 +312,14 @@ const Home = () => {
 
   // ─── Linhas selecionadas ──────────────────────────────────────────────────
 
-  const radar = useRadarParada({ linhas: linhasSelecionadasFiltradas, modal: viewMode === "favoritos" ? "todos" : normalModal,
-    itinerarios: itinerariosPorId, realtime: estruturasRealtimePorVersao,
+  const terminalRadarEnabled=telaAtiva&&(viewMode==='favoritos'||normalModal==='onibus');
+  const terminalCatalog=useTerminalRadarCatalog(terminalRadarEnabled&&!!location);
+  const radarLines=useMemo(()=>mergeTerminalRadarLines(linhasSelecionadasFiltradas,terminalCatalog),[linhasSelecionadasFiltradas,terminalCatalog]);
+  const radarItineraries=useMemo(()=>({...itinerariosPorId,...terminalCatalog.itineraries}),[itinerariosPorId,terminalCatalog]);
+  const radar = useRadarParada({ linhas: radarLines, modal: viewMode === "favoritos" ? "todos" : normalModal,
+    itinerarios: radarItineraries, realtime: estruturasRealtimePorVersao,
     local: location?.coords ?? null,
-    paradaEmDetalhes: paradaDoRadar ? paradaSelecionada?.paradaId : null,
-    enabled: telaAtiva && !buscaAberta && !containerAberto });
+    enabled: telaAtiva && !buscaAberta && !containerAberto && !paradaSelecionada });
 
   useEffect(() => {
     let ativo = true;
@@ -339,36 +349,6 @@ const Home = () => {
     },
     [itinerariosPorId],
   );
-
-  const contextoEventosParada = useMemo(() => ({
-    linhas: linhasSelecionadasFiltradas
-      .filter((linha) => linha.ativa)
-      .map((linha) => {
-        const estrutura = itinerariosPorId[linha.linhaId];
-        const sentidos = [...new Set(
-          estrutura?.padroesV2?.map((padrao) => padrao.sentidoId) ?? [],
-        )];
-        const sentidoId = linha.modoSentido === "ida" ? sentidos[0]
-          : linha.modoSentido === "volta" ? sentidos[1] : undefined;
-        const padroesEstruturais = (estrutura?.padroesV2 ?? [])
-          .filter((padrao) => !sentidoId || padrao.sentidoId === sentidoId)
-          .map((padrao) => padrao.padraoVersaoId);
-        const padroesRealtime = Object.values(estruturasRealtimePorVersao)
-          .filter((item) => item.linhaId === linha.linhaId)
-          .filter((item) => !sentidoId || item.sentidoId === sentidoId)
-          .map((item) => item.padraoVersaoId);
-        return {
-          linhaId: linha.linhaId,
-          padraoVersaoIds: linha.modoSentido !== "ambos" && !sentidoId ? []
-            : [...new Set([...padroesEstruturais, ...padroesRealtime])],
-        };
-      }).filter((linha) => linha.padraoVersaoIds.length > 0),
-  }), [
-    linhasSelecionadasFiltradas,
-    itinerariosPorId,
-    estruturasRealtimePorVersao,
-    normalModal,
-  ]);
 
   useEffect(() => {
     if (linhasHidratadas) salvarLinhas(linhasSelecionadas);
@@ -535,154 +515,22 @@ const Home = () => {
 
   // ─── Paradas ──────────────────────────────────────────────────────────────
 
-  const linhasNaParada = useMemo<LinhaParadaInfo[]>(() => {
-    if (!paradaSelecionada) return [];
-    const alvoId = paradaSelecionada.paradaId;
-
-    const linhasAtivas = new Set(
-      contextoEventosParada.linhas.map((linha) => linha.linhaId),
-    );
-    return linhasSelecionadasFiltradas
-      .filter((linha) => linhasAtivas.has(linha.linhaId))
-      .map((l) => {
-        const paradas = obterParadasLinha(l);
-        if (paradas.length === 0) return null;
-        const possui = paradas.some((p) => p.paradaId === alvoId);
-        if (!possui) return null;
-        return {
-          linhaId: l.linhaId,
-          codigo: l.linhaCodigo,
-          nomeExibicao: l.nomeExibicao,
-          cor: l.cor,
-          ativa: l.ativa,
-        };
-      })
-      .filter(Boolean) as LinhaParadaInfo[];
-  }, [
-    paradaSelecionada,
-    linhasSelecionadasFiltradas,
-    obterParadasLinha,
-    contextoEventosParada,
-  ]);
-
-  const [chegadasParada, setChegadasParada] = useState<ChegadaParadaInfo[]>([]);
-  const eventosParadaRef = useRef(new Map<string, EventoParadaDto>());
-  const [carregandoChegadas, setCarregandoChegadas] = useState(false);
-  const [erroChegadas, setErroChegadas] = useState<string | null>(null);
-  const [atualizadoChegadasEm, setAtualizadoChegadasEm] = useState<
-    number | null
-  >(null);
-
-  const atualizarChegadas = useCallback(async () => {
-    if (paradaDoRadar) return;
-    if (!paradaSelecionada) {
-      setChegadasParada([]);
-      setAtualizadoChegadasEm(null);
-      return;
-    }
-    setCarregandoChegadas(true);
-    setErroChegadas(null);
-    try {
-      const lista = await buscarEventosParada(paradaSelecionada.paradaId);
-      const listaContextual = filtrarEventosPorContexto(
-        lista,
-        contextoEventosParada,
-      );
-      eventosParadaRef.current = new Map(
-        listaContextual.map((evento) => [evento.eventId, evento]),
-      );
-      const mapaLinhas = new Map(
-        linhasNaParada.map((l) => [normalizarCodigo(l.codigo), l]),
-      );
-      const filtrados = listaContextual
-        .map((v) => {
-          const info = mapaLinhas.get(normalizarCodigo(v.codigoLinha));
-          const referencia = localizarVeiculoDoEvento(
-            v,
-            veiculosRef.current,
-            railVehiclesRef.current,
-          );
-          const trem = v.modal === "trem" ? railVehiclesRef.current.find((vehicle) =>
-            (v.railVehicleId && vehicle.railVehicleId === v.railVehicleId)
-            || (v.expectedRunId && vehicle.railRunId === v.expectedRunId)) : undefined;
-          return {
-            id: v.eventId,
-            linhaId: v.linhaId,
-            codigo: normalizarCodigo(v.codigoLinha),
-            cor: info?.cor ?? "#94a3b8",
-            assinada: Boolean(info),
-            ordem: v.codigoVeiculo ?? v.trainCode ?? undefined,
-            eventType: v.eventType,
-            nextVehiclesMode: v.nextVehiclesMode
-              ?? (v.eventType === "DEPARTURE" ? "Departures" : "Arrivals"),
-            referenciaDisponivel: referencia != null,
-            qualidade: rotuloQualidadeEvento(v),
-            etaSeg: v.secondsUntilEvent ?? null,
-            distanciaMetros: v.distanciaRestanteMetros ?? null,
-            horarioPrevistoLocal: (v.estimatedAt ?? v.scheduledAt)
-              ? new Date(v.estimatedAt ?? v.scheduledAt!).toLocaleTimeString(
-                  "pt-BR",
-                  { hour: "2-digit", minute: "2-digit" },
-                )
-              : null,
-            confianca: null,
-            status: null,
-            proximaParadaNome: null,
-            destino: trem?.destinationName ?? trem?.destination ?? null,
-            tipoServico: trem?.trainType ?? null,
-            plataforma: trem?.platformLabel ?? trem?.platform ?? null,
-          } as ChegadaParadaInfo;
-        })
-        .sort((a, b) => {
-          const ea = a.etaSeg ?? Number.POSITIVE_INFINITY;
-          const eb = b.etaSeg ?? Number.POSITIVE_INFINITY;
-          return ea - eb;
-        });
-      setChegadasParada(filtrados);
-      setAtualizadoChegadasEm(Date.now());
-    } catch (err) {
-      console.error("Erro ao buscar chegadas:", err);
-      setChegadasParada([]);
-      setErroChegadas(
-        err instanceof Error ? err.message : "Não foi possível carregar os eventos.",
-      );
-    } finally {
-      setCarregandoChegadas(false);
-    }
-  }, [
-    paradaDoRadar,
-    paradaSelecionada,
-    linhasNaParada,
-    normalizarCodigo,
-    contextoEventosParada,
-  ]);
-
-  useEffect(() => {
-    if (!paradaSelecionada) {
-      setChegadasParada([]);
-      setAtualizadoChegadasEm(null);
-      return;
-    }
-    atualizarChegadas();
-  }, [paradaSelecionada, linhasNaParada, atualizarChegadas]);
-
-  useEffect(() => {
-    if (paradaExpandida) atualizarChegadas();
-  }, [paradaExpandida, atualizarChegadas]);
-
-  const focarVeiculoNaParada = useCallback((chegada: ChegadaParadaInfo) => {
-    const evento = eventosParadaRef.current.get(chegada.id);
-    if (!evento) return;
-    const referencia = localizarVeiculoDoEvento(
-      evento,
-      veiculosRef.current,
-      railVehiclesRef.current,
-    );
-    if (!referencia) return;
-    setParadaSelecionada(null);
-    setParadaExpandida(false);
-    mapRef.current?.focarVeiculo({ ...referencia, zoom: 17 });
-  }, []);
+  const modalRadar = viewMode === "favoritos" ? "todos" : normalModal;
+  const contextoDetalhe = useMemo(() => paradaDetalhadaRadar(paradaSelecionada,
+    radarLines, modalRadar, radarItineraries, estruturasRealtimePorVersao),
+  [paradaSelecionada, radarLines, modalRadar, radarItineraries, estruturasRealtimePorVersao]);
+  const consultaDetalhe = useConsultaEventosParada(contextoDetalhe, modalRadar,
+    Boolean(paradaSelecionada) && telaAtiva && !buscaAberta && !containerAberto);
+  const scopedTerminalPresence=useTerminalRadarPresence(terminalCatalog,contextoDetalhe??radar.parada,
+    terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radar.foraContexto||!!contextoDetalhe)
+      &&(contextoDetalhe?consultaDetalhe.foreground:radar.foreground),contextoDetalhe?consultaDetalhe.eventos:radar.eventos);
+  const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
+  const idsLinhasDetalhe = new Set(contextoDetalhe?.vinculos.map((item) => item.linhaId) ?? []);
+  const linhasNaParada: LinhaParadaInfo[] = radarLines.filter((item) => item.ativa
+    && idsLinhasDetalhe.has(item.linhaId)).map((item) => ({
+      linhaId: item.linhaId, codigo: item.linhaCodigo, nomeExibicao: item.nomeExibicao,
+      cor: item.cor, ativa: item.ativa,
+    }));
 
   const sentidosPorLinha = useMemo(() => {
     const mapa: Record<string, { ida?: string; volta?: string }> = {};
@@ -725,7 +573,6 @@ const Home = () => {
     linhaId: railLinhaId,
     demoPadraoVersaoIds: railDemoPadroes,
   });
-  railVehiclesRef.current = railVehicles;
 
   const dadosParaMapa = useMemo(
     () =>
@@ -776,9 +623,7 @@ const Home = () => {
                 padraoVersaoId: estrutura.padraoVersaoId,
                 sentidoId: estrutura.sentidoId,
                 sentidoNome: rotuloSentidoPublico(estrutura),
-                coordenadas: estrutura.geometria.coordenadas.map(
-                  ([lng, lat]) => [lat, lng],
-                ),
+                coordenadas: geometryForMap(estrutura.geometria.coordenadas),
               });
             });
           const itinerarioSegmentoMap = Object.fromEntries(
@@ -803,6 +648,11 @@ const Home = () => {
             mostrarParadas: l.mostrarParadas,
             modoSentido: l.modoSentido,
             itinerarioSegmentoMap,
+            terminaisOficiais:itinerario?.terminaisOficiais,
+            paradasPorPadrao: Object.fromEntries([
+              ...padroesVisiveis.map(p => [p.padraoVersaoId, p.paradas]),
+              ...Object.values(estruturasRealtimePorVersao).filter(e=>e.linhaId===l.linhaId&&geometriasVisiveis.some(g=>g.padraoVersaoId===e.padraoVersaoId)).map(e=>[e.padraoVersaoId,stopsForMap(e.ocorrencias)]),
+            ]),
             itinerarioSentidoMap:
               Object.keys(itinerarioSentidoMap).length > 0
                 ? itinerarioSentidoMap
@@ -813,6 +663,7 @@ const Home = () => {
               presencaEstado:v.presencaEstado,
               presencaRotulo:v.presencaRotulo,
               presencaIdadeSegundos:v.presencaIdadeSegundos,
+              gpsAtrasado:v.gpsAtrasado,
               runtime: v.runtime,
               ordem: v.id,
               latitude: v.latitude,
@@ -880,28 +731,27 @@ const Home = () => {
     );
   }, [railVehicles, ferroviariasVisiveis, itinerariosPorId]);
 
-  const chegadasRadar = chegadasDoRadar(radar.eventos, radar.parada, linhasSelecionadasFiltradas,
-    radar.recebidoEm, radar.agora, veiculos, railVehiclesVisiveis).map((item) => ({ ...item,
-      plataforma: item.plataforma ?? (radar.parada
-        ? radar.metadados[radar.parada.parada.paradaId]?.plataforma : null),
-    }));
-  const idsLinhasRadar = new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []);
-  const linhasRadar: LinhaParadaInfo[] = linhasSelecionadasFiltradas.filter((item) => item.ativa
-     && idsLinhasRadar.has(item.linhaId)).map((item) => ({
-      linhaId: item.linhaId, codigo: item.linhaCodigo, nomeExibicao: item.nomeExibicao,
-      cor: item.cor, ativa: item.ativa,
+  const chegadasParada = chegadasDoRadar(consultaDetalhe.eventos, contextoDetalhe,
+    linhasSelecionadasFiltradas, consultaDetalhe.recebidoEm, consultaDetalhe.agora,
+    veiculos, railVehiclesVisiveis).map((item) => ({ ...item,
+      plataforma: item.plataforma ?? (paradaSelecionada
+        ? radar.metadados[paradaSelecionada.paradaId]?.plataforma : null),
     }));
   const focarEventoRadar = (evento: EventoParadaDto) => {
     const referencia = localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis);
     if (referencia) {
       setParadaSelecionada(null);
-      setParadaDoRadar(false);
       setParadaExpandida(false);
       mapRef.current?.focarVeiculo({ ...referencia, zoom: 17 });
     }
   };
 
   const linhasPendentes = linhasSelecionadasFiltradas.filter((linha) => linha.ativa);
+  const focarVeiculoOrigem=(vehicle:TerminalPresence)=>{
+    const target=terminalVehicleFocus(vehicle,Date.now());if(!target)return;
+    setParadaSelecionada(null);setParadaExpandida(false);
+    mapRef.current?.focarVeiculo(target);
+  };
   const carregandoEstruturas = !linhasHidratadas || !modalHidratado || linhasPendentes.some((linha) =>
     !estadosItinerarios[linha.linhaId] || estadosItinerarios[linha.linhaId].estado === "carregando");
   const falhaEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "erro");
@@ -915,15 +765,16 @@ const Home = () => {
       setAlturaAreaMapa((anterior) => anterior === altura ? anterior : altura);
     }} style={{ flex: 1, backgroundColor: cores.fundoApp }}>
       <MapaOSM
+        onTerminalVehiclesChange={setTerminalPresence}
         onReady={reportStartupReady}
         ref={mapRef}
         location={location}
         linhasParaMostrar={dadosParaMapa}
         railVehicles={railVehiclesVisiveis}
+        physicalVehicles={physicalVehiclesVisible}
         darkMode={temaAtual === "escuro"}
         estiloMapa={estiloMapaAtual}
         onStopPress={(parada) => {
-          setParadaDoRadar(radar.parada?.parada.paradaId === parada.paradaId && !radar.foraContexto);
           setParadaSelecionada(parada);
           setParadaExpandida(false);
         }}
@@ -1011,34 +862,45 @@ const Home = () => {
       />
 
       <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
+        terminalPresence={radarTerminalPresence}
+        onTerminalVehicle={focarVeiculoOrigem}
+        physicalVehicles={physicalVehiclesVisible}
         lateralidade={preferenciaLateralidade}
         visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada}
         localizavel={(evento) => localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis) != null}
         onEvento={focarEventoRadar}
         onVerTodos={() => {
           if (!radar.parada || radar.foraContexto) return;
-          setParadaDoRadar(true);
           setParadaSelecionada(radar.parada.parada);
           setParadaExpandida(true);
         }} />
       <ParadaSheet
+        terminalPresence={radarTerminalPresence}
+        onTerminalVehicle={focarVeiculoOrigem}
+        physicalVehicles={physicalVehiclesVisible}
+        physicalModal={modalRadar}
         visivel={!!paradaSelecionada}
         parada={paradaSelecionada}
-        linhas={paradaDoRadar ? linhasRadar : linhasNaParada}
-        chegadas={paradaDoRadar ? chegadasRadar : chegadasParada}
-        carregandoChegadas={paradaDoRadar ? radar.carregando : carregandoChegadas}
-        erroChegadas={paradaDoRadar ? radar.erro : erroChegadas}
-        atualizadoEm={paradaDoRadar ? radar.atualizadoEm : atualizadoChegadasEm}
-        onAtualizar={paradaDoRadar ? radar.atualizar : atualizarChegadas}
+        linhas={linhasNaParada}
+        chegadas={chegadasParada}
+        carregandoChegadas={consultaDetalhe.carregando}
+        erroChegadas={consultaDetalhe.erro}
+        atualizadoEm={consultaDetalhe.atualizadoEm}
+        statusConsulta={consultaDetalhe.statusConsulta}
+        contextoIndisponivel={Boolean(paradaSelecionada && !contextoDetalhe)}
+        onRecuperarContexto={() => {
+          setParadaSelecionada(null);
+          setParadaExpandida(false);
+          radar.selecaoAutomatica();
+        }}
+        onAtualizar={consultaDetalhe.atualizar}
         onFocarVeiculo={(chegada) => {
-          if (!paradaDoRadar) { focarVeiculoNaParada(chegada); return; }
-          const evento = radar.eventos.find((item) => item.eventId === chegada.id);
+          const evento = consultaDetalhe.eventosPorId.get(chegada.id);
           if (evento) focarEventoRadar(evento);
         }}
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {
-          setParadaDoRadar(false);
           setParadaSelecionada(null);
           setParadaExpandida(false);
         }}

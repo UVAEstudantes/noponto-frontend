@@ -682,7 +682,7 @@ function LinhasContainer({
       )}
 
       {/* ── Sheet principal ────────────────────────────────────────────── */}
-      <Animated.View
+      {(aberto || painelVisivel) && <Animated.View
         pointerEvents={aberto ? "auto" : "none"}
         style={[
           sheetStyle,
@@ -893,7 +893,7 @@ function LinhasContainer({
           )}
           </>}
         </ScrollView>
-      </Animated.View>
+      </Animated.View>}
 
       {/* ── Modal de configuração individual ──────────────────────────── */}
       <Modal

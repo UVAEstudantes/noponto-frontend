@@ -1,3 +1,4 @@
+/* global __dirname */
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const fs = require("node:fs");
@@ -148,6 +149,14 @@ for (const estruturasAntes of [true, false]) {
     const Mapa = carregar("../components/mapOSM/mapOSM.tsx", {
       react: harness.react,
       "react-native-webview": { WebView: "WebView" },
+      "@/src/services/unifiedLocation": {useUnifiedLocation: () => ({snapshots: [], now: 0})},
+      "@/src/services/hybridContext": require('./hybridContext.ts'),
+      "@/src/services/hybridGps": require('./hybridGps.ts'),
+      "@/src/services/gpsPresentationPolicy": require('./gpsPresentationPolicy.ts'),
+      "@/src/services/movementDiagnostics": {movementTraceOrders: [], recordMovementTrace() {}},
+      "@/src/services/roadPresenceDiagnostics": {roadPresenceWebViewProbe: () => '', traceRoadNativePayload() {}, traceRoadWebViewResult() {}},
+      "@/src/context/ProvedorIndicadores": {useIndicadores: () => ({preferencias: {}})},
+      "@/src/constants/indicadores": {estilosEfetivos: () => ({})},
       "@/src/constants/estilosMapa": { ESTILO_MAPA_PADRAO: "normal", estilosMapaDisponiveis: [] },
       "./webview/mapHtml": { buildMapHtml: (args) => JSON.stringify(args) },
       "@/src/services/veiculosMapa": { adaptarRailParaMapa: (item) => item },

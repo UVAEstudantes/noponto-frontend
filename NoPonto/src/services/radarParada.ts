@@ -66,6 +66,21 @@ export function resolverParadaMonitorada(candidatos: readonly ParadaRadar[], atu
     : escolherParadaAutomatica(candidatos, atualId);
 }
 
+export function chaveContextoRadar(parada: ParadaRadar | null, modal: string): string {
+  return parada ? JSON.stringify([modal, parada.parada.paradaId,
+    parada.vinculos.map((item) => [item.linhaId, item.sentidoId, item.padraoVersaoId]).sort()]) : "";
+}
+
+// O raio limita descoberta, não o acompanhamento de uma parada explicitamente aberta.
+export function paradaDetalhadaRadar(parada: Parada | null, linhas: readonly LinhaSelecionadaInfo[],
+  modal: string, itinerarios: Record<string, ItinerarioLinha | null>,
+  realtime: Record<string, ItinerarioPadraoVersaoV2> = {}): ParadaRadar | null {
+  if (!parada) return null;
+  const contexto = paradasElegiveisRadar(linhas, modal, itinerarios, parada, realtime, Infinity)
+    .find((item) => item.parada.paradaId === parada.paradaId);
+  return contexto ? { ...contexto, parada } : null;
+}
+
 export function instanteEventoRadar(evento: EventoParadaDto, recebidoEm: number): number | null {
   const data = evento.estimatedAt ?? evento.scheduledAt;
   if (data) {

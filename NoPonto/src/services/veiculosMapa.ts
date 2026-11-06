@@ -120,10 +120,12 @@ export function adaptarPosicaoRodoviariaV2(
 /** Cada evento SignalR é um snapshot completo de uma linha. */
 export function reconciliarSnapshotsRodoviarios<T extends { linha: string }>(
   atuais: readonly T[], recebidos: readonly T[],
-  presence?: {enabled: boolean; now: number},
+  presence?: {enabled: boolean; now: number; retentionMs?: number},
+  observados: readonly T[] = recebidos,
 ): T[] {
-  if (recebidos.length === 0) return presence?.enabled ? atuais.filter(v=>{
-    const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=RETENTION_MS;
+  const retentionMs = presence?.retentionMs ?? RETENTION_MS;
+  if (recebidos.length === 0 && observados.length === 0) return presence?.enabled ? atuais.filter(v=>{
+    const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=retentionMs;
   }).slice(0,5000) : [...atuais];
   const porLinha = new Map<string, T[]>();
   recebidos.forEach((veiculo) => {
@@ -133,19 +135,19 @@ export function reconciliarSnapshotsRodoviarios<T extends { linha: string }>(
     porLinha.set(linha, grupo);
   });
   const linhasAtualizadas = new Set(porLinha.keys());
-  const receivedIds = new Set(recebidos.map(v=>(v as unknown as VeiculoMapa).idVisual));
+  const receivedIds = new Set(observados.map(v=>(v as unknown as VeiculoMapa).idVisual).filter(Boolean));
   const result = atuais.filter((veiculo) =>
     !linhasAtualizadas.has(veiculo.linha.trim().toUpperCase())
-      && (!presence?.enabled || !receivedIds.has((veiculo as unknown as VeiculoMapa).idVisual)))
+      && !receivedIds.has((veiculo as unknown as VeiculoMapa).idVisual))
     .concat(...porLinha.values());
   if (presence?.enabled) {
     const ids = new Set(result.map(v=>(v as unknown as VeiculoMapa).idVisual));
     for (const v of atuais) {
       const road = v as unknown as VeiculoMapa;
       const age = physicalAge(road,presence.now);
-      if (!ids.has(road.idVisual) && age!==null && age<=RETENTION_MS) result.push(v);
+      if (!ids.has(road.idVisual) && !receivedIds.has(road.idVisual) && age!==null && age<=retentionMs) result.push(v);
     }
-    return result.filter(v=>{const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=RETENTION_MS;}).slice(0,5000);
+    return result.filter(v=>{const age=physicalAge(v as unknown as VeiculoMapa,presence.now);return age!==null && age<=retentionMs;}).slice(0,5000);
   }
   return result;
 }
@@ -191,7 +193,7 @@ export function filtrarVeiculosPorPadroesVisiveis<T extends VeiculoMapa>(
   presence?: PresenceScope,
 ) {
   if (presence?.enabled) return vehicles.filter(vehicle => inPresenceScope(vehicle,presence)
-    && (!padroesVersoesVisiveis || (vehicle.padraoVersaoId != null
+    && (!padroesVersoesVisiveis || !vehicle.sentidoId || (vehicle.padraoVersaoId != null
       ? padroesVersoesVisiveis.has(vehicle.padraoVersaoId)
         || (!!presence.knownVersions && !presence.knownVersions.has(vehicle.padraoVersaoId)) : true)));
   if (!padroesVersoesVisiveis) return vehicles;

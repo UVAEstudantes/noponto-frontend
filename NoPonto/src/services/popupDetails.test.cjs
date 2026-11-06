@@ -1,3 +1,4 @@
+/* global __dirname */
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const fs = require('node:fs');
@@ -59,7 +60,7 @@ function runtime() {
     addTo() { return this; }
     remove() { this.removed = true; }
   }
-  const c = { window: {}, document: { getElementById: id => ids.get(id) }, console, maplibregl: { Popup, Marker } };
+  const c = { performance: require("node:perf_hooks").performance, window: {}, document: { getElementById: id => ids.get(id) }, console, maplibregl: { Popup, Marker } };
   vm.createContext(c);
   vm.runInContext(buildMapWebViewScript({ latInicial: 0, lngInicial: 0, estilosJS: '', filtrosMapaJS: '', estiloMapaPadrao: 'light' }), c);
   c.map = {}; c.mapReady = true;
@@ -91,16 +92,20 @@ test('open details survive new GPS while speed, destination, distance and positi
   assert.equal(r.selected.toggle.classList.contains('open'), true);
   assert.equal(r.selected.label.textContent, 'Menos detalhes');
   assert.match(r.selected.html, /25 km\/h/); assert.match(r.selected.html, /50 m/); assert.match(r.selected.html, /Novo destino/);
+  assert.equal(marker.getLngLat().lng, r.p.longitude); // Same GPS timestamp cannot move the vehicle.
+  r.update([{ ...r.p, timestamp: r.p.timestamp + 1000, longitude: -43.169, velocidade: 25, distanciaProximaParadaMetros: 50, proximaParadaNome: 'Novo destino' }]);
   assert.equal(marker.getLngLat().lng, -43.169);
+  assert.equal(r.selected.details.classList.contains('open'), true);
 });
 test('open details survive a timestamp-only update', () => {
   const r = opened(); r.update([{ ...r.p, timestamp: r.p.timestamp + 1000 }]);
   assert.equal(r.selected.details.classList.contains('open'), true);
   assert.ok(r.selected.html.includes('data-ts="' + (r.p.timestamp + 1000) + '"'));
 });
-test('unchanged realtime snapshot still updates HTML and preserves expansion', () => {
+test('unchanged realtime snapshot preserves expansion without rebuilding its touch target', () => {
   const r = opened(), writes = r.selected.writes; r.update([r.p]);
-  assert.equal(r.selected.writes, writes + 1);
+  assert.equal(r.selected.writes, writes);
+  assert.match(r.selected.html, /Parada anterior/);
   assert.equal(r.selected.details.classList.contains('open'), true);
 });
 test('realtime inserts already-expanded HTML instead of replaying the opening transition', () => {

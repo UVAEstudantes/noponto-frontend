@@ -6,15 +6,18 @@ import {
   removerGpsHubListener,
 } from "@/src/services/gpsHub";
 import { construirLinhasDisponiveis } from "@/src/services/mobilidadeRio";
+import { GpsSnapshotGuard, normalizarCodigoLinha } from "@/src/services/gpsSnapshotGuard";
 import {
   listarPadroesV2,
   listarSentidosV2,
   obterItinerarioPadraoVersaoV2,
+  obterTerminaisOficiaisV2,
 } from "@/src/services/estruturaV2";
 import { rotuloPadraoV2, rotuloSentidoPublico } from "@/src/types/estruturaV2";
 import type { ItinerarioPadraoVersaoV2 } from "@/src/types/estruturaV2";
 import { filtrarVeiculosPorPadroesVisiveis, reconciliarSnapshotsRodoviarios } from "@/src/services/veiculosMapa";
-import { ROAD_PRESENCE_ENABLED, projectRoadPresence, RETENTION_MS, type RoadEvidence } from '@/src/services/roadPresence';
+import { ROAD_PRESENCE_ENABLED, projectRoadPresence, RETENTION_MS, LEGACY_RETENTION_MS, type RoadEvidence } from '@/src/services/roadPresence';
+import { discoverRoadTerminal, traceRoadFilter, traceRoadPresence, traceRoadReconciliation, tracesRoadVehicle } from '@/src/services/roadPresenceDiagnostics';
 import { AppState } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -49,10 +52,24 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
   const [veiculos, setVeiculos] = useState<VeiculoTempoReal[]>([]);
   const [presenceNow,setPresenceNow] = useState(Date.now);
   const presenceEvidence = useRef(new Map<string,RoadEvidence>());
+  const consumerGuard = useRef(new GpsSnapshotGuard('consumer_gps_guard'));
+  const lastPresenceDiagnostic = useRef(0);
+  const codigosVisiveisRef = useRef(new Set<string>());
   useEffect(()=>{
-    if (!ROAD_PRESENCE_ENABLED || !enabled) return;
-    const timer=setInterval(()=>{if(AppState.currentState!=='background' && AppState.currentState!=='inactive')setPresenceNow(Date.now());},1000);
-    const subscription=AppState.addEventListener('change',state=>{if(state==='active')setPresenceNow(Date.now());});
+    if (!enabled) return;
+    const expirar = () => {
+      if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+      const now = Date.now();
+      if (ROAD_PRESENCE_ENABLED) setPresenceNow(now);
+      setVeiculos(prev => {
+        const recentes = reconciliarSnapshotsRodoviarios(prev, [], {enabled:true,now,
+          retentionMs:ROAD_PRESENCE_ENABLED ? RETENTION_MS : LEGACY_RETENTION_MS});
+        traceRoadReconciliation(prev,recentes,[],[...codigosVisiveisRef.current].sort().join(','),true);
+        return recentes.length === prev.length ? prev : recentes;
+      });
+    };
+    const timer=setInterval(expirar, ROAD_PRESENCE_ENABLED ? 1000 : 15000);
+    const subscription=AppState.addEventListener('change',state=>{if(state==='active')expirar();});
     return ()=>{clearInterval(timer);subscription.remove();};
   },[enabled]);
   const [estruturasRealtimePorVersao, setEstruturasRealtimePorVersao] = useState<
@@ -96,13 +113,24 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
   const handleRealtime = useCallback((listaVeiculos: VeiculoTempoReal[]) => {
     if (!montadoRef.current) return;
     if (!Array.isArray(listaVeiculos)) return;
+    const observados = consumerGuard.current.filtrarSnapshot(listaVeiculos);
+    listaVeiculos = observados.filter(v => codigosVisiveisRef.current.has(v.linha));
+    for (const v of observados) {
+      if(tracesRoadVehicle(v))traceRoadPresence('hook_received','accepted_by_consumer_guard',v,
+        {present:true,consumerVisible:codigosVisiveisRef.current.has(v.linha),consumerContext:[...codigosVisiveisRef.current].sort().join(',')});
+      const evidence = presenceEvidence.current.get(v.idVisual);
+      if (evidence && evidence.lineCode !== v.linha) presenceEvidence.current.delete(v.idVisual);
+    }
     if (ROAD_PRESENCE_ENABLED) setPresenceNow(Date.now());
 
     setVeiculos((prev) => {
-      return reconciliarSnapshotsRodoviarios(prev, listaVeiculos,
-        {enabled:ROAD_PRESENCE_ENABLED,now:Date.now()});
+      const next = reconciliarSnapshotsRodoviarios(prev, listaVeiculos,
+        {enabled:ROAD_PRESENCE_ENABLED,now:Date.now()}, observados);
+      traceRoadReconciliation(prev,next,observados,[...codigosVisiveisRef.current].sort().join(','));
+      return next.length === prev.length && next.every((v, i) => v === prev[i]) ? prev : next;
     });
 
+    if (listaVeiculos.length === 0) return;
     setLinhasDisponiveis((prev) => {
       const novos = construirLinhasDisponiveis(listaVeiculos);
       const codigosNovos = new Set(novos.map((l) => l.nome));
@@ -114,16 +142,30 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
     setCarregando(false);
   }, []);
 
+  const handleLinhaEsvaziada = useCallback((codigoLinha: string) => {
+    const codigo = normalizarCodigoLinha(codigoLinha);
+    if (!codigo || !montadoRef.current) return;
+    consumerGuard.current.registrarVazio(codigo);
+    setVeiculos(prev => prev.filter(v => v.linha !== codigo));
+    setLinhasDisponiveis(prev => prev.filter(linha => normalizarCodigoLinha(linha.nome) !== codigo));
+    for (const [id, evidence] of presenceEvidence.current) {
+      if (evidence.lineCode === codigo) presenceEvidence.current.delete(id);
+    }
+    setCarregando(false);
+    setErro(null);
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
-    iniciarGpsHub(handleRealtime);
+    const dono = donoInscricoes.current;
+    iniciarGpsHub(handleRealtime, handleLinhaEsvaziada);
     conectarGpsHub();
 
     return () => {
-      removerGpsHubListener(handleRealtime);
-      void atualizarInscricoesGps(donoInscricoes.current, []);
+      removerGpsHubListener(handleRealtime, handleLinhaEsvaziada);
+      void atualizarInscricoesGps(dono, []);
     };
-  }, [enabled, handleRealtime]);
+  }, [enabled, handleRealtime, handleLinhaEsvaziada]);
 
   const codigosRealtime = useMemo(() => {
     const linhas = linhasRealtime ?? Object.entries(itinerariosPorId).flatMap(([id, itinerario]) => {
@@ -131,11 +173,17 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
       return itinerario && pedido ? [{ linhaId: id, linhaCodigo: pedido.codigo, modal: pedido.modal }] : [];
     });
     return [...new Set(linhas.filter((linha) => linha.modal === "onibus" || linha.modal === "brt")
-      .map((linha) => linha.linhaCodigo))].sort().join("\n");
+      .map((linha) => normalizarCodigoLinha(linha.linhaCodigo)).filter((codigo): codigo is string => codigo !== null))].sort().join("\n");
   }, [linhasRealtime, itinerariosPorId]);
+  codigosVisiveisRef.current = new Set(enabled && codigosRealtime ? codigosRealtime.split("\n") : []);
+  const codigosAnterioresRef = useRef(new Set<string>());
   useEffect(() => {
-    void atualizarInscricoesGps(donoInscricoes.current, enabled && codigosRealtime ? codigosRealtime.split("\n") : []);
-  }, [enabled, codigosRealtime]);
+    for (const codigo of codigosAnterioresRef.current) {
+      if (!codigosVisiveisRef.current.has(codigo)) handleLinhaEsvaziada(codigo);
+    }
+    codigosAnterioresRef.current = codigosVisiveisRef.current;
+    void atualizarInscricoesGps(donoInscricoes.current, [...codigosVisiveisRef.current]);
+  }, [enabled, codigosRealtime, handleLinhaEsvaziada]);
 
   // Um veículo pode referenciar uma versão ainda não selecionada/carregada na UI.
   // O service deduplica a requisição pela chave oficial PadraoVersaoId.
@@ -185,6 +233,7 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
       registrarEstado(linhaId, { estado: "carregando" });
 
       const promessa = (async (): Promise<ItinerarioLinha | null> => {
+        const terminaisOficiais=await obterTerminaisOficiaisV2(linhaCodigo,linhaId).catch(()=>[]);
         const sentidos = await listarSentidosV2(linhaCodigo);
         const padroesPorSentido = await Promise.all(
           sentidos.map(async (sentido) => ({
@@ -220,6 +269,7 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
                   latitude: ocorrencia.latitude,
                   longitude: ocorrencia.longitude,
                   posicaoLinha: ocorrencia.posicaoLinha,
+                  distanciaMetros:ocorrencia.distanciaMetros,
                 }));
           const segmentoIndice = segmentos.push(segmento) - 1;
           paradasPorItinerario[item.versaoId] = paradas;
@@ -244,6 +294,7 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
             all.findIndex((candidate) => candidate.paradaId === parada.paradaId) === index,
           );
         return {
+          terminaisOficiais,
           linha: linhaCodigo,
           modal,
           segmentos,
@@ -336,30 +387,47 @@ export function useMobilidadeRio({ enabled = true, linhasRealtime }: {
       if (!Array.isArray(veiculos)) return [];
       const codigo = linhaCodigo.trim().toUpperCase();
       let filtrados = veiculos.filter((v) => v.linha === codigo);
+      const observacoesNaLinha = filtrados;
+      const knownVersions=new Set(Object.keys(estruturasRealtimePorVersao));
+      const visibleDirections=new Set([...(padroesVersoesVisiveis ?? [])]
+        .map(id=>estruturasRealtimePorVersao[id]?.sentidoId).filter((id):id is string=>!!id));
 
       if (padroesVersoesVisiveis || (ROAD_PRESENCE_ENABLED && presenceLineId)) {
         filtrados = filtrarVeiculosPorPadroesVisiveis(
           filtrados,
           padroesVersoesVisiveis,
           presenceLineId ? {enabled:ROAD_PRESENCE_ENABLED,now:presenceNow,lineCode:codigo,lineId:presenceLineId,
-            knownVersions:new Set(Object.keys(estruturasRealtimePorVersao)),
-            visibleDirections:new Set([...(padroesVersoesVisiveis ?? [])]
-              .map(id=>estruturasRealtimePorVersao[id]?.sentidoId).filter((id):id is string=>!!id))} : undefined,
+            knownVersions,visibleDirections} : undefined,
         );
       }
 
       if (ROAD_PRESENCE_ENABLED && presenceLineId) {
+        discoverRoadTerminal(observacoesNaLinha,estruturasRealtimePorVersao,presenceNow);
+        observacoesNaLinha.forEach(v=>{if(tracesRoadVehicle(v))traceRoadFilter(v,{lineCode:codigo,lineId:presenceLineId,now:presenceNow},
+          padroesVersoesVisiveis,knownVersions,visibleDirections,filtrados.some(visible=>visible.idVisual===v.idVisual));});
         for(const [id,evidence] of presenceEvidence.current) {
           if(presenceNow-evidence.timestamp>RETENTION_MS)presenceEvidence.current.delete(id);
         }
         filtrados=filtrados.flatMap(v=>{
           const projected=projectRoadPresence(v,v.padraoVersaoId ? estruturasRealtimePorVersao[v.padraoVersaoId] : undefined,
-            presenceEvidence.current.get(v.idVisual),presenceNow);
+            presenceEvidence.current.get(v.idVisual),presenceNow,tracesRoadVehicle(v)?facts=>
+              traceRoadPresence('classifier',String(facts.reason),v,facts):undefined);
           if(!projected)return [];
           if(presenceEvidence.current.size<5000 || presenceEvidence.current.has(v.idVisual))
             presenceEvidence.current.set(v.idVisual,projected.evidence);
           return [{...v,...projected.presentation}];
         });
+        // One compact sample at most every 30s across this consumer; never log raw payloads.
+        if (__DEV__ && observacoesNaLinha.length && presenceNow-lastPresenceDiagnostic.current>=30_000) {
+          lastPresenceDiagnostic.current=presenceNow;
+          console.debug('[RoadPresence]',{linha:codigo,recebidos:observacoesNaLinha.length,total:filtrados.length,
+            origemContagem:'estado_reconciliado_do_hook',
+            semVersao:observacoesNaLinha.filter(v=>!v.padraoVersaoId).length,
+            semSentido:observacoesNaLinha.filter(v=>!v.sentidoId).length,
+            semProgresso:observacoesNaLinha.filter(v=>v.posicaoNaRota==null).length,
+            amostra:filtrados.slice(0,5).map(v=>({id:v.idVisual,gpsEm:v.atualizadoEm,
+              idadeSegundos:v.presencaIdadeSegundos,atrasado:v.gpsAtrasado,estado:v.presencaEstado}))});
+        }
       }
 
       return filtrados;

@@ -2,6 +2,7 @@ import { api } from "./api";
 import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
 import { rotuloConfianca } from "./confiancaApresentacao";
+import { instanteEventoRadar } from "./radarParada";
 
 export type TipoEventoParada = "ARRIVAL" | "DEPARTURE";
 
@@ -54,12 +55,8 @@ export function buscarEventosParada(paradaId: string): Promise<EventoParadaDto[]
   return consulta;
 }
 
-export function ordenarEventosParada(eventos: EventoParadaDto[]) {
-  const time = (event: EventoParadaDto) => {
-    const value = event.estimatedAt ?? event.scheduledAt;
-    if (value) return new Date(value).getTime();
-    return event.secondsUntilEvent == null ? Number.POSITIVE_INFINITY : event.secondsUntilEvent * 1000;
-  };
+export function ordenarEventosParada(eventos: EventoParadaDto[], recebidoEm = Date.now()) {
+  const time = (event: EventoParadaDto) => instanteEventoRadar(event, recebidoEm) ?? Infinity;
   return [...eventos].sort((a, b) => time(a) - time(b) || a.eventId.localeCompare(b.eventId));
 }
 

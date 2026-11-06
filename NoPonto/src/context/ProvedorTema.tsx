@@ -1,3 +1,4 @@
+import { startupLog } from "@/src/components/startup/startupDiagnostics";
 import React, {
   createContext,
   PropsWithChildren,
@@ -56,6 +57,7 @@ export function ProvedorTema({ children }: PropsWithChildren) {
     let ativo = true;
     const aplicar = (valor: boolean) => {
       if (!ativo) return;
+      startupLog("preference.loaded", { animated: valor });
       setAnimacaoAbertura(valor);
       setCarregandoAbertura(false);
     };

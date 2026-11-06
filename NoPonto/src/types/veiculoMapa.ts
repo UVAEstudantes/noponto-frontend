@@ -30,6 +30,7 @@ export interface VeiculoMapa {
   presencaEstado?: string;
   presencaRotulo?: string;
   presencaIdadeSegundos?: number;
+  gpsAtrasado?: boolean;
 }
 
 export function statusFonteFerroviaria(

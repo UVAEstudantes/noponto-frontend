@@ -4,7 +4,7 @@ import type { LinhaSelecionadaInfo } from "../hooks/useMobilidadeRio";
 import type { ItinerarioLinha, Parada, PadraoLinhaV2 } from "../types/transporte";
 import type { EventoParadaDto } from "./eventosParada";
 import { escolherParadaAutomatica, resolverParadaMonitorada, paradasElegiveisRadar,
-  eventosValidosRadar, instanteEventoRadar, doisEventosRadar } from "./radarParada";
+  eventosValidosRadar, instanteEventoRadar, doisEventosRadar, paradaDetalhadaRadar, chaveContextoRadar } from "./radarParada";
 
 const local = { latitude: 0, longitude: 0 };
 const stop = (paradaId: string, latitude: number): Parada => ({ paradaId, nome: "Estação",
@@ -25,6 +25,37 @@ const evento: EventoParadaDto = { eventId: "e1", linhaId: "linha", codigoLinha: 
   modal: "onibus", tipoRota: "brt", sentidoId: "ida", padraoVersaoId: "v-ida", paradaId: a.paradaId,
   ocorrenciaParadaPadraoId: "oc-1", eventType: "ARRIVAL", source: "RealtimeEstimated",
   quality: "OperationalEstimate", isEstimated: true, secondsUntilEvent: 60 };
+
+test("detalhe mantém parada explícita fora do raio de descoberta sem selecionar outra", () => {
+  assert.equal(paradasElegiveisRadar([linha], "brt", itinerarios, { latitude: 1, longitude: 1 }).length, 0);
+  const detalhe = paradaDetalhadaRadar(a, [linha], "brt", itinerarios);
+  assert.equal(detalhe?.parada, a);
+  assert.deepEqual(detalhe?.vinculos.map((v) => [v.linhaId, v.sentidoId, v.padraoVersaoId]),
+    [["linha", "ida", "v-ida"]]);
+  assert.equal(paradaDetalhadaRadar(stop("sem-vinculo", 0), [linha], "brt", itinerarios), null);
+});
+
+test("detalhe fica indisponível para linha sentido ou modal incompatível e recupera a mesma parada", () => {
+  assert.equal(paradaDetalhadaRadar(a, [{ ...linha, ativa: false }], "brt", itinerarios), null);
+  assert.equal(paradaDetalhadaRadar(a, [{ ...linha, modoSentido: "volta" }], "brt", itinerarios), null);
+  assert.equal(paradaDetalhadaRadar(a, [linha], "trem", itinerarios), null);
+  assert.equal(paradaDetalhadaRadar(null, [linha], "brt", itinerarios), null);
+  assert.equal(paradaDetalhadaRadar(a, [linha], "brt", itinerarios)?.parada, a);
+});
+
+test("chave de consulta distingue parada modal sentido e versão sem depender da ordem dos vínculos", () => {
+  const contexto = paradaDetalhadaRadar(a, [linha], "brt", itinerarios)!;
+  const chave = chaveContextoRadar(contexto, "brt");
+  assert.notEqual(chaveContextoRadar({ ...contexto, parada: b }, "brt"), chave);
+  assert.notEqual(chaveContextoRadar(contexto, "todos"), chave);
+  assert.notEqual(chaveContextoRadar({ ...contexto,
+    vinculos: [{ ...contexto.vinculos[0], sentidoId: "volta" }] }, "brt"), chave);
+  assert.notEqual(chaveContextoRadar({ ...contexto,
+    vinculos: [{ ...contexto.vinculos[0], padraoVersaoId: "v2" }] }, "brt"), chave);
+  const outra = { ...contexto.vinculos[0], linhaId: "outra" };
+  assert.equal(chaveContextoRadar({ ...contexto, vinculos: [outra, ...contexto.vinculos] }, "brt"),
+    chaveContextoRadar({ ...contexto, vinculos: [...contexto.vinculos, outra] }, "brt"));
+});
 
 test("seleciona apenas a parada elegível, não a mais próxima de linha não selecionada", () => {
   const naoSelecionada = { ...itinerario, padroesV2: [padrao("outra", "ida", "Outro destino", stop("mais-perto", 0))] };

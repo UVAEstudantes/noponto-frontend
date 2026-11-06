@@ -8,13 +8,18 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
+import { useUnifiedLocation } from '@/src/services/unifiedLocation';
+import { createHybridComposer } from '@/src/services/hybridContext';
+import {GPS_POLICY} from '@/src/services/gpsPresentationPolicy';
 import { adaptarRailParaMapa } from "@/src/services/veiculosMapa";
 import { useIndicadores } from "@/src/context/ProvedorIndicadores";
 import { estilosEfetivos } from "@/src/constants/indicadores";
+import { roadPresenceWebViewProbe, traceRoadNativePayload, traceRoadWebViewResult } from '@/src/services/roadPresenceDiagnostics';
 
 // IDs de estilo/filtros serializados para consumo dentro do script da WebView.
 const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
@@ -22,6 +27,12 @@ const estilosJS = estilosMapaDisponiveis.map((e) => `"${e.id}"`).join(", ");
 const filtrosMapaJS = estilosMapaDisponiveis
   .map((e) => `"${e.id}":{light:"${e.filtroLight}",dark:"${e.filtroDark}"}`)
   .join(",");
+const EMPTY_RAIL:NonNullable<MapaOSMProps['railVehicles']>=[];
+const EMPTY_PHYSICAL:NonNullable<MapaOSMProps['physicalVehicles']>=[];
+function publicPosition(p:NonNullable<MapaOSMProps['linhasParaMostrar'][number]['posicoes']>[number]){
+  const {terminalPresence,presencaIdadeSegundos,...publicFields}=p;void terminalPresence;void presencaIdadeSegundos;
+  return publicFields;
+}
 
 // Wrapper único para comandos JS injetados no runtime do MapLibre.
 function injectWebViewCommand(
@@ -35,20 +46,43 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   (
     {
       location,
-      linhasParaMostrar,
+      linhasParaMostrar: legacyLines,
       darkMode = false,
       showTraffic = false,
       estiloMapa = ESTILO_MAPA_PADRAO,
       onStopPress,
-      railVehicles = [],
+      railVehicles = EMPTY_RAIL,
+      physicalVehicles = EMPTY_PHYSICAL,
       onReady,
+      onTerminalVehiclesChange,
     },
     ref,
   ) => {
+    const unified = useUnifiedLocation(legacyLines.filter(l => l.modal === 'onibus').map(l => l.nome));
+    const hybridComposer = useRef(createHybridComposer());
+    const [contextBoundary,setContextBoundary]=useState(0);
+    const linhasParaMostrar = useMemo(() => hybridComposer.current(legacyLines, unified.snapshots, Math.max(unified.now,contextBoundary)), [legacyLines, unified.snapshots, unified.now,contextBoundary]);
+    const terminalEvidence=useMemo(()=>linhasParaMostrar.flatMap(l=>(l.posicoes??[]).flatMap(p=>p.terminalPresence?[p.terminalPresence]:[])),[linhasParaMostrar]);
+    const lastTerminalEvidence=useRef<typeof terminalEvidence|null>(null);
+    useEffect(()=>{
+      const old=lastTerminalEvidence.current;
+      const equal=old&&old.length===terminalEvidence.length&&old.every((v,i)=>{
+        const n=terminalEvidence[i];return v.key===n.key&&v.physicalAt===n.physicalAt&&v.state===n.state&&v.knownPattern===n.knownPattern&&v.operationalConfirmed===n.operationalConfirmed&&v.validUntil===n.validUntil&&v.terminalName===n.terminalName&&v.corridors.length===n.corridors.length&&v.corridors.every((c,j)=>c===n.corridors[j]);
+      });
+      if(equal)return;
+      lastTerminalEvidence.current=terminalEvidence;onTerminalVehiclesChange?.(terminalEvidence);
+    },[terminalEvidence,onTerminalVehiclesChange]);
+    useEffect(()=>()=>onTerminalVehiclesChange?.([]),[onTerminalVehiclesChange]);
+    useEffect(()=>{
+      const now=Date.now();const times=linhasParaMostrar.flatMap(l=>(l.posicoes??[]).flatMap(p=>[(p.contextValidatedAt??0)+GPS_POLICY.contextMs,(p.speedObservedAt??0)+GPS_POLICY.publicMs+1])).filter(t=>t>now);
+      if(!times.length)return;
+      const timer=setTimeout(()=>setContextBoundary(Date.now()),Math.min(...times)-now+1);
+      return ()=>clearTimeout(timer);
+    },[linhasParaMostrar]);
     const webViewRef = useRef<WebView>(null);
     const { preferencias } = useIndicadores();
     const estilosVeiculos = useMemo(() => estilosEfetivos(preferencias), [preferencias]);
-    const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullBytes: 0, realtimeBytes: 0 });
+    const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullChars: 0, realtimeChars: 0 });
     const railVehiclesForMap = useMemo(
       () => railVehicles.map(adaptarRailParaMapa),
       [railVehicles],
@@ -71,7 +105,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     }
     const realtimeLines = useMemo(() => linhasParaMostrar.map((linha) => ({
       structureKey: linha.structureKey, nome: linha.nome, modal: linha.modal,
-      posicoes: linha.posicoes ?? [],
+      posicoes: (linha.posicoes ?? []).map(publicPosition),
     })), [linhasParaMostrar]);
 
     useEffect(() => {
@@ -127,10 +161,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     const [mapReady, setMapReady] = React.useState(false);
     const [mapGeneration, setMapGeneration] = React.useState(0);
 
+    const lastIndicatorMessage=useRef('');
     useEffect(() => {
       if (!mapReady) return;
+      const serialized=JSON.stringify(estilosVeiculos),key=`${mapGeneration}|${serialized}`;
+      if(lastIndicatorMessage.current===key)return;
+      lastIndicatorMessage.current=key;
       injectWebViewCommand(webViewRef,
-        `if(window.updateIndicatorStyles) window.updateIndicatorStyles(${JSON.stringify(estilosVeiculos)});`);
+        `if(window.updateIndicatorStyles) window.updateIndicatorStyles(${serialized});`);
     }, [mapReady, mapGeneration, estilosVeiculos]);
 
     // Update "pesado": linhas/tema/tráfego/estilo. Mantido separado do update de usuário.
@@ -143,15 +181,22 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           : null,
         heading: location?.coords?.heading ?? null,
         accuracy: location?.coords?.accuracy ?? null,
-        linhas: structuralCacheRef.current.linhas,
+        // Hydrating geometry/theme must not send a transient empty GPS snapshot.
+        linhas: structuralCacheRef.current.linhas.map((linha) => ({
+          ...linha,
+          posicoes: (linhasParaMostrar.find((atual) => atual.nome === linha.nome
+            && atual.modal === linha.modal && atual.linhaId === linha.linhaId)?.posicoes ?? []).map(publicPosition),
+        })),
         darkMode,
         showTraffic,
         estiloMapa,
         railVehicles: [],
+        movementDiagnostics: false,
+        unifiedCodes: unified.snapshots.filter(s => s.enabled).map(s => s.lineCode),
       };
       const serialized = JSON.stringify(data);
       diagnosticsRef.current.fullUpdates++;
-      diagnosticsRef.current.fullBytes += serialized.length;
+      diagnosticsRef.current.fullChars += serialized.length;
       injectWebViewCommand(
         webViewRef,
         `window.updateMap(${serialized});`,
@@ -168,18 +213,31 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       estiloMapa,
     ]);
 
+    const lastRealtimeMessage=useRef('');
     useEffect(() => {
+      traceRoadNativePayload(realtimeLines,mapReady);
       if (!mapReady) return;
-      const data = { linhas: realtimeLines, railVehicles: railVehiclesForMap };
+      const data = { linhas: realtimeLines, railVehicles: railVehiclesForMap, unifiedCodes: unified.snapshots.filter(s => s.enabled).map(s => s.lineCode) };
       const serialized = JSON.stringify(data);
+      const signature=`${mapGeneration}|${serialized}`;
+      if(lastRealtimeMessage.current===signature)return;
+      lastRealtimeMessage.current=signature;
       diagnosticsRef.current.realtimeUpdates++;
-      diagnosticsRef.current.realtimeBytes += serialized.length;
+      diagnosticsRef.current.realtimeChars += serialized.length;
       if (__DEV__ && diagnosticsRef.current.realtimeUpdates % 25 === 0) {
         console.log("[MapaOSM] métricas", diagnosticsRef.current);
       }
       injectWebViewCommand(webViewRef,
         `if(window.updateRealtime) window.updateRealtime(${serialized});`);
-    }, [mapReady, mapGeneration, realtimeLines, railVehiclesForMap]);
+      const probe=roadPresenceWebViewProbe();
+      if(probe)injectWebViewCommand(webViewRef,probe);
+    }, [mapReady, mapGeneration, realtimeLines, railVehiclesForMap,unified.snapshots]);
+
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef,
+        `if(window.updatePhysicalPresence) window.updatePhysicalPresence(${JSON.stringify(physicalVehicles)});`);
+    }, [mapReady, mapGeneration, physicalVehicles]);
 
     // Update "leve" e frequente: posição do usuário + heading/acurácia.
     useEffect(() => {
@@ -241,6 +299,14 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
             if (__DEV__ && payload?.type === "realtime_metrics") {
               console.log("[MapaRealtime]", payload.metrics);
             }
+            if (__DEV__ && payload?.type === "movement_metrics") {
+              console.log("[MapaMovimento]", payload.metrics);
+            }
+            if (__DEV__ && payload?.type === 'unified_location_applied') {
+              const diagnostic = globalThis as typeof globalThis & { __nopontoUnifiedEvidence?: unknown[] };
+              diagnostic.__nopontoUnifiedEvidence = [...(diagnostic.__nopontoUnifiedEvidence ?? []).slice(-19), payload];
+            }
+            if (__DEV__ && payload?.type === 'road_presence_trace_map') traceRoadWebViewResult(payload);
           } catch {
             // Ignora mensagens não-JSON para manter tolerância com logs/strings soltas.
           }
