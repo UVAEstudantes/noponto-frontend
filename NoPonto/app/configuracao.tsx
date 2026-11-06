@@ -1,7 +1,7 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
-import React from "react";
-import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
   Check,
   Hand,
@@ -15,6 +15,24 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
 
 const Configuracao = () => {
+  const [testandoNotificacao, setTestandoNotificacao] = useState(false);
+  const testarNotificacao = async () => {
+    if (testandoNotificacao) return;
+    setTestandoNotificacao(true);
+    try {
+      const { testarNotificacaoLocal } = await import('@/src/services/notificacaoLocalTeste');
+      const resultado = await testarNotificacaoLocal();
+      if (resultado === 'negada') {
+        Alert.alert('Notificações desativadas', 'A permissão não foi concedida. Você pode habilitá-la nas configurações do Android.');
+      } else if (resultado !== 'exibida') {
+        Alert.alert('Teste indisponível', 'Não foi possível exibir a simulação de notificação neste dispositivo.');
+      }
+    } catch {
+      Alert.alert('Teste indisponível', 'Não foi possível carregar o recurso de notificação neste aplicativo.');
+    } finally {
+      setTestandoNotificacao(false);
+    }
+  };
   const {
     temaAtual,
     preferenciaTema,
@@ -324,6 +342,23 @@ const Configuracao = () => {
           </Text>
         </View>
         <IndicadoresConfiguracao />
+        {__DEV__ && Platform.OS === 'android' && (
+          <View className="mt-4 rounded-2xl p-4" style={{ backgroundColor: cores.fundoCard }}>
+            <Text style={{ color: cores.textoSecundario }}>
+              Simulação local: os dados de chegada são fictícios.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: testandoNotificacao }}
+              disabled={testandoNotificacao}
+              onPress={() => { void testarNotificacao(); }}
+              className="mt-3 rounded-xl p-3"
+              style={{ backgroundColor: cores.fundoPrimario, opacity: testandoNotificacao ? 0.5 : 1 }}
+            >
+              <Text style={{ color: cores.textoInverso }}>Testar notificação</Text>
+            </Pressable>
+          </View>
+        )}
         <View
           className="mt-4 rounded-2xl p-4 flex-row items-center"
           style={{

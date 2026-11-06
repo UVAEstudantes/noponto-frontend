@@ -42,7 +42,8 @@
       "expo-image",
       "expo-web-browser",
       ["expo-navigation-bar", { "enforceContrast": false }],
-      "expo-video"
+      "expo-video",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
