@@ -11,6 +11,22 @@
         "APP_VARIANT": "development"
       }
     },
+    "radar": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "environment": "development",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "radar",
+        "EXPO_PUBLIC_RADAR_REMOTE_ENABLED": "true",
+        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://duplicity-wisplike-friend.ngrok-free.dev",
+        "EXPO_PUBLIC_API_BASE_URL": "https://duplicity-wisplike-friend.ngrok-free.dev",
+        "EXPO_PUBLIC_GPS_HUB_URL": "wss://duplicity-wisplike-friend.ngrok-free.dev/hub/gps",
+        "EXPO_PUBLIC_GPS_HUB_ROUTE": "/hub/gps"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "android": {

@@ -13,6 +13,8 @@ const projectId =
   Constants.easConfig?.projectId ??
   Constants.expoConfig?.extra?.eas?.projectId ??
   '';
+const standalone = Constants.expoConfig?.extra?.radarStandalone === true;
+const configuredOrigin = Constants.expoConfig?.extra?.radarApiOrigin;
 
 const storageOptions = {
   keychainService: 'noponto.radar.dev.v1',
@@ -40,17 +42,20 @@ export const radarRemotoAndroid = criarRadarRemoto({
     credential?: string,
     body?: unknown
   ): Promise<T> {
-    // URL experimental separada; nenhum fallback para a API produtiva.
+    // Ambos os perfis usam o applicationId com FCM já configurado.
+    // APK standalone aceita somente a origem HTTPS declarada pelo seu build.
     const url = new URL(baseUrl);
 
     if (
       Platform.OS !== 'android' ||
       Constants.expoConfig?.android?.package !==
         'com.guilhermedesales.nononto.dev' ||
+      url.username !== '' || url.password !== '' ||
+      (standalone && (url.protocol !== 'https:' || url.origin !== configuredOrigin)) ||
       (
         url.protocol !== 'https:' &&
         !(
-          __DEV__ &&
+          __DEV__ && !standalone && url.protocol === 'http:' &&
           ['localhost', '127.0.0.1'].includes(url.hostname)
         )
       )
