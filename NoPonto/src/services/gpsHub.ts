@@ -8,7 +8,9 @@ import * as signalR from "@microsoft/signalr";
 import { codigoLinhaEsvaziada, gpsSnapshotGuard } from "./gpsSnapshotGuard";
 import { traceRoadBatch, traceRoadLineEmpty, traceRoadRaw } from './roadPresenceDiagnostics';
 
-const HUB_URL = config.GPS_HUB_URL;
+const HUB_URL = config.GPS_HUB_URL
+  .replace(/^wss:/i, "https:")
+  .replace(/^ws:/i, "http:");
 
 let connection: signalR.HubConnection | null = null;
 const donosInscricoes = new Map<symbol, Set<string>>();
