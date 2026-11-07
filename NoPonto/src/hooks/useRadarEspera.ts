@@ -8,6 +8,11 @@ import { carregarPreferenciasRadarEspera, salvarPreferenciasRadarEspera } from '
 import type { clienteRadarEspera } from '../services/notificacaoRadarLocal';
 import type { ResultadoLocal } from '../services/notificacaoLocalCanal';
 import type { DiagnosticoCandidatoRadar } from '../services/notificacoesRadar';
+import type { EstadoRemoto } from '../services/radarRemotoCore';
+import { configurarRadarRemoto } from '../services/radarRemotoContexto';
+
+const remotoHabilitado = process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED === 'true';
+let remoto: typeof import('../services/radarRemotoAndroid').radarRemotoAndroid | undefined;
 
 let nativo: typeof clienteRadarEspera | undefined;
 let entradaInicialLimpa = false;
@@ -28,12 +33,15 @@ const sessao = criarSessaoRadarEspera({
 });
 
 export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { selecaoDeliberada?: boolean }) {
+  const [estadoRemoto, setEstadoRemoto] = useState<EstadoRemoto | null>(null);
+  const remotoSujo = useRef(false);
+  const remotoRestaurado = useRef(false);
   const [preferencias, setPreferencias] = useState<PreferenciasRadarEspera>(() => normalizarPreferenciasRadar(null));
   const [carregado, setCarregado] = useState(false);
   const [erroPreferencias, setErroPreferencias] = useState<string | null>(null);
   const [monitoradas, setMonitoradas] = useState<string[] | null>(linhasEmMemoria);
   const [situacao, setSituacao] = useState(sessao.situacao);
-  if (situacao.estado === 'encerrado' && !situacao.solicitando) ancoragemSessao.current = null;
+  if (!remotoHabilitado && situacao.estado === 'encerrado' && !situacao.solicitando) ancoragemSessao.current = null;
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const escritas = useRef(Promise.resolve());
   const disponiveis = entrada.linhas.filter(l => l.ativa && (entrada.modal === 'todos' || l.modal === entrada.modal)
@@ -41,6 +49,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
   const ids = (monitoradas ?? disponiveis.map(l => l.linhaId)).filter(id => disponiveis.some(l => l.linhaId === id));
   const ancoragem = ancoragemSessao;
   if (entrada.selecaoDeliberada && entrada.parada && ancoragem.current) {
+    if (remotoHabilitado && ancoragem.current.id !== entrada.parada.parada.paradaId) remotoSujo.current = true;
     ancoragem.current = { id: entrada.parada.parada.paradaId, nome: entrada.parada.parada.nome };
   }
   const mudouAutomaticamente = ancoragem.current != null && entrada.parada?.parada.paradaId !== ancoragem.current.id;
@@ -77,26 +86,68 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
     const subscription = AppState.addEventListener('change', estado => {
       const visivel = estado === 'active';
       setForeground(visivel);
-      if (!visivel) void sessao.observar({ ...atual.current, ativo: false });
+      if (remotoHabilitado) { if (visivel) void remoto?.reconciliar(); }
+      else if (!visivel) void sessao.observar({ ...atual.current, ativo: false });
     });
     return () => { montado = false; subscription.remove(); desassinar(); void sessao.observar({ ...atual.current, ativo: false }); };
   }, []);
-  useEffect(() => { void sessao.observar(snapshot); });
+  useEffect(() => { if (!remotoHabilitado) void sessao.observar(snapshot); });
+  useEffect(() => {
+    if (!remotoHabilitado || Platform.OS !== 'android') return;
+    let mounted = true, unsubscribe: (() => void) | undefined;
+    void import('../services/radarRemotoAndroid').then(module => {
+      if (!mounted) return;
+      remoto = module.radarRemotoAndroid;
+      unsubscribe = remoto.assinar(setEstadoRemoto);
+      void remoto.reconciliar();
+    }).catch(() => { if (mounted) setEstadoRemoto({ modo: 'indisponivel', sessao: null,
+      mensagem: 'Radar remoto indisponível neste build.', solicitando: false }); });
+    return () => { mounted = false; unsubscribe?.(); };
+  }, []);
+  useEffect(() => {
+    const current = estadoRemoto?.sessao;
+    if (!remotoHabilitado || !current || remotoRestaurado.current || !carregado) return;
+    remotoRestaurado.current = true;
+    linhasEmMemoria = current.linhasSelecionadas; setMonitoradas(current.linhasSelecionadas);
+    setPreferencias(normalizarPreferenciasRadar({ prioritarias: current.linhasPrioritarias, janelaMinutos: current.antecedenciaMinutos }));
+    ancoragemSessao.current = { id: current.paradaId,
+      nome: entrada.parada?.parada.paradaId === current.paradaId ? entrada.parada.parada.nome : 'Parada acompanhada' };
+  }, [estadoRemoto, carregado, entrada.parada]);
+  useEffect(() => {
+    if (!remotoHabilitado || !estadoRemoto?.sessao || estadoRemoto.modo !== 'ativo') return;
+    const remaining = Date.parse(estadoRemoto.sessao.expiraEm) - Date.now();
+    const timer = setTimeout(() => remoto?.expirar(), Math.max(0, remaining));
+    return () => clearTimeout(timer);
+  }, [estadoRemoto]);
+  useEffect(() => {
+    if (!remotoHabilitado || !remotoSujo.current || !remoto || !entrada.parada || mudouAutomaticamente) return;
+    remotoSujo.current = false;
+    const configuration = configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos);
+    if (configuration) void remoto.atualizar(configuration);
+  });
   const salvar = (p: PreferenciasRadarEspera) => {
+    remotoSujo.current = true;
     sessao.reconfigurar(); setPreferencias(p); setErroPreferencias(null);
     escritas.current = escritas.current.catch(() => {}).then(() => salvarPreferenciasRadarEspera(p))
       .then(() => setErroPreferencias(null))
       .catch(() => setErroPreferencias('Não foi possível salvar as preferências.'));
   };
-  return { ...situacao, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
+  const remotoAtivo = estadoRemoto?.modo === 'ativo';
+  const situacaoAtual = remotoHabilitado ? {
+    estado: (remotoAtivo ? 'ativo' : estadoRemoto?.modo === 'pendente' || estadoRemoto?.modo === 'indisponivel' ? 'pausado' : 'encerrado') as typeof situacao.estado,
+    solicitando: estadoRemoto?.solicitando ?? false,
+    mensagem: estadoRemoto?.modo === 'expirado' ? 'A sessão de uma hora expirou. Ative novamente para renovar intencionalmente.' : estadoRemoto?.mensagem ?? null,
+  } : situacao;
+  return { ...situacaoAtual, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
+    modoRemoto: remotoHabilitado, estadoRemoto: estadoRemoto?.modo ?? 'inativo', expiraEm: estadoRemoto?.sessao?.expiraEm ?? null,
     paradaNome: ancoragem.current?.nome ?? entrada.parada?.parada.nome ?? 'Selecione uma parada',
     paradaIdMonitorada: ancoragem.current?.id ?? null,
     outraParada: mudouAutomaticamente,
     chaveConfiguracao: chave,
-    motivoPausa: mudouAutomaticamente ? 'Outra parada visualizada' : !foreground ? 'Aplicativo fora do primeiro plano'
+    motivoPausa: remotoHabilitado ? estadoRemoto?.mensagem ?? null : mudouAutomaticamente ? 'Outra parada visualizada' : !foreground ? 'Aplicativo fora do primeiro plano'
       : !ativo ? 'Consulta indisponível' : situacao.mensagem ? 'Falha ao atualizar' : null,
     podeConfigurar: carregado && entrada.parada != null && !mudouAutomaticamente,
-    podeSolicitarAtivacao: Platform.OS === 'android' && ativo,
+    podeSolicitarAtivacao: Platform.OS === 'android' && (remotoHabilitado ? carregado && !!entrada.parada && !mudouAutomaticamente : ativo),
     destinos: Object.fromEntries(disponiveis.map(l => [l.linhaId,
       [...new Set(entrada.parada?.vinculos.filter(v => v.linhaId === l.linhaId).map(v => v.destino))].join(' · ')])),
     aplicarConfiguracao(selecionadas: string[], prioritarias: string[], janelaMinutos: number) {
@@ -105,14 +156,27 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
       linhasEmMemoria = novas; setMonitoradas(novas);
       salvar(normalizarPreferenciasRadar({ prioritarias: prioritarias.filter(id => novas.includes(id)), janelaMinutos }));
     },
-    podeAtivar: Platform.OS === 'android' && ativo && previa != null && ids.length > 0,
+    podeAtivar: Platform.OS === 'android' && (remotoHabilitado ? !!remoto && !!entrada.parada && !mudouAutomaticamente : ativo && previa != null) && ids.length > 0,
     ativar: () => {
+      if (remotoHabilitado) {
+        if (mudouAutomaticamente) return Promise.resolve();
+        const configuration = configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos);
+        if (!configuration || !remoto) {
+          setEstadoRemoto(previous => ({ modo: 'indisponivel', sessao: previous?.sessao ?? null, solicitando: false,
+            mensagem: 'Selecione até 20 linhas com contextos completos e atuais (até 40). Aguarde o Radar remoto carregar.' }));
+          return Promise.resolve();
+        }
+        remotoRestaurado.current = true;
+        if (entrada.parada) ancoragem.current = { id: entrada.parada.parada.paradaId, nome: entrada.parada.parada.nome };
+        return remoto.ativar(configuration);
+      }
       if (entrada.parada) ancoragem.current = { id: entrada.parada.parada.paradaId, nome: entrada.parada.parada.nome };
       // O formulário pode ativar antes do efeito de observação do componente pai.
       void sessao.observar(atual.current);
       return sessao.ativar();
-    }, encerrar: () => { ancoragem.current = null; return sessao.encerrar(); },
+    }, encerrar: () => { ancoragem.current = null; return remotoHabilitado ? remoto?.encerrar() ?? Promise.resolve() : sessao.encerrar(); },
     selecionarLinha(id: string) {
+      remotoSujo.current = true;
       sessao.reconfigurar();
       linhasEmMemoria = ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]; setMonitoradas(linhasEmMemoria);
     },

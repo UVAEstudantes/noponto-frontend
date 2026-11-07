@@ -6,11 +6,13 @@ module.exports = ({ config }) => {
     ...(development ? {
       name: 'NoPonto Dev',
       scheme: 'noponto-dev',
-      android: { ...config.android, package: 'com.guilhermedesales.nononto.dev' },
+      android: { ...config.android, package: 'com.guilhermedesales.nononto.dev',
+        ...(process.env.NOPONTO_DEV_GOOGLE_SERVICES_FILE ? { googleServicesFile: process.env.NOPONTO_DEV_GOOGLE_SERVICES_FILE } : {}) },
     } : {}),
     plugins: [
       ...(config.plugins ?? []),
       ['expo-dev-client', { addGeneratedScheme: development }],
+      ...(development ? ['expo-secure-store'] : []),
     ],
   };
 };

@@ -70,6 +70,7 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
           <View style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Linhas no Radar</Text>
             <Text style={secundario}>Selecione as linhas para acompanhar. Marque a estrela para destacar uma linha como prioritária.</Text>
+            {c.modoRemoto && <Text style={secundario}>Limite do experimento: 20 linhas por sessão.</Text>}
             <View style={{ padding: 10, borderRadius: 8, backgroundColor: cores.fundoSecundario }}>
               <Text style={{ ...texto, fontSize: 12 }}>A prioridade destaca a linha, sem esconder uma chegada mais próxima.</Text>
             </View>
@@ -81,7 +82,8 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
               const eta = candidatos.length ? Math.ceil(Math.min(...candidatos.map(v => v.etaSeg)) / 60) : null;
               return <View key={l.linhaId} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: cores.bordaSuave, borderRadius: 12, padding: 4 }}>
                 <Pressable accessibilityRole="checkbox" accessibilityLabel={`Acompanhar linha ${l.linhaCodigo}`}
-                  disabled={!editavel} accessibilityState={{ checked: selecionada, disabled: !editavel }}
+                  disabled={!editavel || c.modoRemoto === true && !selecionada && selecionadas.length >= 20}
+                  accessibilityState={{ checked: selecionada, disabled: !editavel || c.modoRemoto === true && !selecionada && selecionadas.length >= 20 }}
                   onPress={() => {
                     setSelecionadas(selecionada ? selecionadas.filter(id => id !== l.linhaId) : [...selecionadas, l.linhaId]);
                     if (selecionada) setPrioritarias(prioritarias.filter(id => id !== l.linhaId));
@@ -132,7 +134,9 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
             <Headphones size={22} color={cores.iconeSecundario} />
             <View><Text style={{ ...texto, fontWeight: '600' }}>Alertas por voz no fone</Text><Text style={secundario}>Em breve</Text></View>
           </View>
-          <Text style={secundario}>Funciona com o aplicativo aberto e a consulta ativa. Ao sair, as previsões são removidas.</Text>
+          <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
+            ? `Acompanhamento remoto ${c.estadoRemoto === 'ativo' ? 'ativo' : c.estadoRemoto === 'pendente' ? 'pendente' : c.estadoRemoto === 'expirado' ? 'expirado' : 'indisponível ou desativado'}.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
+            : 'Funciona com o aplicativo aberto e a consulta ativa. Ao sair, as previsões são removidas.'}</Text>
           {!ativa && !c.podeSolicitarAtivacao && <Text style={secundario}>Aguarde uma consulta válida desta parada para ativar.</Text>}
           {!!c.previa?.conteudo.terminal?.length && <Text style={secundario}>{c.previa.conteudo.terminal.length} veículos aguardando no terminal · presença não confirma saída.</Text>}
           {(c.mensagem || c.erroPreferencias) && <Text accessibilityLiveRegion="polite" style={{ color: cores.perigo }}>{c.mensagem || c.erroPreferencias}</Text>}

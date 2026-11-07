@@ -3,13 +3,19 @@ import * as Notifications from 'expo-notifications';
 export type ResultadoLocal = 'exibida' | 'encerrada' | 'negada' | 'indisponivel' | 'erro' | 'cancelada';
 const revisoes = new Map<string, { chave: string; valor: string }>();
 let handlerConfigurado = false;
+let permiteRemota: ((data: Record<string, unknown>) => boolean) | undefined;
+export function configurarRecebimentoRemoto(permite: (data: Record<string, unknown>) => boolean) {
+  permiteRemota = permite;
+  configurarHandler();
+}
 const sessao = `${Date.now()}-${Math.random()}`;
 let sequencia = 0;
 function configurarHandler() {
   if (handlerConfigurado) return;
   Notifications.setNotificationHandler({ handleNotification: async notification => {
     const revisao = revisoes.get(notification.request.identifier);
-    const mostrar = revisao != null && notification.request.content.data?.[revisao.chave] === revisao.valor;
+    const mostrar = permiteRemota?.(notification.request.content.data ?? {}) === true
+      || revisao != null && notification.request.content.data?.[revisao.chave] === revisao.valor;
     return { shouldShowBanner: mostrar, shouldShowList: mostrar, shouldPlaySound: false, shouldSetBadge: false };
   } });
   handlerConfigurado = true;

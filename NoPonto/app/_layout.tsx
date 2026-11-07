@@ -38,6 +38,8 @@ const ConteudoLayout = () => {
   }, []);
   useEffect(() => {
     startupSession.noPontoStartupStarted = true;
+    if (Platform.OS === 'android' && process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED === 'true')
+      void import('../src/services/radarRemotoAndroid').then(m => m.radarRemotoAndroid.reconciliar()).catch(() => {});
   }, []);
   useEffect(() => {
     if (!opening || Platform.OS !== "android") return;
