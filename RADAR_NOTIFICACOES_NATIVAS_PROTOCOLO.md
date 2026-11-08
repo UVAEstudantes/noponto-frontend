@@ -4,7 +4,7 @@
 
 O módulo Expo local `NoPonto/modules/radar-native-notification` registra o módulo Kotlin `RadarNativeNotification` pelo autolinking padrão em `modules/`. Ele cria dois canais próprios (`normal` e `heads-up`) e publica notificações com IDs fixos e reservados ao protótipo. O canal remoto `radar-espera-updates-v1` e os IDs de notificação existentes não são usados.
 
-O Kotlin monta as notificações com `NotificationCompat.DecoratedCustomViewStyle` e `RemoteViews`: uma apresentação curta para a bandeja recolhida/heads-up e outra expandida. Há cenários de múltiplas linhas (838 e 855, incluindo dois veículos na linha 838) e de ausência de previsões. Todas as apresentações dizem `TESTE` e a expandida explica que os dados são fictícios.
+O Kotlin monta as notificações com `NotificationCompat.DecoratedCustomViewStyle` e `RemoteViews`: uma apresentação curta para a bandeja recolhida/heads-up e outra expandida. Há cenários de múltiplas linhas (838 e 855, incluindo dois veículos na linha 838) e de ausência de previsões. Todas as apresentações dizem `TESTE` e a expandida explica que os dados são fictícios. Usa `setCustomHeadsUpContentView`; o módulo declara `androidx.core:core:1.17.0`, a mesma versão declarada por `expo-notifications` 55.0.27. Antes de publicar, o Kotlin exige `POST_NOTIFICATIONS` no Android 13+ e falha explicitamente se notificações estiverem bloqueadas.
 
 `src/services/notificacaoNativaTeste.ts` solicita a permissão quando necessário e chama o módulo nativo. A tela Configurações oferece testes de várias linhas normal/heads-up, sem previsões e limpeza. A interface só aparece em Android de desenvolvimento ou no APK explicitamente marcado como `nativeprobe`. O protótipo não importa nem modifica o serviço do Radar remoto.
 
@@ -16,7 +16,7 @@ O perfil não referencia `google-services.json` e ignora `NOPONTO_DEV_GOOGLE_SER
 
 ## Verificações feitas
 
-Executado em `NoPonto/`:
+Execute em `NoPonto/`; o teste limpa `EXPO_PUBLIC_RADAR_REMOTE_ENABLED` e demais variáveis do perfil Radar durante a verificação:
 
 ```powershell
 node --test scripts/nativeprobe-config.test.cjs scripts/radar-standalone-config.test.cjs
@@ -30,7 +30,9 @@ git diff --check
 
 ## Compilação e teste no Xiaomi (ainda pendentes)
 
-Não foi executado prebuild, Gradle, EAS, ADB, instalação nem configuração do aparelho. Depois da revisão, a compilação local recomendada no PowerShell é:
+Não foi executado prebuild, Gradle, EAS, ADB, instalação nem configuração do aparelho. Pré-requisito: Java 17 no `PATH`, Android SDK configurado no ambiente e dependências instaladas. `gradlew assembleDebug` usa a configuração nativa gerada pelo prebuild; ele não lê `eas.json`. Defina o mesmo `APP_VARIANT` também ao iniciar o Metro.
+
+### Compilar o APK debug
 
 ```powershell
 Set-Location 'D:\repositorio_github\NoPonto\noponto-frontend-notificacoes-nativas\NoPonto'
@@ -43,7 +45,31 @@ Push-Location android
 Pop-Location
 ```
 
-O APK de debug esperado fica em `NoPonto/android/app/build/outputs/apk/debug/app-debug.apk`. O `applicationId` distinto permite coexistir com o NoPonto Dev. Após instalar manualmente, verificar permissão Android, aparência recolhida/expandida e heads-up; MIUI/HyperOS pode suprimir heads-up ou alterar espaçamento conforme permissões e preferências dos canais.
+O `applicationId` de `app-debug.apk` será `com.guilhermedesales.nononto.nativeprobe` porque o prebuild recebeu `APP_VARIANT=nativeprobe`.
+
+### Instalar pelo ADB
+
+```powershell
+adb install -r android\app\build\outputs\apk\debug\app-debug.apk
+adb shell monkey -p com.guilhermedesales.nononto.nativeprobe 1
+```
+
+### Iniciar o Metro para o mesmo projeto
+
+Em outro PowerShell, sem trocar de diretório/projeto:
+
+```powershell
+Set-Location 'D:\repositorio_github\NoPonto\noponto-frontend-notificacoes-nativas\NoPonto'
+$env:APP_VARIANT = 'nativeprobe'
+pnpm exec expo start --dev-client
+```
+
+### Repetir após mudanças
+
+- Só TypeScript/JS: repita os testes leves acima e recarregue o app pelo Metro; não precisa recompilar o APK.
+- Kotlin/XML/Gradle do módulo: repita `pnpm exec expo prebuild --platform android` sem `--clean` e `:app:assembleDebug`; reinstale com `adb install -r`.
+
+Heads-up e aparência ainda devem ser verificados no Xiaomi; MIUI/HyperOS pode suprimir heads-up ou alterar espaçamento conforme permissões e preferências dos canais.
 
 ## Pendências e riscos
 

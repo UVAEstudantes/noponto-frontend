@@ -7,3 +7,7 @@ version = '1.0.0'
 android {
   namespace "expo.modules.radarnativenotification"
 }
+
+dependencies {
+  implementation 'androidx.core:core:1.17.0'
+}

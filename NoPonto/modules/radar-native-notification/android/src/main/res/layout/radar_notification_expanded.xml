@@ -10,13 +10,13 @@
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:text="Radar · Fragoso · TESTE"
-      android:textColor="?android:attr/textColorPrimary"
+      android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
       android:textSize="14sp"
       android:textStyle="bold" />
   <TextView android:id="@+id/route_one" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="838" android:textColor="#FFC107" android:textSize="18sp" android:textStyle="bold" />
-  <TextView android:id="@+id/arrivals_one" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Chegando em 1 min · outro veículo em 2 min" android:textColor="?android:attr/textColorSecondary" android:textSize="14sp" />
+  <TextView android:id="@+id/arrivals_one" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Chegando em 1 min · outro veículo em 2 min" android:textAppearance="@android:style/TextAppearance.Material.Notification.Line2" android:textSize="14sp" />
   <TextView android:id="@+id/route_two" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="855" android:textColor="#FFC107" android:textSize="18sp" android:textStyle="bold" />
-  <TextView android:id="@+id/arrivals_two" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Chegando em 7 min" android:textColor="?android:attr/textColorSecondary" android:textSize="14sp" />
-  <TextView android:id="@+id/empty_state" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textColor="?android:attr/textColorSecondary" android:textSize="14sp" />
-  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Dados fictícios para teste visual" android:textColor="?android:attr/textColorSecondary" android:textSize="11sp" />
+  <TextView android:id="@+id/arrivals_two" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Chegando em 7 min" android:textAppearance="@android:style/TextAppearance.Material.Notification.Line2" android:textSize="14sp" />
+  <TextView android:id="@+id/empty_state" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:textAppearance="@android:style/TextAppearance.Material.Notification.Line2" android:textSize="14sp" />
+  <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Dados fictícios para teste visual" android:textAppearance="@android:style/TextAppearance.Material.Notification.Info" android:textSize="11sp" />
 </LinearLayout>

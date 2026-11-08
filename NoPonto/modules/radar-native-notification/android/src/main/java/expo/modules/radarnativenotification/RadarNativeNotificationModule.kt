@@ -22,6 +22,13 @@ class RadarNativeNotificationModule : Module() {
       val channelId = if (headsUp) CHANNEL_HEADS_UP else CHANNEL_NORMAL
       ensureChannel(context, channelId, headsUp)
       val notification = buildNotification(context, scenario, channelId, headsUp)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        throw SecurityException("Permissão POST_NOTIFICATIONS não concedida")
+      }
+      if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+        throw SecurityException("Notificações desativadas para este aplicativo")
+      }
       NotificationManagerCompat.from(context).notify(
         notificationId(scenario, headsUp),
         notification
@@ -57,7 +64,7 @@ class RadarNativeNotificationModule : Module() {
       .setStyle(NotificationCompat.DecoratedCustomViewStyle())
       .setCustomContentView(collapsedView(context, scenario))
       .setCustomBigContentView(expandedView(context, scenario))
-      .setHeadsUpContentView(collapsedView(context, scenario))
+      .setCustomHeadsUpContentView(collapsedView(context, scenario))
       .build()
 
   private fun collapsedView(context: Context, scenario: String) =

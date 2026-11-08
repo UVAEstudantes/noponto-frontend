@@ -3,15 +3,17 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingStart="12dp"
-    android:paddingTop="8dp"
+    android:paddingTop="4dp"
     android:paddingEnd="12dp"
-    android:paddingBottom="8dp">
+    android:paddingBottom="4dp">
   <TextView
       android:id="@+id/collapsed_title"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:text="Radar · Fragoso · TESTE"
-      android:textColor="?android:attr/textColorPrimary"
+      android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
+      android:maxLines="1"
+      android:ellipsize="end"
       android:textSize="14sp"
       android:textStyle="bold" />
   <TextView
@@ -20,6 +22,8 @@
       android:layout_height="wrap_content"
       android:layout_marginTop="2dp"
       android:text="838 em 1 min · 855 em 7 min"
-      android:textColor="?android:attr/textColorSecondary"
+      android:textAppearance="@android:style/TextAppearance.Material.Notification.Line2"
+      android:maxLines="1"
+      android:ellipsize="end"
       android:textSize="13sp" />
 </LinearLayout>
