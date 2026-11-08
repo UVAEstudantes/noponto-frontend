@@ -1,7 +1,8 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
-import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import Constants from "expo-constants";
 import {
   Check,
   Hand,
@@ -29,6 +30,30 @@ const Configuracao = () => {
     salvandoAbertura,
     definirAnimacaoAbertura,
   } = useTema();
+
+  const testeNativoDisponivel =
+    Platform.OS === "android" &&
+    (__DEV__ || Constants.expoConfig?.extra?.nativeNotificationProbe === true);
+
+  const mostrarTesteNativo = async (cenario: "multiple-lines" | "empty", headsUp: boolean) => {
+    try {
+      const { mostrarNotificacaoNativaTeste } = await import("@/src/services/notificacaoNativaTeste");
+      if (!await mostrarNotificacaoNativaTeste(cenario, headsUp)) {
+        Alert.alert("Notificações desativadas", "Autorize notificações para este aplicativo e tente novamente.");
+      }
+    } catch {
+      Alert.alert("Falha no teste", "Não foi possível exibir a notificação nativa.");
+    }
+  };
+
+  const limparTesteNativo = async () => {
+    try {
+      const { limparNotificacoesNativasTeste } = await import("@/src/services/notificacaoNativaTeste");
+      await limparNotificacoesNativasTeste();
+    } catch {
+      Alert.alert("Falha ao limpar", "Não foi possível remover as notificações do protótipo.");
+    }
+  };
 
   const opcoesTema = [
     {
@@ -324,6 +349,65 @@ const Configuracao = () => {
           </Text>
         </View>
         <IndicadoresConfiguracao />
+        {testeNativoDisponivel ? (
+          <View
+            className="mt-4 rounded-2xl p-4"
+            style={{ backgroundColor: cores.fundoCard, borderColor: cores.borda, borderWidth: 1 }}
+          >
+            <Text className="text-base font-semibold" style={{ color: cores.textoPrimario }}>
+              Notificações nativas · teste
+            </Text>
+            <Text className="mt-1 text-sm" style={{ color: cores.textoSecundario }}>
+              Dados fictícios identificados como teste. Expanda a notificação na bandeja.
+            </Text>
+            <View className="mt-3 flex-row flex-wrap">
+              <Pressable
+                className="mr-2 mb-2 rounded-xl px-3 py-3"
+                style={{ backgroundColor: cores.fundoPrimario }}
+                onPress={() => void mostrarTesteNativo("multiple-lines", true)}
+                accessibilityRole="button"
+                accessibilityLabel="Testar notificação nativa com várias linhas e heads-up"
+              >
+                <Text className="text-sm font-semibold" style={{ color: cores.textoInverso }}>
+                  Várias linhas · heads-up
+                </Text>
+              </Pressable>
+              <Pressable
+                className="mr-2 mb-2 rounded-xl px-3 py-3"
+                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
+                onPress={() => void mostrarTesteNativo("multiple-lines", false)}
+                accessibilityRole="button"
+                accessibilityLabel="Testar notificação nativa expandida sem heads-up"
+              >
+                <Text className="text-sm font-semibold" style={{ color: cores.textoPrimario }}>
+                  Várias linhas
+                </Text>
+              </Pressable>
+              <Pressable
+                className="mr-2 mb-2 rounded-xl px-3 py-3"
+                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
+                onPress={() => void mostrarTesteNativo("empty", false)}
+                accessibilityRole="button"
+                accessibilityLabel="Testar notificação nativa sem previsões"
+              >
+                <Text className="text-sm font-semibold" style={{ color: cores.textoPrimario }}>
+                  Sem previsões
+                </Text>
+              </Pressable>
+              <Pressable
+                className="mb-2 rounded-xl px-3 py-3"
+                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
+                onPress={() => void limparTesteNativo()}
+                accessibilityRole="button"
+                accessibilityLabel="Limpar notificações nativas de teste"
+              >
+                <Text className="text-sm font-semibold" style={{ color: cores.textoSecundario }}>
+                  Limpar testes
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         <View
           className="mt-4 rounded-2xl p-4 flex-row items-center"
           style={{

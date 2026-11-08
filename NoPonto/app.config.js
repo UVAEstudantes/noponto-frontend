@@ -2,6 +2,7 @@
 module.exports = ({ config }) => {
   const development = process.env.APP_VARIANT === 'development';
   const radar = process.env.APP_VARIANT === 'radar';
+  const nativeprobe = process.env.APP_VARIANT === 'nativeprobe';
   const googleServicesFile = process.env.NOPONTO_DEV_GOOGLE_SERVICES_FILE;
   let radarOrigin;
   if (radar) {
@@ -23,13 +24,17 @@ module.exports = ({ config }) => {
   }
   return {
     ...config,
-    ...(development || radar ? {
-      name: radar ? 'NoPonto Radar' : 'NoPonto Dev',
-      scheme: radar ? 'noponto-radar' : 'noponto-dev',
-      android: { ...config.android, package: 'com.guilhermedesales.nononto.dev',
-        ...(googleServicesFile ? { googleServicesFile } : {}) },
+    ...(development || radar || nativeprobe ? {
+      name: radar ? 'NoPonto Radar' : nativeprobe ? 'NoPonto Native Probe' : 'NoPonto Dev',
+      scheme: radar ? 'noponto-radar' : nativeprobe ? 'noponto-nativeprobe' : 'noponto-dev',
+      android: { ...config.android,
+        package: nativeprobe
+          ? 'com.guilhermedesales.nononto.nativeprobe'
+          : 'com.guilhermedesales.nononto.dev',
+        ...(!nativeprobe && googleServicesFile ? { googleServicesFile } : {}) },
     } : {}),
     ...(radar ? { extra: { ...config.extra, radarStandalone: true, radarApiOrigin: radarOrigin } } : {}),
+    ...(nativeprobe ? { extra: { ...config.extra, nativeNotificationProbe: true } } : {}),
     plugins: [
       ...(config.plugins ?? []),
       ['expo-dev-client', { addGeneratedScheme: development }],

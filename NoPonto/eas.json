@@ -27,6 +27,16 @@
         "EXPO_PUBLIC_GPS_HUB_ROUTE": "/hub/gps"
       }
     },
+    "nativeprobe": {
+      "developmentClient": false,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "nativeprobe"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "android": {
