@@ -17,12 +17,14 @@ import { identidadeModalMapa } from "@/src/constants/modaisMapa";
 import { chegadasDoRadar, resumoConsultaParada } from "@/src/services/apresentacaoRadar";
 import {renderTerminalPresenceSection} from './terminalPresenceSection';
 import {renderRadarVehicleCard} from './radarVehicleCardView';
+import {fundoIdentificador,textoSobreCor} from './radarVehicleCard';
 import {terminalRadarVehicles,type TerminalPresence,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
 import type { PreviaNotificacaoRadar } from '@/src/services/previaNotificacaoRadar';
 import RadarEsperaSection from './radarEsperaSection';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
+  /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
   onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
   terminalPresence?:TerminalPresence[];
@@ -37,7 +39,7 @@ interface Props {
 }
 
 export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[], acompanhamento,
-  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle,onDiagnostico }: Props) {
+  onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -180,10 +182,10 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         const minutos = chegada.etaSeg == null ? null : Math.ceil(chegada.etaSeg / 60);
         const destino = radar.parada?.vinculos.find((item) => item.linhaId === evento.linhaId
           && item.sentidoId === evento.sentidoId && item.padraoVersaoId === evento.padraoVersaoId)?.destino;
-        return renderRadarVehicleCard({cardKey:evento.eventId,cores,accent:cor,badgeColor:linha?.cor??cor,dark:escuro,first:index===0,
+        return renderRadarVehicleCard({cardKey:evento.eventId,cores,accent:cor,badgeColor:fundoIdentificador(linha?.cor??cor),dark:escuro,first:index===0,
           onPress:()=>onEvento(evento),disabled:!localizavel(evento),
           accessibilityLabel:`${evento.codigoLinha}, ${evento.eventType === "DEPARTURE" ? "saída" : "chegada"}, ${minutos == null ? "horário indisponível" : `${minutos} minutos`}`,
-          badge:<Text numberOfLines={1} style={{color:'#FFFFFF',fontSize:16,fontWeight:'800'}}>{linha?.linhaCodigo??evento.codigoLinha}</Text>,
+          badge:<Text numberOfLines={1} style={{color:textoSobreCor(linha?.cor??cor),fontSize:16,fontWeight:'800'}}>{linha?.linhaCodigo??evento.codigoLinha}</Text>,
           title:minutos==null?'Sem previsão':evento.eventType==='DEPARTURE'?`Saída em ${minutos} min`:`Chega em ${minutos} min`,subtitle:destino||linha?.nomeExibicao,
           trailing:<View style={{ alignItems: "flex-end", maxWidth: 110 }}>
             <Text style={{ fontSize: 12, fontWeight: "700", color: cores.textoSecundario }}>
@@ -197,10 +199,6 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
       {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento} />}
-      {typeof __DEV__ !== 'undefined' && __DEV__ && onDiagnostico && <Pressable accessibilityRole="button"
-        accessibilityLabel="Comparar Radares em desenvolvimento" onPress={onDiagnostico} style={{ minHeight: 44, justifyContent: 'center' }}>
-        <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Comparar Radares · DEV</Text>
-      </Pressable>}
         </ScrollView>
       </View>
     </Animated.View>}

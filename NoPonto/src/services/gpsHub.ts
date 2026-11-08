@@ -1,3 +1,4 @@
+import { AppState, Platform } from "react-native";
 import { config } from "@/src/config/env";
 import {
   adaptarPosicaoRodoviariaV2,
@@ -22,6 +23,35 @@ const physicalListeners = new Set<(snapshot: unknown) => void>();
 const physicalOwners = new Map<symbol, Set<string>>();
 const physicalSubscribed = new Set<string>();
 let physicalSynchronization: Promise<void> = Promise.resolve();
+let suspenso = Platform.OS === 'android' && AppState.currentState === 'background';
+let paradaPendente: Promise<void> = Promise.resolve();
+const donoDireto = Symbol('gps-direct');
+const linhasDiretas = new Set<string>();
+const temDemanda = () => !suspenso && [...donosInscricoes.values(), ...physicalOwners.values()].some(ids => ids.size > 0);
+
+function pararConexao(): Promise<void> {
+  geracaoConexao++; inscritas.clear(); physicalSubscribed.clear();
+  gpsSnapshotGuard.invalidarLeituras();
+  paradaPendente = paradaPendente.catch(() => undefined).then(async () => {
+    if (connection && connection.state !== signalR.HubConnectionState.Disconnected) await connection.stop();
+  }).catch(error => console.warn('Falha ao suspender GPS', error));
+  return paradaPendente;
+}
+
+function liberarSeOciosa(): void {
+  void Promise.allSettled([sincronizacao, physicalSynchronization]).then(() => {
+    if (!temDemanda()) return pararConexao();
+  });
+}
+
+AppState.addEventListener('change', state => {
+  if (Platform.OS !== 'android' || (state !== 'background' && state !== 'active')) return;
+  const proximo = state === 'background';
+  if (proximo === suspenso) return;
+  suspenso = proximo;
+  if (suspenso) void pararConexao();
+  else { void reconciliarInscricoesGps(); void reconcilePhysicalPresence(); }
+});
 
 export function observePhysicalPresence(owner: symbol, stopIds: readonly string[],
   listener: (snapshot: unknown) => void): () => void {
@@ -41,11 +71,14 @@ const physicalNoop = (_: VeiculoMapaRodoviario[]) => {};
 
 function reconcilePhysicalPresence(): Promise<void> {
   physicalSynchronization = physicalSynchronization.catch(() => undefined).then(async () => {
+    await conectarGpsHub();
+    if (suspenso) return;
     if (connection?.state !== signalR.HubConnectionState.Connected) return;
-    const desired = () => new Set([...physicalOwners.values()].flatMap((ids) => [...ids]));
+    const geracao = geracaoConexao;
+    const desired = () => new Set(suspenso || geracao !== geracaoConexao ? [] : [...physicalOwners.values()].flatMap((ids) => [...ids]));
     for (const id of [...physicalSubscribed]) if (!desired().has(id)) {
       await connection.invoke(id.startsWith('unified:') ? 'CancelarLocalizacaoUnificada' : 'CancelarPresencaFisica', id.startsWith('unified:') ? id.slice('unified:'.length) : id);
-      physicalSubscribed.delete(id);
+      if (geracao === geracaoConexao) physicalSubscribed.delete(id);
     }
     for (const id of desired()) if (!physicalSubscribed.has(id) && desired().has(id)) {
       try {
@@ -57,9 +90,10 @@ function reconcilePhysicalPresence(): Promise<void> {
         }
         throw error;
       }
-      physicalSubscribed.add(id);
+      if (geracao === geracaoConexao) physicalSubscribed.add(id);
     }
-  });
+  }).catch(() => console.warn('Inscrição física/unificada indisponível; aguardando recuperação.'));
+  liberarSeOciosa();
   return physicalSynchronization;
 }
 
@@ -73,8 +107,10 @@ export function atualizarInscricoesGps(dono: symbol, codigos: readonly string[])
 export function reconciliarInscricoesGps(): Promise<void> {
   sincronizacao = sincronizacao.catch(() => undefined).then(async () => {
     await conectarGpsHub();
+    if (suspenso) return;
     if (!await aguardarConexao()) return;
-    const desejadas = () => new Set([...donosInscricoes.values()].flatMap((ids) => [...ids]));
+    const geracaoAtual = geracaoConexao;
+    const desejadas = () => new Set(suspenso || geracaoAtual !== geracaoConexao ? [] : [...donosInscricoes.values()].flatMap((ids) => [...ids]));
     for (const codigo of [...inscritas]) {
       if (!desejadas().has(codigo)) {
         const geracao = geracaoConexao;
@@ -95,6 +131,7 @@ export function reconciliarInscricoesGps(): Promise<void> {
       catch (error) { console.warn("Falha ao inscrever linha GPS", error); }
     }
   });
+  liberarSeOciosa();
   return sincronizacao;
 }
 
@@ -124,6 +161,7 @@ export function iniciarGpsHub(
     .build();
 
   connection.on("PosicaoAtualizada", (payload: PosicaoRodoviariaV2Dto[]) => {
+    if (suspenso) return;
     if (!Array.isArray(payload) || payload.length === 0) return;
     traceRoadBatch('signalr_received',payload);
     const veiculos = gpsSnapshotGuard.filtrarSnapshot(payload
@@ -138,6 +176,7 @@ export function iniciarGpsHub(
   });
 
   connection.on("LinhaEsvaziada", (payload: unknown) => {
+    if (suspenso) return;
     const codigo = codigoLinhaEsvaziada(payload);
     if (!codigo) return;
     traceRoadLineEmpty(codigo);
@@ -145,9 +184,11 @@ export function iniciarGpsHub(
     emptySubscribers.forEach((fn) => fn(codigo));
   });
   connection.on("PresencaFisicaAtualizada", (snapshot: unknown) => {
+    if (suspenso) return;
     physicalListeners.forEach((listener) => listener(snapshot));
   });
   connection.on('LocalizacaoUnificadaAtualizada', (snapshot: unknown) => {
+    if (suspenso) return;
     physicalListeners.forEach(listener => listener(snapshot));
   });
 
@@ -168,7 +209,10 @@ export function removerGpsHubListener(
 }
 
 export async function conectarGpsHub(): Promise<void> {
-  if (!connection) return;
+  await paradaPendente;
+  if (!connection || !temDemanda()) return;
+
+  if (conexaoPendente) { await conexaoPendente; return; }
 
   if (
     connection.state === signalR.HubConnectionState.Connected ||
@@ -179,8 +223,7 @@ export async function conectarGpsHub(): Promise<void> {
 
   conexaoPendente ??= connection.start().then(() => {
     gpsSnapshotGuard.invalidarLeituras();
-    geracaoConexao++; inscritas.clear(); console.log("✅ SignalR conectado");
-    void reconcilePhysicalPresence();
+    geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("✅ SignalR conectado");
   }).catch((err) => { console.error("Erro ao conectar SignalR", err); })
     .finally(() => { conexaoPendente = null; });
   await conexaoPendente;
@@ -203,37 +246,13 @@ async function aguardarConexao(timeoutMs: number = 4000): Promise<boolean> {
   return estadoAtual() === signalR.HubConnectionState.Connected;
 }
 
+// Direct subscriptions participate in ownership and cannot bypass AppState.
 export async function inscreverLinha(codigoLinha: string): Promise<void> {
-  if (!connection) return;
-
-  if (connection.state !== signalR.HubConnectionState.Connected) {
-    await conectarGpsHub();
-    const conectado = await aguardarConexao();
-    if (!conectado) {
-      console.warn("SignalR nao conectado para inscrever linha.");
-      return;
-    }
-  }
-
-  try {
-    await connection.invoke("InscreverseLinha", codigoLinha);
-    console.log("📡 inscrito na linha:", codigoLinha);
-  } catch (err) {
-    console.error("Erro ao inscrever linha", err);
-  }
+  linhasDiretas.add(codigoLinha);
+  await atualizarInscricoesGps(donoDireto, [...linhasDiretas]);
 }
 
 export async function cancelarLinha(codigoLinha: string): Promise<void> {
-  if (!connection) return;
-
-  if (connection.state !== signalR.HubConnectionState.Connected) {
-    return;
-  }
-
-  try {
-    await connection.invoke("CancelarLinha", codigoLinha);
-    console.log("📴 cancelado:", codigoLinha);
-  } catch (err) {
-    console.error("Erro ao cancelar linha", err);
-  }
+  linhasDiretas.delete(codigoLinha);
+  await atualizarInscricoesGps(donoDireto, [...linhasDiretas]);
 }

@@ -6,7 +6,8 @@ const path = require('node:path');
 const Module = require('node:module');
 const ts = require('typescript');
 
-function fixture() {
+function fixture(initialState = 'active') {
+  let appState = initialState; let onAppState; let starts = 0; let stops = 0;
   const calls = [];
   const events = new Map();
   let builds = 0;
@@ -16,7 +17,8 @@ function fixture() {
     onreconnecting: (handler) => { connection.reconnecting = handler; },
     onreconnected: (handler) => { connection.reconnected = handler; },
     onclose: (handler) => { connection.closed = handler; },
-    start: async () => { connection.state = 'Connected'; },
+    start: async () => { starts++; connection.state = 'Connected'; },
+    stop: async () => { stops++; connection.state = 'Disconnected'; connection.closed?.(); },
     invoke: async (method, id) => { calls.push([method, id]); },
   };
   class Builder {
@@ -27,8 +29,9 @@ function fixture() {
   const filename = path.join(__dirname, 'gpsHub.ts');
   const mod = new Module(filename, module);
   mod.require = (name) => {
+    if (name === 'react-native') return { Platform: { OS: 'android' }, AppState: { currentState: appState, addEventListener: (_, fn) => { onAppState = fn; } } };
     if (name === '@microsoft/signalr') return { HubConnectionBuilder: Builder,
-      HubConnectionState: { Connected: 'Connected', Connecting: 'Connecting' } };
+      HubConnectionState: { Connected: 'Connected', Connecting: 'Connecting', Disconnected: 'Disconnected' } };
     if (name === '@/src/config/env') return { config: { GPS_HUB_URL: 'fixture://hub' } };
     if (name === './veiculosMapa') return { adaptarPosicaoRodoviariaV2: (item) => item };
     if (name === './gpsSnapshotGuard') return { gpsSnapshotGuard: {
@@ -42,7 +45,7 @@ function fixture() {
   mod._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, filename);
-  return { api: mod.exports, connection, calls, events, builds: () => builds };
+  return { api: mod.exports, connection, calls, events, builds: () => builds, starts: () => starts, stops: () => stops, appState: state => { appState = state; onAppState(state); } };
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -127,4 +130,129 @@ test('838 855 stop radar shares map subscriptions and releases only its own line
  f.connection.reconnected();await tick();await tick();assert.deepEqual(f.calls.at(-1),['InscreverLocalizacaoUnificada','838']);
  closeMap();await tick();await tick();assert.deepEqual(f.calls.at(-1),['CancelarLocalizacaoUnificada','838']);
  assert.equal(f.api.obterDiagnosticoGpsHub().subscribers,0);
+});
+
+test('background stops both registries and foreground restores retained owners', async () => {
+  const f = fixture(), owner = Symbol('map');
+  f.api.iniciarGpsHub(() => {});
+  await f.api.atualizarInscricoesGps(owner, ['838']);
+  const close = f.api.observePhysicalPresence(Symbol('physical'), ['terminal', 'unified:838'], () => {});
+  await tick();
+  f.appState('inactive'); await tick(); assert.equal(f.stops(), 0);
+  f.appState('background'); await tick();
+  assert.equal(f.connection.state, 'Disconnected'); assert.equal(f.stops(), 1);
+  const before = f.calls.length;
+  await f.api.atualizarInscricoesGps(owner, ['855']);
+  f.connection.reconnected(); await tick(); assert.equal(f.calls.length, before);
+  f.appState('active'); await tick(); await tick();
+  assert.equal(f.starts(), 2);
+  assert.deepEqual(f.calls.slice(before).sort(), [
+    ['InscreverseLinha', '855'], ['InscreverPresencaFisica', 'terminal'], ['InscreverLocalizacaoUnificada', '838'],
+  ].sort());
+  close(); await f.api.atualizarInscricoesGps(owner, []); await tick();
+  assert.equal(f.connection.state, 'Disconnected');
+});
+
+test('background mounting and direct subscriptions cannot open the connection', async () => {
+  const f = fixture('background'); f.api.iniciarGpsHub(() => {});
+  await f.api.inscreverLinha('838');
+  const close = f.api.observePhysicalPresence(Symbol('u'), ['unified:838'], () => {});
+  await tick(); await f.api.conectarGpsHub();
+  assert.equal(f.starts(), 0); assert.deepEqual(f.calls, []);
+  f.appState('active'); await tick(); await tick();
+  assert.equal(f.starts(), 1); assert.equal(f.calls.length, 2);
+  await f.api.cancelarLinha('838'); close(); await tick();
+  assert.equal(f.connection.state, 'Disconnected');
+});
+
+test('multiple owners keep shared lines until the last owner leaves', async () => {
+  const f = fixture(), a = Symbol('a'), b = Symbol('b'); f.api.iniciarGpsHub(() => {});
+  await Promise.all([f.api.atualizarInscricoesGps(a, ['838']), f.api.atualizarInscricoesGps(b, ['838'])]);
+  assert.deepEqual(f.calls, [['InscreverseLinha', '838']]);
+  f.appState('background'); await tick();
+  await f.api.atualizarInscricoesGps(a, []);
+  f.appState('active'); await tick(); await tick();
+  assert.deepEqual(f.calls.at(-1), ['InscreverseLinha', '838']);
+  await f.api.inscreverLinha('838'); await f.api.cancelarLinha('838');
+  assert.equal(f.calls.filter(([m]) => m === 'CancelarLinha').length, 0);
+  await f.api.atualizarInscricoesGps(b, []); await tick();
+  assert.equal(f.connection.state, 'Disconnected');
+});
+
+for (const physical of [false, true]) test(`pending ${physical ? 'physical' : 'GPS'} invoke cannot resurrect a background subscription`, async () => {
+  const f = fixture(); let release;
+  const original = f.connection.invoke;
+  f.connection.invoke = async (method, id) => {
+    await original(method, id);
+    if (id === '838') await new Promise(resolve => { release = resolve; });
+  };
+  f.api.iniciarGpsHub(() => {});
+  if (physical) f.api.observePhysicalPresence(Symbol('p'), ['838', '855'], () => {});
+  else void f.api.atualizarInscricoesGps(Symbol('gps'), ['838', '855']);
+  await tick(); assert.equal(typeof release, 'function');
+  f.appState('background'); await tick(); release(); await tick();
+  assert.equal(f.calls.some(([, id]) => id === '855'), false);
+  assert.equal(f.connection.state, 'Disconnected');
+  f.connection.invoke = original;
+  f.appState('active'); await tick(); await tick();
+  assert.deepEqual(f.calls.slice(-2).map(([, id]) => id), ['838', '855']);
+});
+
+test('foreground reconnect restores both registries and fresh frames only', async () => {
+  const f = fixture(), frames = [];
+  f.api.iniciarGpsHub(() => {});
+  await f.api.atualizarInscricoesGps(Symbol('gps'), ['838']);
+  f.api.observePhysicalPresence(Symbol('unified'), ['unified:838'], frame => frames.push(frame));
+  await tick(); f.appState('background'); await tick();
+  const before = frames.length;
+  f.events.get('LocalizacaoUnificadaAtualizada')({ revision: 1 }); assert.equal(frames.length, before);
+  f.appState('active'); await tick(); await tick();
+  const snapshot = { revision: 2 }; f.events.get('LocalizacaoUnificadaAtualizada')(snapshot);
+  assert.equal(frames.at(-1), snapshot);
+  const count = f.calls.length;
+  f.connection.reconnecting(); f.connection.reconnected(); await tick(); await tick();
+  assert.deepEqual(f.calls.slice(count).sort(), [['InscreverseLinha', '838'], ['InscreverLocalizacaoUnificada', '838']].sort());
+});
+
+test('no owners means no connection even when listeners request a start', async () => {
+  const f = fixture(); f.api.iniciarGpsHub(() => {}); await f.api.conectarGpsHub();
+  await f.api.reconciliarInscricoesGps(); await tick();
+  assert.equal(f.starts(), 0); assert.deepEqual(f.calls, []);
+});
+
+test('rapid foreground waits for stop before restoring both registries', async () => {
+  const f = fixture(); f.api.iniciarGpsHub(() => {});
+  await f.api.atualizarInscricoesGps(Symbol('gps'), ['838']);
+  f.api.observePhysicalPresence(Symbol('u'), ['unified:838'], () => {}); await tick();
+  const original = f.connection.stop; let release;
+  f.connection.stop = async () => { await new Promise(resolve => { release = resolve; }); await original(); };
+  f.appState('background'); await tick();
+  f.appState('active'); await tick();
+  assert.equal(f.starts(), 1);
+  release(); await tick(); await tick();
+  assert.equal(f.starts(), 2);
+  assert.deepEqual(f.calls.slice(-2).sort(), [['InscreverseLinha', '838'], ['InscreverLocalizacaoUnificada', '838']].sort());
+});
+
+test('failed start retains owners and a later foreground retries', async () => {
+  const f = fixture(); f.api.iniciarGpsHub(() => {});
+  const original = f.connection.start;
+  f.connection.start = async () => { throw new Error('fixture start failure'); };
+  await f.api.atualizarInscricoesGps(Symbol('gps'), ['838']);
+  assert.deepEqual(f.calls, []);
+  f.connection.start = original;
+  f.appState('background'); await tick(); f.appState('active'); await tick(); await tick();
+  assert.deepEqual(f.calls, [['InscreverseLinha', '838']]);
+});
+
+test('physical subscription failure on foreground recovers after reconnect', async () => {
+  const f = fixture('background');
+  f.api.observePhysicalPresence(Symbol('u'), ['unified:838'], () => {});
+  await tick();
+  f.connection.invoke = async () => { throw new Error('fixture invoke failure'); };
+  f.appState('active'); await tick(); await tick();
+  assert.equal(f.connection.state, 'Connected'); assert.deepEqual(f.calls, []);
+  f.connection.invoke = async (method, id) => { f.calls.push([method, id]); };
+  f.connection.reconnected(); await tick(); await tick();
+  assert.deepEqual(f.calls, [['InscreverLocalizacaoUnificada', '838']]);
 });

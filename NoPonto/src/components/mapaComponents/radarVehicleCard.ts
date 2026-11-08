@@ -10,3 +10,25 @@ export function radarCardFrame(cores:Colors,accent:string,dark:boolean,first:boo
 export function radarCardBadge(accent:string,sheet=false,background='#ffffff'):ViewStyle{return sheet?{width:38,height:38,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:mixed(accent,background,.16),marginRight:10}:{minWidth:40,maxWidth:90,minHeight:40,borderRadius:12,paddingHorizontal:6,alignItems:'center',justifyContent:'center',backgroundColor:accent};}
 export function radarCardTitle(color:string):TextStyle{return {color,fontSize:13,fontWeight:'700'};}
 export function radarCardSecondary(color:string):TextStyle{return {color,fontSize:10,marginTop:3};}
+function canaisCor(cor:string):[number,number,number]|null{
+ const hex=cor.replace('#','').trim();const cheio=hex.length===3?hex.split('').map(c=>c+c).join(''):hex;
+ if(!/^[0-9a-f]{6}$/i.test(cheio))return null;
+ return [0,2,4].map(i=>parseInt(cheio.slice(i,i+2),16)) as [number,number,number];
+}
+function luminancia([r,g,b]:[number,number,number]){
+ const linear=(v:number)=>{const x=v/255;return x<=0.03928?x/12.92:((x+0.055)/1.055)**2.4;};
+ return 0.2126*linear(r)+0.7152*linear(g)+0.0722*linear(b);
+}
+/** Cores claras mantêm o tom oficial; as demais escurecem só o necessário para texto branco. */
+export function fundoIdentificador(cor:string):string{
+ const rgb=canaisCor(cor);if(!rgb)return cor;
+ if(luminancia(rgb)>=0.5)return cor;
+ let [r,g,b]=rgb;
+ for(let i=0;i<80&&1.05/(luminancia([r,g,b])+0.05)<4.5;i++)[r,g,b]=[r,g,b].map(v=>Math.round(v*0.94));
+ return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+/** Texto legível sobre o identificador: branco em cores médias/escuras, escuro nas muito claras. */
+export function textoSobreCor(cor:string):string{
+ const rgb=canaisCor(cor);if(!rgb)return '#FFFFFF';
+ return luminancia(rgb)>=0.5?'#1E1E1E':'#FFFFFF';
+}

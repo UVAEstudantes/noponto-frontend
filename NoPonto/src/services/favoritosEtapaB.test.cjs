@@ -108,12 +108,12 @@ test("Todos utiliza contrato sem filtros, preserva página/signal e identidades 
 });
 test("um hub e inscrições compartilhadas: retirar uma tela não cancela uma linha usada pela outra; reconexão restaura", async () => {
   const invokes = []; const callbacks = {}; let builds = 0;
-  const hub = { state: "Disconnected", start: async () => { hub.state = "Connected"; },
+  const hub = { state: "Disconnected", stop: async () => { hub.state = "Disconnected"; }, start: async () => { hub.state = "Connected"; },
     invoke: async (...args) => { invokes.push(args); }, on: () => {},
     onreconnecting: () => {}, onreconnected: (fn) => { callbacks.reconectar = fn; }, onclose: () => {} };
   class HubConnectionBuilder { withUrl() { return this; } withAutomaticReconnect() { return this; }
     build() { builds++; return hub; } }
-  const service = carregar("gpsHub.ts", { "@/src/config/env": { config: { GPS_HUB_URL: "mock" } },
+  const service = carregar("gpsHub.ts", { "react-native": { Platform: { OS: "android" }, AppState: { currentState: "active", addEventListener() {} } }, "@/src/config/env": { config: { GPS_HUB_URL: "mock" } },
     "@microsoft/signalr": { HubConnectionBuilder, HubConnectionState: { Connected: "Connected", Connecting: "Connecting" } },
     "./veiculosMapa": {} });
   const a = Symbol(); const b = Symbol(); const listenerA = () => {}; const listenerB = () => {};
@@ -129,7 +129,9 @@ test("um hub e inscrições compartilhadas: retirar uma tela não cancela uma li
   assert.deepEqual(invokes.at(-1), ["InscreverseLinha", "838"]);
   await service.atualizarInscricoesGps(b, []);
   service.removerGpsHubListener(listenerA); service.removerGpsHubListener(listenerB);
-  assert.deepEqual(invokes.at(-1), ["CancelarLinha", "838"]);
+  await new Promise(setImmediate);
+  // Releasing the last owner may stop the connection before a per-line cancel.
+  assert.equal(hub.state, "Disconnected");
   assert.equal(service.obterDiagnosticoGpsHub().subscribers, 0);
 });
 
@@ -150,7 +152,7 @@ test("snapshot ferroviário agregado filtra linhas antes de hidratar, deduplica 
   const cleanup = effects.pop()();
   try {
     await new Promise(setImmediate);
-    assert.deepEqual(consultas, [{ linhaId: undefined, sentidoId: undefined }]);
+    assert.deepEqual(consultas, [{ linhaId: undefined, sentidoId: undefined, linhaIds: ["3", "4"] }]);
     assert.deepEqual(geometrias.sort(), ["versao-3", "versao-4"]);
     assert.deepEqual(updates.at(-1).map((item) => item.railVehicleId), ["A", "B"]);
   } finally { cleanup(); }

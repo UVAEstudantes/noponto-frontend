@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
-import { ArrowLeft, Check, ChevronRight, Headphones, Star } from 'lucide-react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
+import { ArrowLeft, Bell, Check, Headphones, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTema } from '@/src/hooks/useTema';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
+import { fundoIdentificador, textoSobreCor } from './radarVehicleCard';
 
 /** Configuração é um rascunho: voltar descarta; salvar aplica uma única reconfiguração. */
 export default function RadarEsperaSection({ controle: c }: { controle: ControleRadarEspera }) {
@@ -15,17 +16,74 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   const [janela, setJanela] = useState(10);
   const [iniciar, setIniciar] = useState(false);
   const [contexto, setContexto] = useState('');
-  const editavel = c.podeConfigurar && contexto === c.chaveConfiguracao;
-  const ativa = c.estado !== 'encerrado';
-  const podeSalvar = editavel && selecionadas.length > 0 && !c.solicitando && (ativa || c.podeSolicitarAtivacao);
-  const estado = c.estado === 'encerrado' ? 'Desativado' : c.estado === 'ativo' ? 'Ativo'
-    : c.estado === 'sem previsões' ? 'Sem previsões' : 'Pausado';
+  const [avisoFechado, setAvisoFechado] = useState<string | null>(null);
+  // Um salvamento intencional muda a chave do controlador; o rascunho aberto
+  // acompanha essa mudança em vez de se declarar obsoleto.
+  const [aplicandoRascunho, setAplicandoRascunho] = useState(false);
+  const remoto = c.modoRemoto === true;
+  const estadoRemoto = c.estadoRemoto ?? 'inativo';
+  const ativa = remoto ? estadoRemoto === 'ativo' : c.estado !== 'encerrado';
+  const expirada = remoto && estadoRemoto === 'expirado';
+  const pendente = remoto && estadoRemoto === 'pendente';
+  const indisponivel = remoto && estadoRemoto === 'indisponivel';
+  const configurada = remoto
+    ? ativa || expirada || pendente || (indisponivel && c.expiraEm != null)
+    : c.estado !== 'encerrado';
+  const contextoValido = contexto === c.chaveConfiguracao || aplicandoRascunho;
+  const editavel = c.podeConfigurar && contextoValido;
+  // Reconciliação em segundo plano não bloqueia o formulário; apenas a
+  // operação pedida pelo usuário (ou a confirmação de enrollment) o faz.
+  const operacaoBloqueante = c.solicitando && c.operacaoRemota !== 'reconciliar';
+  const mostrarProgressoAcao = operacaoBloqueante && c.operacaoRemota !== 'encerrar';
+  const edicaoHabilitada = editavel && !operacaoBloqueante;
+  const semLinhasDisponiveis = c.disponiveis.length === 0;
+  const menosDesabilitado = !edicaoHabilitada || janela <= 2;
+  const maisDesabilitado = !edicaoHabilitada || janela >= 15;
+  // Estados persistentes seguem no texto de status; o toast fica para falhas transitórias.
+  const aviso = c.erroPreferencias ?? (expirada || indisponivel || pendente ? null : c.mensagem);
+  // Reativa o alvo já conhecido mesmo sem rascunho local (contexto ainda
+  // carregando ou outra parada apenas visualizada), sem transferir o alvo.
+  const podeAtivarPreservado = remoto && !ativa && c.podeReativarRemoto === true
+    && contextoValido && (!editavel || semLinhasDisponiveis);
+  const podeSalvar = !operacaoBloqueante && (
+    (editavel && selecionadas.length > 0 && (ativa || c.podeSolicitarAtivacao))
+    || podeAtivarPreservado);
+  const estado = remoto
+    ? estadoRemoto === 'ativo' ? 'Ativo'
+      : estadoRemoto === 'expirado' ? 'Sessão expirada'
+      : estadoRemoto === 'pendente' ? 'Aguardando confirmação'
+      : indisponivel && c.expiraEm ? 'Indisponível' : 'Desativado'
+    : c.estado === 'encerrado' ? 'Desativado' : c.estado === 'ativo' ? 'Ativo'
+      : c.estado === 'sem previsões' ? 'Sem previsões' : 'Pausado';
+  const resumo = remoto
+    ? estadoRemoto === 'ativo' ? 'ativo' : estadoRemoto === 'expirado' ? 'expirado'
+      : estadoRemoto === 'pendente' ? 'pendente' : indisponivel && c.expiraEm ? 'indisponível' : 'desativado'
+    : c.estado === 'encerrado' ? 'desativado' : c.estado === 'ativo' ? 'ativo'
+      : c.estado === 'sem previsões' ? 'sem previsões' : 'pausado';
+  const rotuloAcao = ativa ? 'Salvar alterações'
+    : expirada ? 'Reativar Radar'
+    : pendente ? 'Verificar ativação'
+    : indisponivel && configurada ? 'Tentar novamente'
+    : 'Ativar Radar';
+  const rotuloCarregando = c.operacaoRemota === 'atualizar' ? 'Salvando…'
+    : c.operacaoRemota === 'confirmar' || c.operacaoRemota === 'reconciliar' ? 'Atualizando…'
+    : !ativa && (expirada || podeAtivarPreservado) ? 'Reativando…' : 'Ativando…';
+  useEffect(() => {
+    if (!aplicandoRascunho) return;
+    setAplicandoRascunho(false);
+    setContexto(c.chaveConfiguracao);
+  }, [aplicandoRascunho, c.chaveConfiguracao]);
   useEffect(() => {
     if (!iniciar) return;
     setContexto(c.chaveConfiguracao);
     setIniciar(false);
     void c.ativar();
   }, [iniciar, c.ativar, c.chaveConfiguracao]);
+  useEffect(() => {
+    if (!aviso) { setAvisoFechado(null); return; }
+    const timer = setTimeout(() => setAvisoFechado(aviso), 6000);
+    return () => clearTimeout(timer);
+  }, [aviso]);
   const abrir = () => {
     setSelecionadas([...c.selecionadas]);
     setPrioritarias(c.preferencias.prioritarias.filter(id => c.selecionadas.includes(id)));
@@ -33,23 +91,40 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   };
   const salvar = () => {
     if (!podeSalvar) return;
-    c.aplicarConfiguracao(selecionadas, prioritarias, janela);
-    if (!ativa) setIniciar(true);
-    else setAberta(false);
+    const configuracao = editavel && selecionadas.length > 0
+      ? c.aplicarConfiguracao(selecionadas, prioritarias, janela) : null;
+    if (editavel && selecionadas.length > 0) setAplicandoRascunho(true);
+    // A ativação só fecha por ação explícita do usuário; erros permanecem visíveis.
+    if (!ativa) {
+      // No remoto, usa a configuração recém-aplicada no mesmo toque para não
+      // depender do próximo efeito/render. Sem rascunho aplicável, o hook
+      // reutiliza o alvo preservado.
+      if (remoto) {
+        if (configuracao) void c.ativar(configuracao);
+        else void c.ativar();
+      } else setIniciar(true);
+    }
   };
   const texto = { color: cores.textoPrimario };
   const secundario = { color: cores.textoSecundario, fontSize: 12 };
   const toque = { minWidth: 44, minHeight: 44, alignItems: 'center' as const, justifyContent: 'center' as const };
+  const botaoMinuto = (desabilitado: boolean) => ({ ...toque, width: 44, height: 44, borderRadius: 22,
+    backgroundColor: cores.fundoSecundario, opacity: desabilitado ? 0.45 : 1 });
   const card = { padding: 16, borderRadius: 16, backgroundColor: cores.fundoCard, gap: 10 };
   return <View style={{ borderTopWidth: 1, borderColor: cores.bordaSuave, marginTop: 6 }}>
     <Pressable accessibilityRole="button" accessibilityLabel="Gerenciar Radar de Espera" onPress={abrir}
-      style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.estado === 'ativo' ? cores.sucesso : cores.textoSecundario }} />
+      style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3,
+        backgroundColor: ativa ? cores.sucesso : expirada ? cores.perigo : cores.textoSecundario }} />
       <Text numberOfLines={1} style={{ ...texto, flex: 1, fontSize: 11 }}>
-        {ativa ? `Radar ${estado.toLowerCase()} · ${c.paradaNome} · ${c.estado === 'pausado' && c.motivoPausa ? c.motivoPausa : `${c.selecionadas.length} linhas`}` : 'Radar de Espera · Configurar'}
+        {configurada ? `Radar ${resumo} · ${c.paradaNome} · ${!remoto && c.estado === 'pausado' && c.motivoPausa ? c.motivoPausa : `${c.selecionadas.length} linhas`}`
+          : 'Radar de Espera · Configurar'}
       </Text>
-      <Text style={{ color: cores.textoPrimario, fontSize: 11 }}>{ativa ? 'Gerenciar' : 'Ativar'}</Text>
-      <ChevronRight size={14} color={cores.iconeSecundario} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 32, borderRadius: 16,
+        paddingHorizontal: 10, backgroundColor: temaAtual === 'escuro' ? cores.fundoSecundario : cores.fundoPrimarioSuave }}>
+        <Bell size={14} color={cores.textoPrimario} />
+        <Text style={{ color: cores.textoPrimario, fontSize: 11, fontWeight: '700' }}>Configurar alertas</Text>
+      </View>
     </Pressable>
     {aberta && <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setAberta(false)}>
       <StatusBar barStyle={temaAtual === 'escuro' ? 'light-content' : 'dark-content'} />
@@ -62,10 +137,11 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
             <Text style={{ ...texto, fontWeight: '700', fontSize: 18 }}>Radar de Espera</Text>
             <Text numberOfLines={2} style={secundario}>{c.paradaNome}</Text>
           </View>
-          <Text accessibilityLiveRegion="polite" style={{ ...secundario, color: c.estado === 'ativo' ? cores.sucesso : cores.textoSecundario }}>{estado}</Text>
+          <Text accessibilityLiveRegion="polite" style={{ ...secundario,
+            color: ativa ? cores.sucesso : expirada ? cores.perigo : cores.textoSecundario }}>{estado}</Text>
         </View>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
-          {contexto !== c.chaveConfiguracao && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
+          {!contextoValido && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
           {c.outraParada && <Text style={secundario}>Monitorando {c.paradaNome}. Volte à parada acompanhada para editar. Para trocar o alvo, use o seletor de parada do Radar.</Text>}
           <View style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Linhas no Radar</Text>
@@ -82,21 +158,22 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
               const eta = candidatos.length ? Math.ceil(Math.min(...candidatos.map(v => v.etaSeg)) / 60) : null;
               return <View key={l.linhaId} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: cores.bordaSuave, borderRadius: 12, padding: 4 }}>
                 <Pressable accessibilityRole="checkbox" accessibilityLabel={`Acompanhar linha ${l.linhaCodigo}`}
-                  disabled={!editavel || c.modoRemoto === true && !selecionada && selecionadas.length >= 20}
-                  accessibilityState={{ checked: selecionada, disabled: !editavel || c.modoRemoto === true && !selecionada && selecionadas.length >= 20 }}
+                  disabled={!edicaoHabilitada || c.modoRemoto === true && !selecionada && selecionadas.length >= 20}
+                  accessibilityState={{ checked: selecionada, disabled: !edicaoHabilitada || c.modoRemoto === true && !selecionada && selecionadas.length >= 20 }}
                   onPress={() => {
                     setSelecionadas(selecionada ? selecionadas.filter(id => id !== l.linhaId) : [...selecionadas, l.linhaId]);
                     if (selecionada) setPrioritarias(prioritarias.filter(id => id !== l.linhaId));
-                  }} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minHeight: 56, gap: 10, opacity: editavel ? 1 : 0.5 }}>
+                  }} style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minHeight: 56, gap: 10, opacity: edicaoHabilitada ? 1 : 0.5 }}>
                   <View style={toque}>
                     <View style={{ height: 22, width: 22, borderWidth: 1.5, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: selecionada ? cores.fundoPrimarioSuave : cores.fundoSecundario,
+                      backgroundColor: selecionada ? cores.fundoPrimario : cores.fundoSecundario,
                       borderColor: selecionada ? cores.fundoPrimario : cores.borda }}>
-                      {selecionada && <Check size={17} strokeWidth={3} color={cores.textoPrimario} />}
+                      {selecionada && <Check size={17} strokeWidth={3} color="#FFFFFF" />}
                     </View>
                   </View>
-                  <View style={{ backgroundColor: l.cor, borderRadius: 5, padding: 5 }}>
-                    <Text style={{ color: cores.textoPrimario, backgroundColor: cores.fundoCard, borderRadius: 3, paddingHorizontal: 3, fontWeight: '700' }}>{l.linhaCodigo}</Text>
+                  <View style={{ backgroundColor: fundoIdentificador(l.cor), borderRadius: 6, minWidth: 34, alignItems: 'center',
+                    paddingVertical: 5, paddingHorizontal: 6 }}>
+                    <Text style={{ color: textoSobreCor(l.cor), fontWeight: '700' }}>{l.linhaCodigo}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text numberOfLines={2} style={{ ...texto, fontWeight: '600', fontSize: 13 }}>{c.destinos[l.linhaId] || l.subtitulo || l.nomeExibicao}</Text>
@@ -106,9 +183,9 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
                   </View>
                 </Pressable>
                 <Pressable accessibilityRole="checkbox" accessibilityLabel={`Priorizar linha ${l.linhaCodigo}`}
-                  accessibilityState={{ checked: prioridade, disabled: !selecionada || !editavel }} disabled={!selecionada || !editavel}
+                  accessibilityState={{ checked: prioridade, disabled: !selecionada || !edicaoHabilitada }} disabled={!selecionada || !edicaoHabilitada}
                   onPress={() => setPrioritarias(prioridade ? prioritarias.filter(id => id !== l.linhaId) : [...prioritarias, l.linhaId])}
-                  style={{ ...toque, opacity: selecionada && editavel ? 1 : 0.35 }}>
+                  style={{ ...toque, opacity: selecionada && edicaoHabilitada ? 1 : 0.35 }}>
                   <Star size={22} color={prioridade ? cores.fundoPrimario : cores.iconeSecundario} fill={prioridade ? cores.fundoPrimario : 'transparent'} />
                 </Pressable>
               </View>;
@@ -119,15 +196,17 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
             <Text style={secundario}>Mostrar veículos previstos dentro deste intervalo.</Text>
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {[2, 5, 10, 15].map(n => <Pressable key={n} accessibilityRole="radio" accessibilityLabel={`${n} minutos de antecedência`}
-                accessibilityState={{ selected: janela === n, disabled: !editavel }} disabled={!editavel} onPress={() => setJanela(n)}
+                accessibilityState={{ selected: janela === n, disabled: !edicaoHabilitada }} disabled={!edicaoHabilitada} onPress={() => setJanela(n)}
                 style={{ ...toque, flex: 1, borderRadius: 10, backgroundColor: janela === n ? cores.fundoPrimario : cores.fundoSecundario }}>
                 <Text style={{ color: janela === n ? cores.textoSobrePrimario : cores.textoPrimario, fontWeight: '600' }}>{n} min</Text>
               </Pressable>)}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Diminuir antecedência" disabled={!editavel || janela <= 2} onPress={() => setJanela(janela - 1)} style={toque}><Text style={texto}>−</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Diminuir antecedência" disabled={menosDesabilitado}
+                onPress={() => setJanela(janela - 1)} style={botaoMinuto(menosDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>−</Text></Pressable>
               <Text style={texto}>{janela} minutos</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Aumentar antecedência" disabled={!editavel || janela >= 15} onPress={() => setJanela(janela + 1)} style={toque}><Text style={texto}>+</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Aumentar antecedência" disabled={maisDesabilitado}
+                onPress={() => setJanela(janela + 1)} style={botaoMinuto(maisDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>+</Text></Pressable>
             </View>
           </View>
           <View accessibilityLabel="Alertas por voz. Em breve. Indisponível" style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -135,26 +214,47 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
             <View><Text style={{ ...texto, fontWeight: '600' }}>Alertas por voz no fone</Text><Text style={secundario}>Em breve</Text></View>
           </View>
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
-            ? `Acompanhamento remoto ${c.estadoRemoto === 'ativo' ? 'ativo' : c.estadoRemoto === 'pendente' ? 'pendente' : c.estadoRemoto === 'expirado' ? 'expirado' : 'indisponível ou desativado'}.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
+            ? estadoRemoto === 'ativo'
+              ? `Acompanhamento remoto ativo.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
+              : estadoRemoto === 'expirado'
+                ? `A sessão de uma hora expirou.${c.expiraEm ? ` Expirou às ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Reative para renovar intencionalmente.`
+                : estadoRemoto === 'pendente' ? 'Aguardando confirmação push neste aparelho. Mantenha o app aberto e verifique novamente.'
+                : estadoRemoto === 'indisponivel' ? 'Radar remoto indisponível. Confira a conexão e tente novamente.'
+                : 'Acompanhamento remoto desativado.'
             : 'Funciona com o aplicativo aberto e a consulta ativa. Ao sair, as previsões são removidas.'}</Text>
-          {!ativa && !c.podeSolicitarAtivacao && <Text style={secundario}>Aguarde uma consulta válida desta parada para ativar.</Text>}
+          {!ativa && !c.podeSolicitarAtivacao && <Text style={secundario}>{remoto
+            ? 'Aguarde os contextos da parada acompanhada carregarem para reativar.'
+            : 'Aguarde uma consulta válida desta parada para ativar.'}</Text>}
           {!!c.previa?.conteudo.terminal?.length && <Text style={secundario}>{c.previa.conteudo.terminal.length} veículos aguardando no terminal · presença não confirma saída.</Text>}
-          {(c.mensagem || c.erroPreferencias) && <Text accessibilityLiveRegion="polite" style={{ color: cores.perigo }}>{c.mensagem || c.erroPreferencias}</Text>}
-          {c.estado === 'pausado' && c.mensagem && <Pressable accessibilityRole="button" accessibilityLabel="Retomar"
+          {!remoto && c.estado === 'pausado' && c.mensagem && <Pressable accessibilityRole="button" accessibilityLabel="Retomar"
             disabled={!c.podeAtivar || c.solicitando} accessibilityState={{ disabled: !c.podeAtivar || c.solicitando }}
             onPress={() => { void c.ativar(); }} style={{ ...toque, backgroundColor: cores.fundoSecundario, borderRadius: 10 }}>
             <Text style={texto}>Retomar</Text>
           </Pressable>}
         </ScrollView>
         <View style={{ padding: 16, paddingBottom: Math.max(insets.bottom, 16), gap: 8, backgroundColor: cores.fundoPainel, borderTopWidth: 1, borderColor: cores.borda }}>
-          <Pressable accessibilityRole="button" accessibilityLabel={ativa ? 'Salvar alterações' : 'Ativar Radar'}
-            accessibilityState={{ disabled: !podeSalvar }}
+          {aviso && aviso !== avisoFechado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8,
+            borderRadius: 10, borderWidth: 1, borderColor: cores.perigo, backgroundColor: cores.fundoCard,
+            paddingLeft: 10, paddingRight: 4, paddingVertical: 4 }}>
+            <Text accessibilityLiveRegion="polite" style={{ flex: 1, color: cores.perigo, fontSize: 12 }}>{aviso}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Fechar aviso" onPress={() => setAvisoFechado(aviso)}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <X size={16} color={cores.textoSecundario} />
+            </Pressable>
+          </View>}
+          <Pressable accessibilityRole="button" accessibilityLabel={rotuloAcao}
+            accessibilityState={{ disabled: !podeSalvar, busy: mostrarProgressoAcao }}
             disabled={!podeSalvar} onPress={salvar}
-            style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: cores.fundoPrimario, opacity: podeSalvar ? 1 : 0.5 }}>
-            <Text style={{ color: cores.textoSobrePrimario, fontWeight: '700' }}>{ativa ? 'Salvar alterações' : 'Ativar Radar'}</Text>
+            style={{ minHeight: 48, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+              borderRadius: 12, backgroundColor: cores.fundoPrimario, opacity: podeSalvar ? 1 : 0.5 }}>
+            {mostrarProgressoAcao && <ActivityIndicator size="small" color={cores.textoSobrePrimario} />}
+            <Text style={{ color: cores.textoSobrePrimario, fontWeight: '700' }}>{mostrarProgressoAcao ? rotuloCarregando : rotuloAcao}</Text>
           </Pressable>
-          {ativa && <Pressable accessibilityRole="button" accessibilityLabel="Encerrar acompanhamento" onPress={() => { void c.encerrar(); setAberta(false); }} style={toque}>
-            <Text style={{ color: cores.perigo }}>Encerrar acompanhamento</Text>
+          {configurada && <Pressable accessibilityRole="button" accessibilityLabel="Encerrar acompanhamento"
+            accessibilityState={{ disabled: c.solicitando, busy: c.solicitando }}
+            disabled={c.solicitando} onPress={() => { void c.encerrar(); }}
+            style={{ ...toque, opacity: c.solicitando ? 0.5 : 1 }}>
+            <Text style={{ color: cores.perigo }}>{c.operacaoRemota === 'encerrar' ? 'Encerrando…' : 'Encerrar acompanhamento'}</Text>
           </Pressable>}
         </View>
       </View>

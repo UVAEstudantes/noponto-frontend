@@ -1,7 +1,7 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
-import React, { useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import React from "react";
+import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
   Check,
   Hand,
@@ -13,27 +13,8 @@ import {
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
-import type { CenarioNotificacaoTeste } from "@/src/services/notificacaoLocalTeste";
 
 const Configuracao = () => {
-  const [testandoNotificacao, setTestandoNotificacao] = useState(false);
-  const testarNotificacao = async (acao: CenarioNotificacaoTeste | 'encerrar') => {
-    if (testandoNotificacao) return;
-    setTestandoNotificacao(true);
-    try {
-      const { testarNotificacaoLocal, encerrarNotificacaoLocal } = await import('@/src/services/notificacaoLocalTeste');
-      const resultado = await (acao === 'encerrar' ? encerrarNotificacaoLocal() : testarNotificacaoLocal(acao));
-      if (resultado === 'negada') {
-        Alert.alert('Notificações desativadas', 'A permissão não foi concedida. Você pode habilitá-la nas configurações do Android.');
-      } else if (resultado !== 'exibida' && resultado !== 'encerrada') {
-        Alert.alert('Teste indisponível', 'Não foi possível confirmar a operação da simulação. Tente novamente.');
-      }
-    } catch {
-      Alert.alert('Teste indisponível', 'Não foi possível carregar o recurso de notificação neste aplicativo.');
-    } finally {
-      setTestandoNotificacao(false);
-    }
-  };
   const {
     temaAtual,
     preferenciaTema,
@@ -343,31 +324,6 @@ const Configuracao = () => {
           </Text>
         </View>
         <IndicadoresConfiguracao />
-        {__DEV__ && Platform.OS === 'android' && (
-          <View className="mt-4 rounded-2xl p-4" style={{ backgroundColor: cores.fundoCard }}>
-            <Text style={{ color: cores.textoSecundario }}>
-              Simulação local: os dados de chegada são fictícios.
-            </Text>
-            {([
-              ['exibir', 'Exibir: 838 chegando em 5 min'],
-              ['atualizar', 'Atualizar: 855 chegando em 3 min'],
-              ['atualizarNovamente', 'Atualizar novamente: 838 chegando em 2 min'],
-              ['encerrar', 'Encerrar'],
-            ] as const).map(([acao, rotulo]) => (
-              <Pressable
-                key={acao}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: testandoNotificacao }}
-                disabled={testandoNotificacao}
-                onPress={() => { void testarNotificacao(acao); }}
-                className="mt-3 rounded-xl p-3"
-                style={{ backgroundColor: cores.fundoPrimario, opacity: testandoNotificacao ? 0.5 : 1 }}
-              >
-                <Text style={{ color: cores.textoInverso }}>{rotulo}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
         <View
           className="mt-4 rounded-2xl p-4 flex-row items-center"
           style={{

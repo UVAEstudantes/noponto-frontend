@@ -4,6 +4,7 @@ import {BusFront,MapPin,ChevronRight,ChevronDown} from 'lucide-react-native';
 import {terminalVehicleFocus,type TerminalRadarVehicle} from '@/src/services/terminalTracking';
 import {physicalPassengerLabel} from '@/src/services/radarPassenger';
 import {renderRadarVehicleCard} from './radarVehicleCardView';
+import {fundoIdentificador,textoSobreCor} from './radarVehicleCard';
 
 export function renderTerminalPresenceSection(vehicles:TerminalRadarVehicle[],now:number,
  cores:{textoPrimario:string;textoSecundario:string;bordaSuave:string;fundoCard?:string;iconePrimario?:string},onFocus?:(vehicle:TerminalRadarVehicle)=>void,
@@ -16,9 +17,9 @@ export function renderTerminalPresenceSection(vehicles:TerminalRadarVehicle[],no
   const state=physicalPassengerLabel(v),uncertain=v.state==='Na região da origem';
   const estimate=(v.state==='A caminho'||v.state==='Saindo do terminal')?v.estimatedMinutes:undefined;
   const detailLabel='GPS há '+(age<60?age+' s':Math.floor(age/60)+' min '+age%60+' s');
-  return renderRadarVehicleCard({cardKey:v.key,cores,accent:options.accent??accent,badgeColor:accent,
+  return renderRadarVehicleCard({cardKey:v.key,cores,accent:options.accent??accent,badgeColor:fundoIdentificador(accent),
    dark:!!options.dark,first:options.first??index===0,sheet:!!options.sheet,opacity:delayed?.65:1,
-   badge:options.sheet?<BusFront size={19} color={accent}/>:<Text numberOfLines={1} style={{color:'#FFFFFF',fontSize:16,fontWeight:'800'}}>{v.code}</Text>,
+   badge:options.sheet?<BusFront size={19} color={accent}/>:<Text numberOfLines={1} style={{color:textoSobreCor(accent),fontSize:16,fontWeight:'800'}}>{v.code}</Text>,
    title:options.sheet?v.code:state,subtitle:options.sheet?state:v.directionName?`Sentido ${v.directionName.split('::')[0].trim()}`:undefined,subtitleLines:1,
    metadata:options.sheet&&v.directionName?<Text numberOfLines={1} style={{fontSize:10,color:cores.textoSecundario,marginTop:3}}>Sentido {v.directionName.split('::')[0].trim()}</Text>:undefined,expanded:options.sheet?expanded:undefined,
    trailing:<View style={{alignItems:'flex-end',maxWidth:110}}>

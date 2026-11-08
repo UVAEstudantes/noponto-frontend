@@ -47,7 +47,7 @@ export function criarCanalNotificacaoLocal(identifier: string, canal: string, ch
   async function permissao(solicitar: boolean) {
     configurarHandler();
     await Notifications.setNotificationChannelAsync(canal, {
-      name: 'Radar de chegada', importance: Notifications.AndroidImportance.DEFAULT,
+      name: 'Radar de Espera', importance: Notifications.AndroidImportance.DEFAULT,
       sound: null, enableVibrate: false,
     });
     let p = await Notifications.getPermissionsAsync();

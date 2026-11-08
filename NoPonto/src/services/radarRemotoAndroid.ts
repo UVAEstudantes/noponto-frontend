@@ -3,10 +3,15 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
+import { diagnosticarRadar, etapaRadar } from './radarRemotoDiagnostico';
 import { Platform, AppState } from 'react-native';
 import { configurarRecebimentoRemoto } from './notificacaoLocalCanal';
 import { clienteRadarEspera, IDENTIFICADOR_RADAR_ESPERA } from './notificacaoRadarLocal';
 import { criarRadarRemoto, ErroRadarRemoto } from './radarRemotoCore';
+import {
+  interpretarRespostaRadar,
+  opcoesRequisicaoRadar,
+} from './radarRemotoHttp';
 
 const baseUrl = process.env.EXPO_PUBLIC_RADAR_API_BASE_URL ?? '';
 const projectId =
@@ -28,13 +33,13 @@ export const radarRemotoAndroid = criarRadarRemoto({
 
   now: () => Date.now(),
 
-  read: key => SecureStore.getItemAsync(key, storageOptions),
+  read: key => etapaRadar('secure-store.leitura', () => SecureStore.getItemAsync(key, storageOptions)),
 
   write: (key, value) =>
-    SecureStore.setItemAsync(key, value, storageOptions),
+    etapaRadar('secure-store.escrita', () => SecureStore.setItemAsync(key, value, storageOptions)),
 
   remove: key =>
-    SecureStore.deleteItemAsync(key, storageOptions),
+    etapaRadar('secure-store.remocao', () => SecureStore.deleteItemAsync(key, storageOptions)),
 
   async request<T>(
     method: string,
@@ -44,7 +49,12 @@ export const radarRemotoAndroid = criarRadarRemoto({
   ): Promise<T> {
     // Ambos os perfis usam o applicationId com FCM já configurado.
     // APK standalone aceita somente a origem HTTPS declarada pelo seu build.
-    const url = new URL(baseUrl);
+    diagnosticarRadar('http.configuracao', 'inicio');
+    const url = await etapaRadar('http.url', async () => new URL(baseUrl));
+    diagnosticarRadar('http.plataforma', Platform.OS === 'android' ? 'android' : 'incompativel');
+    diagnosticarRadar('http.pacote-manifesto', Constants.expoConfig?.android?.package ===
+      'com.guilhermedesales.nononto.dev' ? 'compativel' : 'incompativel');
+    diagnosticarRadar('http.perfil', standalone ? 'standalone' : 'metro');
 
     if (
       Platform.OS !== 'android' ||
@@ -60,8 +70,10 @@ export const radarRemotoAndroid = criarRadarRemoto({
         )
       )
     ) {
+      diagnosticarRadar('http.configuracao', 'rejeitada');
       throw new ErroRadarRemoto(0);
     }
+    diagnosticarRadar('http.configuracao', 'ok');
 
     // Timeout compatível com React Native/Hermes.
     const controller = new AbortController();
@@ -70,40 +82,51 @@ export const radarRemotoAndroid = criarRadarRemoto({
     }, 10000);
 
     try {
-      const response = await fetch(
+      // Rotas de sessão podem conter identificadores: registra somente a família.
+      const rota = path.startsWith('/radar/sessao') ? 'sessao'
+        : path === '/radar/instalacoes' ? 'instalacoes'
+        : path.endsWith('/renovar') ? 'renovar'
+        : path.endsWith('/confirmacoes') ? 'push.solicitar'
+        : path.endsWith('/confirmar') ? 'push.confirmar'
+        : path.endsWith('/push') ? 'push.status' : 'instalacao';
+      const response = await etapaRadar(`http.${method}.${rota}`, () => fetch(
         new URL(path, url).toString(),
         {
-          method,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(credential
-              ? { Authorization: `Bearer ${credential}` }
-              : {}),
-          },
-          body:
-            body === undefined
-              ? undefined
-              : JSON.stringify(body),
+          // Cabeçalhos iguais em GET/POST/PUT/DELETE; ngrok recebe o header
+          // anti-interstitial conforme o host, sem alterar autorização.
+          ...opcoesRequisicaoRadar(
+            method,
+            url.hostname,
+            credential,
+            body
+          ),
           signal: controller.signal,
         }
-      );
+      ));
+      diagnosticarRadar('http.resposta', `status_${response.status}`);
 
-      if (!response.ok) {
-        const problem = await response
-          .json()
-          .catch(() => ({}));
+      const resultado = await interpretarRespostaRadar<T>(response);
+      diagnosticarRadar('http.formato', resultado.ok ? 'ok' : resultado.diagnostico.categoria);
+
+      if (!resultado.ok) {
+        // Diagnóstico de desenvolvimento sem corpo, token ou credencial.
+        // Erros JSON do backend são esperados e não geram ruído no console.
+        if (
+          __DEV__ &&
+          resultado.diagnostico.categoria !== 'problema'
+        ) {
+          console.warn(
+            `[Radar remoto] ${resultado.diagnostico.mensagem}`
+          );
+        }
 
         throw new ErroRadarRemoto(
-          response.status,
-          typeof problem.code === 'string'
-            ? problem.code
-            : undefined
+          resultado.status,
+          resultado.codigo
         );
       }
 
-      return response.status === 204
-        ? (null as T)
-        : response.json();
+      return resultado.dados as T;
     } finally {
       clearTimeout(timeout);
     }
@@ -111,10 +134,11 @@ export const radarRemotoAndroid = criarRadarRemoto({
 
   async token(ask) {
     if (!projectId) {
+      diagnosticarRadar('push.project-id', 'ausente');
       throw new ErroRadarRemoto(0);
     }
 
-    await Notifications.setNotificationChannelAsync(
+    await etapaRadar('push.canal', () => Notifications.setNotificationChannelAsync(
       'radar-espera-updates-v1',
       {
         name: 'Radar de Espera',
@@ -123,10 +147,10 @@ export const radarRemotoAndroid = criarRadarRemoto({
         enableVibrate: false,
         showBadge: false,
       }
-    );
+    ));
 
     let permissions =
-      await Notifications.getPermissionsAsync();
+      await etapaRadar('push.permissoes.consultar', () => Notifications.getPermissionsAsync());
 
     if (
       !permissions.granted &&
@@ -134,7 +158,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
       ask
     ) {
       permissions =
-        await Notifications.requestPermissionsAsync();
+        await etapaRadar('push.permissoes.solicitar', () => Notifications.requestPermissionsAsync());
     }
 
     if (!permissions.granted) {
@@ -144,17 +168,21 @@ export const radarRemotoAndroid = criarRadarRemoto({
       );
     }
 
+    const devicePushToken = await etapaRadar('push.fcm-token', () => Notifications.getDevicePushTokenAsync());
     return (
-      await Notifications.getExpoPushTokenAsync({
+      await etapaRadar('push.expo-token', () => Notifications.getExpoPushTokenAsync({
         projectId,
-      })
+        devicePushToken,
+      }))
     ).data;
   },
 
   async clearNotifications(current) {
+    diagnosticarRadar('notificacoes.limpar', 'inicio');
     clienteRadarEspera.invalidar();
 
-    await clienteRadarEspera.remover();
+    const limpezaLocal = await clienteRadarEspera.remover();
+    diagnosticarRadar('notificacoes.limpeza-local', limpezaLocal);
 
     const items =
       await Notifications.getPresentedNotificationsAsync();
@@ -190,8 +218,10 @@ export const radarRemotoAndroid = criarRadarRemoto({
           )
         )
     );
+    diagnosticarRadar('notificacoes.limpar', 'ok');
   },
 });
+diagnosticarRadar('modulo.android', 'carregado');
 
 configurarRecebimentoRemoto(data =>
   radarRemotoAndroid.permite(data)
@@ -223,7 +253,13 @@ Notifications.addNotificationResponseReceivedListener(
   }
 );
 
-Notifications.addPushTokenListener(() => {
+// Expo Android also emits this event when getDevicePushTokenAsync reads an
+// unchanged token. Re-enqueuing reconciliation on every read creates a loop.
+// Keep only an in-memory comparison; foreground recovery remains independent.
+let ultimoTokenNotificado: string | undefined;
+Notifications.addPushTokenListener(token => {
+  if (typeof token.data !== 'string' || token.data === ultimoTokenNotificado) return;
+  ultimoTokenNotificado = token.data;
   if (AppState.currentState === 'active') {
     void radarRemotoAndroid.reconciliar();
   }

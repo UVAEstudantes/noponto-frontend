@@ -122,7 +122,7 @@ test('compacto usa mesma apresentacao do completo antes de ordenar ETA relativo 
  assert.deepEqual(completo.map(c=>[c.id,c.etaSeg]),[['relativo',120],['absoluto',240]]);h.unmount();
 });
 
-test('comparacao DEV e acionada por toque nos dois paineis e nao existe em producao',()=>{
+test('comparacao DEV nao aparece nos dois paineis',()=>{
  const anterior=global.__DEV__;
  try{for(const dev of [true,false]){
   global.__DEV__=dev;let chamadas=0;
@@ -132,10 +132,10 @@ test('comparacao DEV e acionada por toque nos dois paineis e nao existe em produ
   h.render(()=>Component({radar,linhas:[],modal:'onibus',lateralidade:'destro',visivel:true,viewportHeight:800,
    onControlsBottomChange(){},onVerTodos(){},onEvento(){},localizavel:()=>false,onDiagnostico(){chamadas++;}}));
   const botoes=()=>nodes(h.output).filter(n=>n.props?.accessibilityLabel==='Comparar Radares em desenvolvimento');
-  assert.equal(chamadas,0);assert.equal(botoes().length,dev?1:0);if(dev)botoes()[0].props.onPress();assert.equal(chamadas,dev?1:0);h.unmount();
+  assert.equal(botoes().length,0);h.unmount();
   const s=sheet();s.render({statusConsulta:'sucesso',onDiagnostico(){chamadas++;}});
-  const b=nodes(s.h.output).find(n=>n.props?.accessibilityLabel==='Comparar Radares em desenvolvimento');
-  assert.equal(!!b,dev);if(dev)b.props.onPress();assert.equal(chamadas,dev?2:0);s.h.unmount();
+  assert.equal(nodes(s.h.output).some(n=>n.props?.accessibilityLabel==='Comparar Radares em desenvolvimento'),false);
+  assert.equal(chamadas,0);s.h.unmount();
  }}finally{if(anterior===undefined)delete global.__DEV__;else global.__DEV__=anterior;}
 });
 

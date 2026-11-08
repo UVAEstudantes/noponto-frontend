@@ -241,14 +241,27 @@ test('edicao durante envio invalida revisao anterior sem nova permissao', async 
   assert.deepEqual(aceitos,[atual.previa!.conteudo.chaveContexto]);assert.equal(h.permissoes.length,1);
 });
 
-test('conteudo compacto identifica parada veiculos e alternativas sem repetir marca', () => {
+test('conteudo compacto identifica linha parada e demais chegadas sem repetir marca', () => {
   const dados=snapshot([evento('a','A',60),evento('b','A',120),evento('c','C',300),evento('d','B',400)]).previa!.conteudo;
   dados.paradaNome='Terminal de teste';
   const texto=textoNotificacaoRadar(dados);
-  assert.equal(texto.title,'Radar de Espera');assert.equal(texto.subtitle,'Terminal de teste');
+  assert.equal(texto.title,'NoPonto · Radar de Espera');assert.equal(texto.subtitle,'Terminal de teste');
+  assert.equal(texto.color,'#FFC107');
   assert.equal(texto.data.candidatos.length,3);assert.equal(new Set(texto.data.candidatos.map(i=>i.veiculoId)).size,3);
-  assert.equal(texto.data.alternativasAdicionais,1);assert.match(texto.body,/\+1 alternativas/);
-  assert.doesNotMatch(texto.body,/NoPonto|veículo|prevista às/);assert.equal(texto.body.split('\n').length,4);
+  assert.equal(texto.data.alternativasAdicionais,1);
+  const linhas=texto.body.split('\n');
+  assert.match(linhas[0],/^A chega \d{2}:\d{2}, \d{2}:\d{2}$/);
+  assert.equal(linhas[1],'Terminal de teste');
+  assert.match(linhas[2],/^★ C chega \d{2}:\d{2}$/);
+  assert.equal(linhas[3],'+1 no Radar');
+  assert.doesNotMatch(texto.body,/NoPonto|veículo|prevista às/);
+});
+
+test('saida do terminal mantem horario e nao vira chegada', () => {
+  const dados=snapshot([{...evento('s','A',120),eventType:'DEPARTURE'}]).previa!.conteudo;
+  const texto=textoNotificacaoRadar(dados);
+  assert.match(texto.body.split('\n')[0],/^A sai \d{2}:\d{2}$/);
+  assert.doesNotMatch(texto.body,/chega/);
 });
 
 test('revogacao de permissao encerra e nao republica automaticamente', async () => {
@@ -262,10 +275,13 @@ test('revogacao de permissao encerra e nao republica automaticamente', async () 
 
 test('presenca terminal confiavel publica categoria sem inventar ETA', async () => {
   const dados=snapshot([]); dados.previa!.conteudo.terminal=[{id:'fisico',linhaId:'A',codigo:'838',desde:agora-120000}];
+  dados.previa!.conteudo.paradaNome='Terminal de teste';
   let texto: ReturnType<typeof textoNotificacaoRadar> | undefined;
   const h=preparar({async publicar(c){texto=textoNotificacaoRadar(c);return 'exibida';}});
   await h.sessao.observar(dados);await h.sessao.ativar();
-  assert.equal(h.sessao.situacao.estado,'ativo');assert.match(texto!.body,/1 veículo aguardando no terminal/);
+  assert.equal(h.sessao.situacao.estado,'ativo');
+  assert.equal(texto!.body.split('\n')[0],'1 veículo aguardando no terminal');
+  assert.equal(texto!.body.split('\n')[1],'Terminal de teste');
   assert.equal(texto!.data.candidatos.length,0);assert.doesNotMatch(texto!.body,/chega|saída/);
   await h.sessao.observar(snapshot([]));assert.equal(h.sessao.situacao.estado,'sem previsões');assert.ok(h.remocoes.length);
 });

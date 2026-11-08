@@ -13,12 +13,30 @@ export interface PortaRadarEspera {
 }
 export function textoNotificacaoRadar(conteudo: ConteudoNotificacaoRadar) {
   // Horário absoluto continua correto sem republicar a cada segundo da contagem regressiva.
-  const linha = (item: ItemNotificacaoRadar) => `${conteudo.prioridades.some(p => p.id === item.id) ? '★ ' : ''}${item.codigo} · ${item.tipo === 'DEPARTURE' ? 'saída ' : 'chega '}${new Date(item.previstoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  const hora = (item: ItemNotificacaoRadar) => new Date(item.previstoEm)
+    .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const prioritarias = new Set(conteudo.prioridades.map(p => p.id));
   const { itens, adicionais } = selecionarItensNotificacao(conteudo);
+  // Agrupa veículos da mesma linha: o resumo expande, mas não repete "chega" por veículo.
+  const grupos: { linhaId: string; codigo: string; tipo: ItemNotificacaoRadar['tipo']; horarios: string[]; prioritaria: boolean }[] = [];
+  for (const item of itens) {
+    const grupo = grupos.find(g => g.linhaId === item.linhaId && g.codigo === item.codigo && g.tipo === item.tipo);
+    if (grupo) grupo.horarios.push(hora(item));
+    else grupos.push({ linhaId: item.linhaId, codigo: item.codigo, tipo: item.tipo,
+      horarios: [hora(item)], prioritaria: prioritarias.has(item.id) });
+  }
+  const linhas = grupos.map(g => `${g.prioritaria ? '★ ' : ''}${g.codigo} ${g.tipo === 'DEPARTURE' ? 'sai' : 'chega'} ${g.horarios.join(', ')}`);
+  const parada = conteudo.paradaNome?.trim().slice(0, 60);
   const espera = conteudo.terminal?.length ?? 0;
-  return { title: 'Radar de Espera', subtitle: conteudo.paradaNome?.slice(0, 60),
-    body: [...itens.map(linha), ...(adicionais ? [`+${adicionais} alternativas no Radar`] : []),
-      ...(espera ? [`${espera} ${espera === 1 ? 'veículo aguardando' : 'veículos aguardando'} no terminal`] : [])].join('\n'),
+  const terminal = espera ? `${espera} ${espera === 1 ? 'veículo aguardando' : 'veículos aguardando'} no terminal` : null;
+  // Primeira linha recolhida: a situação principal; parada e demais chegadas ficam na expansão.
+  const corpo = linhas.length
+    ? [...linhas.slice(0, 1), ...(parada ? [parada] : []), ...linhas.slice(1),
+      ...(adicionais ? [`+${adicionais} no Radar`] : []), ...(terminal ? [terminal] : [])]
+    : [...(terminal ? [terminal] : []), ...(parada ? [parada] : []),
+      ...(adicionais ? [`+${adicionais} no Radar`] : [])];
+  return { title: 'NoPonto · Radar de Espera', subtitle: parada, color: '#FFC107',
+    body: corpo.join('\n'),
     data: { simulacao: false, origem: 'radar-espera-local', paradaContexto: conteudo.chaveContexto,
       candidatos: itens.map(i => ({ id: i.id, veiculoId: i.veiculoId, linhaId: i.linhaId, tipo: i.tipo, previstoEm: i.previstoEm })),
       alternativasAdicionais: adicionais, terminal: conteudo.terminal ?? [] } };

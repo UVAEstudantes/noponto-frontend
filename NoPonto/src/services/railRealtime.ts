@@ -57,12 +57,18 @@ const geometryCache = new PromiseCache<PreparedRailGeometry | null>();
 export async function fetchRailSnapshot(filters?: {
   linhaId?: string;
   sentidoId?: string;
+  linhaIds?: readonly string[];
 }) {
+  // An explicit empty selection must not become a request for the entire network.
+  if (filters?.linhaIds?.length === 0) return null;
   const params: Record<string, string> = {};
   if (filters?.linhaId) params.linhaId = filters.linhaId;
   if (filters?.sentidoId) params.sentidoId = filters.sentidoId;
+  const selected = new URLSearchParams();
+  for (const id of new Set(filters?.linhaIds ?? [])) selected.append("linhaIds", id);
+  const query = selected.toString();
   const result = await api.get<RailSnapshotResponse>(
-    "/rail/vehicles/snapshot",
+    `/rail/vehicles/snapshot${query ? `?${query}` : ""}`,
     { params },
   );
   return result.ok && result.data ? result.data : null;

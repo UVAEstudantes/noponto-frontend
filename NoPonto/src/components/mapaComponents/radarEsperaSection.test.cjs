@@ -11,9 +11,10 @@ function montar(estado = 'encerrado') {
  disponiveis:[{linhaId:'A',linhaCodigo:'838',cor:'#007AFF'},{linhaId:'B',linhaCodigo:'884',cor:'#FF6600'}],
  aplicarConfiguracao:(...args)=>chamadas.push(['salvar',...args]),ativar:()=>chamadas.push(['ativar']),encerrar:()=>chamadas.push(['encerrar'])};
  const Component=h.carregar('../components/mapaComponents/radarEsperaSection.tsx',{
- 'react-native':Object.fromEntries(['Modal','View','Text','Pressable','ScrollView','StatusBar'].map(n=>[n,n])),
- 'lucide-react-native':Object.fromEntries(['ArrowLeft','Check','ChevronRight','Headphones','Star'].map(n=>[n,n])),
+ 'react-native':Object.fromEntries(['ActivityIndicator','Modal','View','Text','Pressable','ScrollView','StatusBar'].map(n=>[n,n])),
+ 'lucide-react-native':Object.fromEntries(['ArrowLeft','Bell','Check','ChevronRight','Headphones','Star','X'].map(n=>[n,n])),
  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:32})},
+ './radarVehicleCard':{textoSobreCor:()=>'#FFFFFF',fundoIdentificador:c=>c},
  '@/src/hooks/useTema':{useTema:()=>({cores:temas[tema].cores,temaAtual:tema})}}).default;
  const render=()=>h.render(()=>Component({controle:c})); const botao=label=>nodes(h.output).find(n=>n.props?.accessibilityLabel===label);
  render();return {h,c,chamadas,render,botao,tema:t=>{tema=t;render();},abrir:()=>{botao('Gerenciar Radar de Espera').props.onPress();render();}};
@@ -81,4 +82,68 @@ test('consulta indisponivel impede ativacao mas permite editar rascunho',()=>{
  const m=montar();m.c.podeSolicitarAtivacao=false;m.render();m.abrir();
  assert.equal(m.botao('Ativar Radar').props.disabled,true);assert.equal(m.botao('Acompanhar linha 838').props.disabled,false);
  m.botao('Ativar Radar').props.onPress();m.render();assert.deepEqual(m.chamadas,[]);assert.match(texto(m.h.output),/Aguarde uma consulta válida/);
+});
+
+test('ativar salvar e encerrar mantem configuracao aberta ate acao explicita',()=>{
+ const m=montar();m.abrir();m.botao('Ativar Radar').props.onPress();m.render();
+ assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));assert.deepEqual(m.chamadas,[['salvar',['A'],[],10],['ativar']]);
+ m.c.estado='ativo';m.render();m.botao('Salvar alterações').props.onPress();m.render();
+ assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));assert.deepEqual(m.chamadas.at(-1),['salvar',['A'],[],10]);
+ m.botao('Encerrar acompanhamento').props.onPress();m.render();
+ assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));assert.deepEqual(m.chamadas.at(-1),['encerrar']);
+ m.botao('Voltar do Radar de Espera').props.onPress();m.render();
+ assert.equal(nodes(m.h.output).some(n=>n.type==='Modal'),false);
+});
+
+test('sessao expirada mostra reativacao e permanece aberta apos renovar',()=>{
+ const m=montar('encerrado');m.c.modoRemoto=true;m.c.estadoRemoto='expirado';m.c.expiraEm='2026-11-06T13:00:00Z';
+ m.c.podeReativarRemoto=true;m.render();m.abrir();
+ assert.equal(m.botao('Reativar Radar').props.disabled,false);assert.match(texto(m.h.output),/Sessão expirada/);
+ m.botao('Reativar Radar').props.onPress();m.render();
+ assert.deepEqual(m.chamadas,[['salvar',['A'],[],10],['ativar']]);assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));
+ m.c.estadoRemoto='ativo';m.c.estado='ativo';m.c.podeReativarRemoto=false;m.render();
+ assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));assert.ok(m.botao('Salvar alterações'));
+});
+
+test('reativa alvo preservado mesmo visualizando outra parada sem salvar rascunho',()=>{
+ const m=montar('encerrado');m.c.modoRemoto=true;m.c.estadoRemoto='expirado';m.c.expiraEm='2026-11-06T13:00:00Z';
+ m.c.outraParada=true;m.c.podeConfigurar=false;m.c.podeReativarRemoto=true;m.c.podeSolicitarAtivacao=true;
+ m.c.selecionadas=[];m.c.disponiveis=[];m.c.chaveConfiguracao='outra';m.render();m.abrir();
+ assert.equal(m.botao('Reativar Radar').props.disabled,false);
+ m.botao('Reativar Radar').props.onPress();m.render();
+ assert.deepEqual(m.chamadas,[['ativar']]);assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));
+});
+
+test('solicitacao desabilita controles e mostra a operacao em andamento',()=>{
+ const m=montar('ativo');m.c.modoRemoto=true;m.c.estadoRemoto='ativo';m.c.solicitando=true;m.c.operacaoRemota='atualizar';
+ m.render();m.abrir();assert.equal(m.botao('Salvar alterações').props.disabled,true);
+ assert.equal(m.botao('Encerrar acompanhamento').props.disabled,true);assert.equal(m.botao('Acompanhar linha 838').props.disabled,true);
+ assert.match(texto(m.h.output),/Salvando/);assert.equal(nodes(m.h.output).filter(n=>n.type==='ActivityIndicator').length,1);
+ m.c.solicitando=false;m.c.operacaoRemota=null;m.render();
+ assert.equal(m.botao('Salvar alterações').props.disabled,false);assert.equal(m.botao('Encerrar acompanhamento').props.disabled,false);
+});
+
+test('reconciliacao em segundo plano nao bloqueia edicao nem salvamento',()=>{
+ const m=montar('ativo');m.c.modoRemoto=true;m.c.estadoRemoto='ativo';m.c.solicitando=true;m.c.operacaoRemota='reconciliar';
+ m.render();m.abrir();
+ assert.equal(m.botao('Acompanhar linha 838').props.disabled,false);assert.equal(m.botao('Salvar alterações').props.disabled,false);
+ assert.equal(nodes(m.h.output).filter(n=>n.type==='ActivityIndicator').length,0);
+});
+
+test('estado pendente informa confirmacao e permite verificar novamente',()=>{
+ const m=montar('encerrado');m.c.modoRemoto=true;m.c.estadoRemoto='pendente';m.c.podeReativarRemoto=true;
+ m.render();m.abrir();assert.match(texto(m.h.output),/Aguardando confirmação push/);
+ const acao=m.botao('Verificar ativação');assert.equal(acao.props.disabled,false);acao.props.onPress();m.render();
+ assert.deepEqual(m.chamadas.at(-1),['ativar']);assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));
+});
+
+test('ativacao remota usa a configuracao aplicada no mesmo toque',()=>{
+ const m=montar('encerrado');m.c.modoRemoto=true;m.c.estadoRemoto='expirado';m.c.expiraEm='2026-11-06T13:00:00Z';
+ m.c.podeReativarRemoto=true;
+ const configuracao={paradaId:'stop',contextos:[{linhaId:'A',sentidoId:'ida',padraoOperacionalId:'op',padraoVersaoId:'v'}],
+  linhasSelecionadas:['A'],linhasPrioritarias:[],antecedenciaMinutos:10};
+ m.c.aplicarConfiguracao=(...args)=>{m.chamadas.push(['salvar',...args]);return configuracao;};
+ m.c.ativar=(...args)=>{m.chamadas.push(['ativar',...args]);};
+ m.render();m.abrir();m.botao('Reativar Radar').props.onPress();
+ assert.deepEqual(m.chamadas,[['salvar',['A'],[],10],['ativar',configuracao]]);
 });

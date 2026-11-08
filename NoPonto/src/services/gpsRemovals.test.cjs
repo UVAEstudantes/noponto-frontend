@@ -51,7 +51,7 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
     stateListeners.add(fn); return {remove() {stateListeners.delete(fn);}};
   }, emit(state) {appState.currentState = state; stateListeners.forEach(fn => fn(state));}};
   const hub = {
-    state:'Disconnected', start:async () => {hub.state = 'Connected';},
+    state:'Disconnected', stop:async()=>{hub.state='Disconnected';callbacks.close?.();}, start:async () => {hub.state = 'Connected';},
     invoke:async (...args) => {calls.push(args);},
     on:(name, fn) => {handlers[name] = fn;},
     onreconnecting:fn => {callbacks.reconnecting = fn;},
@@ -74,7 +74,7 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
     ...(unified?{'@/src/services/unifiedLocation':{useUnifiedLocation:()=>({snapshots:unified,now:clock.now})}}:{}),
     '@/src/config/env':{config:{GPS_HUB_URL:'fixture'}},
     '@microsoft/signalr':{HubConnectionBuilder, HubConnectionState:{Connected:'Connected',Connecting:'Connecting'}},
-    'react-native':{AppState:appState},
+    'react-native':{AppState:appState,Platform:{OS:'android'}},
     '@/src/services/estruturaV2':{obterTerminaisOficiaisV2:async()=>[],listarPadroesV2:async () => [], listarSentidosV2:async () => [], obterItinerarioPadraoVersaoV2:async id => structures.get(id) ?? null},
     '@/src/context/ProvedorIndicadores':{useIndicadores:() => ({preferencias:{global:true,estiloGlobal:'padrao',individuais:{onibus:'padrao',brt:'padrao',trem:'padrao'}}})},
     'react-native-webview':{WebView:() => null},

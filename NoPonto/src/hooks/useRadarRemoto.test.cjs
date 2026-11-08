@@ -1,9 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { criarHarness } = require('./radarTestHarness.cjs');
+const { criarHarness, adiada } = require('./radarTestHarness.cjs');
 const { criarRadarRemoto } = require('../services/radarRemotoCore.ts');
 
-function mount() {
+function mount(opcoes = {}) {
   const h = criarHarness(), local = [], calls = [], secure = new Map([
     ['radar.installation.v1', JSON.stringify({ credencial: 'owner.secret', instalacaoId: 'owner', credencialExpiraEm: '2027-05-01T00:00:00Z' })],
     ['radar.token.v1', 'ExpoPushToken[synthetic]'],
@@ -21,9 +21,15 @@ function mount() {
     clearNotifications: async () => { local.push('clear'); }, token: async () => 'ExpoPushToken[synthetic]',
     async request(method, route, _credential, body) {
       calls.push({ method, route, body });
+      if (opcoes.antesDeRequisitar) await opcoes.antesDeRequisitar(method, route);
       if (route === '/radar/instalacao') return { credencialExpiraEm: '2027-05-01T00:00:00Z' };
       if (route === '/radar/instalacao/push') return { registered: true, possessionConfirmed: true };
       if (method === 'GET' && route === '/radar/sessao') return session;
+      if (method === 'POST' && route === '/radar/sessao') {
+        session = { ...(body), sessaoId: `session-${calls.length}`, instalacaoId: 'owner', revisao: 1,
+          estado: 'ativa', expiraEm: new Date(h.now + 3600000).toISOString() };
+        return session;
+      }
       if (method === 'PUT') { session = { ...session, ...body, revisao: session.revisao + 1 }; return session; }
       if (method === 'DELETE') { session = null; return null; }
       throw new Error('Unexpected request');
@@ -40,8 +46,47 @@ function mount() {
   });
   if (oldFlag === undefined) delete process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED; else process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED = oldFlag;
   const render = () => h.render(() => useRadarEspera(input)); render();
-  return { h, input, render, calls, local, remote };
+  return { h, input, render, calls, local, remote, useRadarEspera };
 }
+
+test('renders e abrir fechar modal nao reconciliam novamente', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush();
+  const Component = f.h.carregar('../components/mapaComponents/radarEsperaSection.tsx', {
+    'react-native': Object.fromEntries(['ActivityIndicator', 'Modal', 'View', 'Text', 'Pressable', 'ScrollView', 'StatusBar'].map(n => [n, n])),
+    'lucide-react-native': Object.fromEntries(['ArrowLeft', 'Bell', 'Check', 'ChevronRight', 'Headphones', 'Star'].map(n => [n, n])),
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    './radarVehicleCard': { textoSobreCor: () => '#FFFFFF', fundoIdentificador: c => c },
+    '@/src/hooks/useTema': { useTema: () => ({ cores: require('../constants/tema.ts').temas.claro.cores, temaAtual: 'claro' }) },
+  }).default;
+  const nodes = v => Array.isArray(v) ? v.flatMap(nodes) : v && typeof v === 'object' ? [v, ...nodes(v.props?.children)] : [];
+  const render = () => f.h.render(() => Component({ controle: f.useRadarEspera(f.input) }));
+  render(); const before = f.calls.length;
+  assert.equal(before, 3);
+  for (let i = 0; i < 20; i++) {
+    render();
+    nodes(f.h.output).find(n => n.props?.accessibilityLabel === 'Gerenciar Radar de Espera').props.onPress();
+    render();
+    nodes(f.h.output).find(n => n.props?.accessibilityLabel === 'Voltar do Radar de Espera').props.onPress();
+    render(); await f.h.flush();
+  }
+  assert.equal(f.calls.length, before);
+  assert.equal(f.remote.estado.modo, 'ativo');
+  f.h.unmount();
+});
+
+test('AppState preserva reconciliacao ao retornar e recuperacao apos desconexao', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush();
+  assert.equal(f.calls.length, 3);
+  f.h.estado('background'); await f.h.flush();
+  assert.equal(f.calls.length, 3);
+  f.h.estado('active'); await f.h.flush(); await f.h.flush();
+  assert.equal(f.calls.length, 6);
+  // Explicit recovery is not suppressed by token equality or a time-based cache.
+  await f.remote.reconciliar(); await f.h.flush();
+  assert.equal(f.calls.length, 9);
+  assert.equal(f.remote.estado.modo, 'ativo');
+  f.h.unmount();
+});
 
 test('hook remoto recupera alvo preferencias e sessao sem consulta local e nunca publica local no background', async () => {
   const f = mount(); await f.h.flush(); await f.h.flush();
@@ -76,4 +121,90 @@ test('hook remoto informa expiracao e nao reativa silenciosamente apos uma hora'
   assert.equal(f.h.output.estadoRemoto, 'expirado'); assert.equal(f.h.output.estado, 'encerrado');
   assert.match(f.h.output.mensagem, /renovar intencionalmente/);
   assert.equal(f.calls.some(c => c.method === 'POST'), false); f.h.unmount();
+});
+
+test('hook remoto reativa sessao expirada de outra parada sem transferir o alvo', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush(); await f.h.avancar(3600000);
+  f.input.parada = { ...f.input.parada, parada: { ...f.input.parada.parada, paradaId: 'other', nome: 'Outra parada' } };
+  f.render(); await f.h.flush();
+  assert.equal(f.h.output.outraParada, true); assert.equal(f.h.output.podeConfigurar, false);
+  assert.equal(f.h.output.podeReativarRemoto, true); assert.equal(f.h.output.podeSolicitarAtivacao, true);
+  await f.h.output.ativar(); await f.h.flush();
+  assert.equal(f.h.output.estadoRemoto, 'ativo'); assert.equal(f.h.output.paradaIdMonitorada, 'stop');
+  const activation = f.calls.find(c => c.method === 'POST' && c.route === '/radar/sessao');
+  assert.ok(activation); assert.equal(activation.body.paradaId, 'stop');
+  assert.equal(activation.body.revisaoEsperada, 0);
+  assert.deepEqual(f.h.output.selecionadas, ['838', '884']);
+  f.h.unmount();
+});
+
+test('hook remoto bloqueia reativacao duplicada enquanto aguarda reconciliacao', async () => {
+  const portao = adiada();
+  const f = mount({ antesDeRequisitar: async (method, route) => {
+    if (method === 'GET' && route === '/radar/instalacao') await portao.promise;
+  }});
+  await f.h.flush();
+  assert.equal(f.h.output.solicitando, true); assert.equal(f.h.output.operacaoRemota, 'reconciliar');
+  const originalAtivar = f.remote.ativar.bind(f.remote);
+  let ativacoes = 0;
+  f.remote.ativar = (...args) => { ativacoes++; return originalAtivar(...args); };
+  const primeira = f.h.output.ativar();
+  const segunda = f.h.output.ativar();
+  f.render();
+  assert.equal(ativacoes, 1);
+  assert.equal(f.h.output.solicitando, true);
+  assert.equal(f.h.output.operacaoRemota, 'ativar');
+  portao.resolve();
+  await Promise.all([primeira, segunda]); await f.h.flush();
+  assert.equal(ativacoes, 1);
+  assert.equal(f.h.output.estadoRemoto, 'ativo');
+  assert.equal(f.h.output.solicitando, false); assert.equal(f.h.output.operacaoRemota, null);
+  f.h.unmount();
+});
+
+test('hook remoto ignora salvamentos duplicados e usa a configuracao aplicada', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush();
+  const originalAtualizar = f.remote.atualizar.bind(f.remote);
+  let atualizacoes = 0;
+  f.remote.atualizar = (...args) => { atualizacoes++; return originalAtualizar(...args); };
+  const configuracao = f.h.output.aplicarConfiguracao(['838'], ['838'], 15);
+  const duplicada = f.h.output.aplicarConfiguracao(['838', '884'], ['884'], 2);
+  f.render();
+  assert.equal(configuracao.antecedenciaMinutos, 15);
+  assert.equal(duplicada, null);
+  assert.equal(atualizacoes, 1);
+  assert.equal(f.h.output.solicitando, true); assert.equal(f.h.output.operacaoRemota, 'atualizar');
+  await f.h.flush(); await f.h.flush();
+  assert.equal(f.h.output.solicitando, false); assert.equal(f.h.output.operacaoRemota, null);
+  const put = f.calls.filter(c => c.method === 'PUT').at(-1);
+  assert.equal(put.body.antecedenciaMinutos, 15);
+  assert.deepEqual(put.body.linhasSelecionadas, ['838']);
+  assert.equal(atualizacoes, 1); f.h.unmount();
+});
+
+test('hook remoto ativa com a configuracao aplicada antes de novo render', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush(); await f.h.avancar(3600000);
+  const configuracao = f.h.output.aplicarConfiguracao(['838'], ['838'], 15);
+  await f.h.output.ativar(configuracao); await f.h.flush();
+  const ativacao = f.calls.filter(c => c.method === 'POST' && c.route === '/radar/sessao').at(-1);
+  assert.ok(ativacao);
+  assert.equal(ativacao.body.antecedenciaMinutos, 15);
+  assert.deepEqual(ativacao.body.linhasSelecionadas, ['838']);
+  assert.equal(f.h.output.estadoRemoto, 'ativo'); f.h.unmount();
+});
+
+test('hook remoto ignora encerramentos duplicados', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush();
+  const originalEncerrar = f.remote.encerrar.bind(f.remote);
+  let encerramentos = 0;
+  f.remote.encerrar = (...args) => { encerramentos++; return originalEncerrar(...args); };
+  const primeira = f.h.output.encerrar();
+  const segunda = f.h.output.encerrar();
+  f.render();
+  assert.equal(encerramentos, 1);
+  assert.equal(f.h.output.solicitando, true); assert.equal(f.h.output.operacaoRemota, 'encerrar');
+  await Promise.all([primeira, segunda]); await f.h.flush();
+  assert.equal(f.h.output.estadoRemoto, 'inativo');
+  assert.equal(f.h.output.solicitando, false); assert.equal(f.h.output.operacaoRemota, null);
+  assert.equal(encerramentos, 1); f.h.unmount();
 });

@@ -9,6 +9,7 @@ function fixture() {
   const calls: { method: string; route: string; body?: any }[] = [];
   let now = Date.parse('2026-11-06T12:00:00Z'), current: SessaoRemota | null = null, confirmed = false;
   let error: number | null = null, token = 'ExpoPushToken[synthetic]', removed = 0, registrations = 0, serial = 0;
+  let conflictOnActivate = false;
   const port: PortaRadarRemoto = {
     projectId: 'project', id: () => `enrollment-${++serial}`, now: () => now,
     read: async k => secure.get(k) ?? null, write: async (k, v) => { secure.set(k, v); }, remove: async k => { secure.delete(k); },
@@ -29,6 +30,12 @@ function fixture() {
       if (route === '/radar/sessao' && method === 'GET') return current as T;
       if (route === '/radar/sessao') {
         const data = body as any;
+        if (method === 'POST' && conflictOnActivate) {
+          conflictOnActivate = false;
+          current = { ...data, sessaoId: 'raced-session', instalacaoId: 'owner', revisao: 4,
+            estado: 'ativa', expiraEm: new Date(now + 3600000).toISOString() };
+          throw new ErroRadarRemoto(409, 'sessao_ja_ativa');
+        }
         if (method === 'PUT') assert.equal(data.revisaoEsperada, current?.revisao);
         current = { ...data, sessaoId: current?.estado === 'ativa' ? current.sessaoId : `session-${serial}`,
           instalacaoId: 'owner', revisao: method === 'PUT' ? (current?.revisao ?? 0) + 1 : 1,
@@ -44,6 +51,7 @@ function fixture() {
     enrollmentId: JSON.parse(secure.get('radar.enrollment.v1')!).enrollmentId, proof: 'A'.repeat(64) });
   return { port, client, secure, calls, proof, get current() { return current; }, get registrations() { return registrations; },
     get removed() { return removed; }, set error(v: number | null) { error = v; }, set token(v: string) { token = v; },
+    set conflictOnActivate(v: boolean) { conflictOnActivate = v; },
     advance(ms: number) { now += ms; }, restarted: () => criarRadarRemoto(port),
   };
 }
@@ -110,11 +118,59 @@ test('remoto credencial revogada limpa armazenamento e nao registra novamente em
   f.error = null; await f.client.reconciliar(); assert.equal(f.registrations, 1);
 });
 
-test('remoto conexao perdida preserva credencial e recupera sem reativar nem duplicar local', async () => {
+test('remoto conexao perdida preserva sessao ativa e recupera sem reativar nem duplicar local', async () => {
   const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof()); f.error = 503;
-  await f.client.reconciliar(); assert.equal(f.client.estado.modo, 'indisponivel');
+  await f.client.reconciliar();
+  assert.equal(f.client.estado.modo, 'ativo'); assert.ok(f.client.estado.sessao);
+  assert.equal(f.client.estado.solicitando, false); assert.equal(f.client.estado.operacao, null);
   assert.equal(f.secure.has('radar.installation.v1'), true); assert.match(f.client.estado.mensagem!, /local permanece suspenso/);
-  f.error = null; await f.client.reconciliar(); assert.equal(f.client.estado.modo, 'ativo'); assert.equal(f.registrations, 1);
+  f.error = null; await f.client.reconciliar(); assert.equal(f.client.estado.modo, 'ativo');
+  assert.equal(f.client.estado.mensagem, null); assert.equal(f.registrations, 1);
+});
+
+test('remoto reconfiguracao ativa nao oscila para pendente e informa a operacao', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  const vistos: { modo: string; solicitando: boolean; operacao: string | null }[] = [];
+  f.client.assinar(s => vistos.push({ modo: s.modo, solicitando: s.solicitando, operacao: s.operacao }));
+  await f.client.atualizar({ ...config, antecedenciaMinutos: 15 });
+  assert.equal(vistos.some(v => v.modo === 'pendente'), false);
+  assert.ok(vistos.some(v => v.solicitando && v.operacao === 'atualizar'));
+  assert.deepEqual(vistos.at(-1), { modo: 'ativo', solicitando: false, operacao: null });
+  assert.equal(f.current!.antecedenciaMinutos, 15);
+});
+
+test('remoto falha ao salvar preserva sessao ativa e permite tentar novamente', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  const sessao = f.current!.sessaoId, revisao = f.current!.revisao;
+  f.error = 503; await f.client.atualizar({ ...config, antecedenciaMinutos: 15 });
+  assert.equal(f.client.estado.modo, 'ativo'); assert.equal(f.client.estado.sessao?.sessaoId, sessao);
+  assert.equal(f.client.estado.sessao?.revisao, revisao); assert.match(f.client.estado.mensagem!, /local permanece suspenso/);
+  assert.equal(f.client.estado.solicitando, false); assert.equal(f.client.estado.operacao, null);
+  f.error = null; await f.client.atualizar({ ...config, antecedenciaMinutos: 15 });
+  assert.equal(f.client.estado.modo, 'ativo'); assert.equal(f.client.estado.mensagem, null);
+  assert.equal(f.current!.antecedenciaMinutos, 15); assert.equal(f.current!.revisao, revisao + 1);
+});
+
+test('remoto falha ao reativar mantem expiracao visivel e a tentativa seguinte renova', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  f.advance(3600000); f.client.expirar();
+  f.error = 503; await f.client.ativar(config);
+  assert.equal(f.client.estado.modo, 'expirado'); assert.ok(f.client.estado.sessao);
+  assert.match(f.client.estado.mensagem!, /local permanece suspenso/);
+  assert.equal(f.client.estado.solicitando, false); assert.equal(f.client.estado.operacao, null);
+  f.error = null; await f.client.ativar(config);
+  assert.equal(f.client.estado.modo, 'ativo');
+  assert.equal(f.calls.filter(c => c.method === 'POST' && c.route === '/radar/sessao').length, 2);
+});
+
+test('remoto ativacao concorrente aplica configuracao na sessao que ficou ativa', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  f.advance(3600000); f.client.expirar(); f.conflictOnActivate = true;
+  await f.client.ativar({ ...config, paradaId: 'raced-stop', antecedenciaMinutos: 15 });
+  assert.equal(f.client.estado.modo, 'ativo'); assert.equal(f.client.estado.mensagem, null);
+  assert.equal(f.client.estado.sessao?.sessaoId, 'raced-session');
+  assert.equal(f.current!.paradaId, 'raced-stop'); assert.equal(f.current!.antecedenciaMinutos, 15);
+  assert.equal(f.calls.filter(c => c.method === 'PUT' && c.route === '/radar/sessao').length, 1);
 });
 
 test('remoto encerramento impede prova tardia e filtra notificacoes vencidas ou de outra revisao', async () => {

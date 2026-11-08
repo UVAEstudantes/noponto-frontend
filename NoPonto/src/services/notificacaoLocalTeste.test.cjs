@@ -113,7 +113,7 @@ test('simulacao imediata silenciosa com canal e handler', async () => {
   assert.deepEqual(h.chamadas.map(c => c[0]), ['handler', 'canal', 'verificar', 'exibir', 'consultar']);
   const canal = h.chamadas.find(c => c[0] === 'canal');
   assert.equal(canal[1], h.api.CANAL_RADAR_TESTE);
-  assert.equal(canal[2].name, 'Radar de chegada');
+  assert.equal(canal[2].name, 'Radar de Espera');
   assert.equal(canal[2].sound, null);
   assert.equal(canal[2].enableVibrate, false);
   const pedido = h.chamadas.find(c => c[0] === 'exibir')[1];

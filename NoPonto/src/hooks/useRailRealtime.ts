@@ -114,7 +114,7 @@ export function useRailRealtime({
   const demoPadraoVersaoId = demoPadraoVersaoIds[0];
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || chaveLinhas === "") {
       setVehicles([]);
       return;
     }
@@ -125,7 +125,7 @@ export function useRailRealtime({
     const poll = async () => {
       if (!active || AppState.currentState !== "active") return schedule();
       try {
-        const snapshot = await fetchRailSnapshot({ linhaId, sentidoId });
+        const snapshot = await fetchRailSnapshot({ linhaId, sentidoId, linhaIds: ids ? [...ids] : undefined });
         let values = (snapshot?.vehicles ?? []).filter((vehicle) => !ids || ids.has(vehicle.linhaId));
         if (values.length === 0 && permitirDemo && config.RAIL_DEMO && demoPadraoVersaoId) {
           const geometry = await getRailGeometry(demoPadraoVersaoId);

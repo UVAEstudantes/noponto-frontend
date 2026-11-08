@@ -166,3 +166,25 @@ Baseaacad2b em feat/radar-notificacoes. Novo perfil EASradar, developmentClient=
 URL confirmada pelo operador em variáveis do perfil: https://duplicity-wisplike-friend.ngrok-free.dev para REST/Radar e wss correspondente no SignalR. Cliente continua lendo EXPO_PUBLIC_RADAR_API_BASE_URL, sem hardcode da URL nele; standalone valida HTTPS/origem incorporada pelo build/pacote autorizado, Dev mantém exceção HTTPloopback. app.config valida coerência REST/SignalR/opt-in, inclui SecureStore e exige variável Firebase durante EAS_BUILD. Timeout AbortController e contratos individuais de enrollment/permissões/sessões/expiração preservados. .easignore reforçado para dotenvs; nenhum JSON privado versionado.
 
 GETs HTTPS sem credencial às rotas instalação/push/sessão responderam401JSON, sem criar instalação/sessão ou alterar backend. Seis testes Node puros da configuração aprovados/zero falhas; sem Expo/EAS/runtime nativo ou build. Documentação e comandos manuais em docs/radar-n5c4-apk.md na raiz do repositório. Diff/segredos revisados; sem TypeScript completo, suites extensas, APK, teste físico, build, Expo/EAS/Docker/ADB/SSH, alteração de servidor/Metro/backend ou pushGit. Problemas visuais continuam pendentes; disponibilidade contínua do túnel e recebimento real nessa variante precisam de validação posterior.
+
+
+## 2026-11-07 — Banda etapa 1: filtro ferroviário antes do download
+
+Preservados os sete diffs e cinco arquivos não rastreados anteriores do Radar/auditoria por SHA256. Backend local99856ba confere com base produtiva documentada6955389:612/613hashes de proveniência iguais, Program difere somente AddRadar. Identidade binária/configuração ativa não conferida ao vivo; relatório histórico05/11 registra GPS15s, distinto do default20s.
+
+Hook ferroviário encaminha linhaIds selecionadas; service monta parâmetros repetidos sem alterar api.ts e evita HTTP para seleção explicitamente vazia. Controller backend filtra conjunto antes da projeção/serialização, compatível com linhaId/sentidoId anteriores. Polling5s, geometrias, interpolação, GPS legado/unificado e Radar não alterados. Medição sintética C#:3654→2459bytes (1195bytes/32,7%); não é tráfego ngrok.
+
+Testes finais via scripts/test-radar.cjs:62aprovados/0falhas/0ignorados, incluindo regressões do diagnóstico remoto. TypeScript completo sem erros e ESLint dos quatro arquivos alterados sem avisos. Primeiro teste ferroviário reproduziu omissão de linhaIds. Invocação direta adicional dos hooks Radar falhou por loaderTS; runner existente corrigiu a execução sem editar esses testes. Backend:15testes controller+22baselineGPS aprovados, TRX validado. Sem suíte completa/serviços reais/Android/push externo.
+
+Desenho de instrumentação leve HTTP/SignalR e planos de deduplicação exata/suspensão por dono documentados em OTIMIZACAO_BANDA_ETAPA1_2026-11-07.md na raiz. Instrumentação de transporte e novos gates GPS não instalados por exigirem validação de pipeline/semântica temporal. Sem deploy, EASBuild, Docker, migrações, credenciais/Firebase/infra, commit ou push. Testes.NET compilaram localmente o projeto sem iniciar API/bootstrap.
+
+
+## 2026-11-07 — Radar: interromper reconciliação recursiva por token idêntico
+
+Causa comprovada no Expo instalado: PushTokenModule.kt/getDevicePushTokenAsync resolve o token e chama onNewToken mesmo sem mudança. O enroll da reconciliação lê esse token; addPushTokenListener enfileirava outra reconciliação indefinidamente. Renders e abertura/fechamento do modal não reproduziram novos pedidos. Correção mínima em radarRemotoAndroid.ts: comparar em memória o último token nativo notificado antes de reconciliar. Primeiro evento e mudanças reais continuam aceitos; montagem, AppState, recuperação explícita, autenticação e fila serial do core permanecem inalterados. Sem cache temporal, persistência adicional ou log de token.
+
+Teste falhou antes da correção (7rodadas no ciclo artificial limitado, em vez de2) e passou depois;62eventos idênticos adicionais geram zero pedidos novos. Primeira notificação pode causar uma rodada adicional, mas não mantém o ciclo.41testes direcionados aprovados/0falhas/0ignorados via scripts/test-radar.cjs com radarRemotoReconciliacao.test.cjs, useRadarRemoto.test.cjs, radarRemotoCore.test.ts, radarRemotoDiagnostico.test.ts e radarRemotoHttp.test.ts. Cobertos token alterado/enrollment, background/foreground, erros, atualização concorrente, renders/modal e regressões de autenticação/push. TypeScript sem erros. Nenhum teste físico ou medição do túnel nesta etapa.
+
+Preservadas alterações anteriores do diagnóstico e otimização ferroviária; nenhum arquivo backend, Worker, token/credencial persistido, configuração Firebase ou infraestrutura alterado. Sem deploy/EAS/Docker/Gradle/migrações/commit/push; sem relatório novo.
+
+Validação final adicional: ESLint somente dos três arquivos de código/teste alterados aprovado, zero erros/avisos.

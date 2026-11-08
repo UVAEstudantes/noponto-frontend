@@ -61,6 +61,7 @@ export interface ChegadaParadaInfo {
 }
 
 interface Props {
+  /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
   onDiagnostico?: () => void;
   agora?: number;
   vinculos?: readonly VinculoParada[];
@@ -136,7 +137,6 @@ function misturar(hex: string, fundo: string, alpha: number) {
 }
 
 const ParadaSheet = ({
-  onDiagnostico,
   agora,
   vinculos,
   terminalPresence = [],
@@ -495,10 +495,6 @@ const ParadaSheet = ({
                   : chegadas.some((c) => c.tipoServico?.toLowerCase().includes("trem"))
                     ? "Próximos trens" : "Próximos ônibus"}
               </Text>
-              {typeof __DEV__ !== 'undefined' && __DEV__ && onDiagnostico && <Pressable accessibilityRole="button"
-                accessibilityLabel="Comparar Radares em desenvolvimento" onPress={onDiagnostico} style={{ minHeight: 44, justifyContent: 'center' }}>
-                <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Comparar Radares · DEV</Text>
-              </Pressable>}
               {onAtualizar && !contextoIndisponivel && (
                 <Pressable
                   onPress={onAtualizar}
