@@ -18,8 +18,9 @@ interface Pendente { enrollmentId: string; token: string; expires: number }
 export interface PortaRadarRemoto {
   request<T>(method: string, route: string, credential?: string, body?: unknown): Promise<T>;
   read(key: string): Promise<string | null>; write(key: string, value: string): Promise<void>; remove(key: string): Promise<void>;
-  token(ask: boolean): Promise<string>; id(): string; now(): number; projectId: string;
+  token(ask: boolean): Promise<string>; id(): string; now(): number; projectId: string; nativeV1?: boolean;
   clearNotifications(current?: SessaoRemota | null): Promise<void>;
+  stopLocalSession?(sessionId: string | null): Promise<void>;
 }
 export class ErroRadarRemoto extends Error { constructor(public status: number, public code = 'radar_indisponivel') { super(code); } }
 const CREDENTIAL = 'radar.installation.v1', PENDING = 'radar.enrollment.v1', TOKEN = 'radar.token.v1';
@@ -29,6 +30,11 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
   let state: EstadoRemoto = { modo: 'inativo', sessao: null, mensagem: null, solicitando: false, operacao: null };
   let registration: Registro | null = null, queue = Promise.resolve<unknown>(undefined);
   const listeners = new Set<(s: EstadoRemoto) => void>();
+  async function stopLocalSession(sessionId?: string | null) {
+    if (!port.stopLocalSession) return;
+    try { await port.stopLocalSession(sessionId ?? null); }
+    catch { diagnosticarRadar('sessao.parada-local', 'falha'); }
+  }
   const emit = (value: Partial<EstadoRemoto>) => {
     if (value.modo && value.modo !== state.modo) diagnosticarRadar('estado', value.modo);
     state = { ...state, ...value }; listeners.forEach(l => l(state));
@@ -49,6 +55,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     try { return await port.request<T>(method, route, cred, body); }
     catch (e) {
       if (e instanceof ErroRadarRemoto && e.status === 401) {
+        await stopLocalSession(state.sessao?.sessaoId);
         registration = null;
         await Promise.all([port.remove(CREDENTIAL), port.remove(PENDING), port.remove(TOKEN)]);
         emit({ sessao: null, modo: 'indisponivel' });
@@ -80,6 +87,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
   }
   function accept(session: SessaoRemota | null) {
     const active = session?.estado === 'ativa' && Date.parse(session.expiraEm) > port.now();
+    if (!active && state.sessao?.sessaoId) void stopLocalSession(state.sessao.sessaoId);
     emit({ sessao: session, modo: active ? 'ativo' : session?.estado === 'expirada' || session?.estado === 'ativa' ? 'expirado' : 'inativo' });
   }
   async function enroll(ask: boolean) {
@@ -93,6 +101,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     emit({ modo: 'pendente', mensagem: 'Aguardando confirmação push neste aparelho. Mantenha o app aberto.' });
     await authenticated('POST', '/radar/instalacao/push/confirmacoes', {
       enrollmentId: pending.enrollmentId, projectId: port.projectId, expoPushToken: token,
+      ...(port.nativeV1 ? { capabilities: ['native-v1'] } : {}),
     });
     return false;
   }
@@ -172,9 +181,15 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
         const session = await authenticated<SessaoRemota | null>('GET', '/radar/sessao');
         if (session) await authenticated('DELETE', `/radar/sessao/${session.sessaoId}`);
       }
+      await stopLocalSession(state.sessao?.sessaoId);
       await port.clearNotifications(); emit({ modo: 'inativo', sessao: null });
     }),
-    expirar() { if (state.sessao?.estado === 'ativa' && Date.parse(state.sessao.expiraEm) <= port.now()) emit({ modo: 'expirado' }); },
+    expirar() {
+      if (state.sessao?.estado === 'ativa' && Date.parse(state.sessao.expiraEm) <= port.now()) {
+        void stopLocalSession(state.sessao.sessaoId);
+        emit({ modo: 'expirado' });
+      }
+    },
     permite(data: Record<string, unknown>) {
       const current = state.sessao;
       return current != null && data.mode === 'remote-radar' && state.modo === 'ativo' && current.sessaoId === data.sessionId

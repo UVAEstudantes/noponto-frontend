@@ -10,10 +10,12 @@ function fixture() {
   let now = Date.parse('2026-11-06T12:00:00Z'), current: SessaoRemota | null = null, confirmed = false;
   let error: number | null = null, token = 'ExpoPushToken[synthetic]', removed = 0, registrations = 0, serial = 0;
   let conflictOnActivate = false;
+  const stoppedLocally: (string | null)[] = [];
   const port: PortaRadarRemoto = {
     projectId: 'project', id: () => `enrollment-${++serial}`, now: () => now,
     read: async k => secure.get(k) ?? null, write: async (k, v) => { secure.set(k, v); }, remove: async k => { secure.delete(k); },
     token: async () => token, clearNotifications: async () => { removed++; },
+    stopLocalSession: async sessionId => { stoppedLocally.push(sessionId); },
     async request<T>(method: string, route: string, credential?: string, body?: unknown): Promise<T> {
       calls.push({ method, route, body });
       if (method === 'POST' && route === '/radar/instalacoes') {
@@ -52,7 +54,7 @@ function fixture() {
   return { port, client, secure, calls, proof, get current() { return current; }, get registrations() { return registrations; },
     get removed() { return removed; }, set error(v: number | null) { error = v; }, set token(v: string) { token = v; },
     set conflictOnActivate(v: boolean) { conflictOnActivate = v; },
-    advance(ms: number) { now += ms; }, restarted: () => criarRadarRemoto(port),
+    advance(ms: number) { now += ms; }, restarted: () => criarRadarRemoto(port), stoppedLocally,
   };
 }
 
@@ -182,6 +184,14 @@ test('remoto encerramento impede prova tardia e filtra notificacoes vencidas ou 
   assert.equal(f.client.permite({ ...data, sessionId: 'other' }), false);
   f.advance(30000); assert.equal(f.client.permite(data), false);
   await f.client.encerrar(); assert.equal(f.client.permite(data), false);
+});
+
+test('encerrar invalida a sessao Kotlin local e encerra a sessao remota', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  const sessionId = f.current!.sessaoId;
+  await f.client.encerrar();
+  assert.deepEqual(f.stoppedLocally.filter((id): id is string => id !== null), [sessionId]);
+  assert.equal(f.current, null);
 });
 
 test('remoto nao confirma challenge vencido ou malformado e informa allowlist', async () => {

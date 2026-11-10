@@ -12,6 +12,7 @@ import StartupOverlay, {
 } from "@/src/components/startup/StartupOverlay";
 import { StartupContext } from "@/src/components/startup/StartupContext";
 import { Platform, View } from "react-native";
+import Constants from "expo-constants";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Provider as PaperProvider } from "react-native-paper";
 import "../global.css";
@@ -38,7 +39,7 @@ const ConteudoLayout = () => {
   }, []);
   useEffect(() => {
     startupSession.noPontoStartupStarted = true;
-    if (Platform.OS === 'android' && process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED === 'true')
+    if (Platform.OS === 'android' && Constants.expoConfig?.extra?.radarRemoteEnabled === true)
       void import('../src/services/radarRemotoAndroid').then(m => m.radarRemotoAndroid.reconciliar()).catch(() => {});
   }, []);
   useEffect(() => {
@@ -74,6 +75,7 @@ const ConteudoLayout = () => {
               <Tabs.Screen name="favoritos" />
               <Tabs.Screen name="linhas" />
               <Tabs.Screen name="configuracao" />
+              <Tabs.Screen name="laboratorio-voz" options={{ href: null }} />
             </Tabs>
 
             <NavBar />

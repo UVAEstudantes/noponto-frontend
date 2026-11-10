@@ -21,18 +21,14 @@
       "env": {
         "APP_VARIANT": "radar",
         "EXPO_PUBLIC_RADAR_REMOTE_ENABLED": "true",
-        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://duplicity-wisplike-friend.ngrok-free.dev",
-        "EXPO_PUBLIC_API_BASE_URL": "https://duplicity-wisplike-friend.ngrok-free.dev",
-        "EXPO_PUBLIC_GPS_HUB_URL": "wss://duplicity-wisplike-friend.ngrok-free.dev/hub/gps",
+        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
+        "EXPO_PUBLIC_API_BASE_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
+        "EXPO_PUBLIC_GPS_HUB_URL": "wss://ununionized-suzanne-nonliterary.ngrok-free.dev/hub/gps",
         "EXPO_PUBLIC_GPS_HUB_ROUTE": "/hub/gps"
       }
     },
     "nativeprobe": {
-      "developmentClient": false,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
+      "extends": "radar",
       "env": {
         "APP_VARIANT": "nativeprobe"
       }

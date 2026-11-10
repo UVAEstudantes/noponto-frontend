@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { criarPreviaNotificacaoRadar, type EntradaPreviaNotificacaoRadar } from '../services/previaNotificacaoRadar';
 import { chaveContextoRadar } from '../services/radarParada';
 import { criarSessaoRadarEspera, textoNotificacaoRadar } from '../services/radarEspera';
@@ -14,7 +15,7 @@ import { diagnosticarRadar } from '../services/radarRemotoDiagnostico';
 
 const CONFIGURACAO_INDISPONIVEL = 'Não foi possível preparar a configuração remota. Aguarde os contextos desta parada carregarem e tente novamente.';
 
-const remotoHabilitado = process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED === 'true';
+const remotoHabilitado = Constants.expoConfig?.extra?.radarRemoteEnabled === true;
 let remoto: typeof import('../services/radarRemotoAndroid').radarRemotoAndroid | undefined;
 
 let nativo: typeof clienteRadarEspera | undefined;
@@ -35,7 +36,11 @@ const sessao = criarSessaoRadarEspera({
   remover: () => executar(c => c.remover()), invalidar: () => nativo?.invalidar(),
 });
 
-export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { selecaoDeliberada?: boolean }) {
+export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
+  selecaoDeliberada?: boolean;
+  /** A sessão Native Probe substitui temporariamente apenas o aviso local legado. */
+  suprimirNotificacaoLocal?: boolean;
+}) {
   const [estadoRemoto, setEstadoRemoto] = useState<EstadoRemoto | null>(null);
   // Feedback imediato da ação pedida pelo usuário, antes de a fila serializada
   // começar a executá-la (por exemplo, atrás de uma reconciliação).
@@ -92,7 +97,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & { seleca
       ?? entrada.itinerarios[v.linhaId]?.padroesV2?.find(p => p.padraoVersaoId === v.padraoVersaoId)?.padraoOperacionalId]).sort(),
     [...preferencias.prioritarias].sort(), preferencias.janelaMinutos,
   ]) : '';
-  const ativo = foreground && carregado && !mudouAutomaticamente && entrada.consulta.temResposta
+  const ativo = foreground && carregado && !mudouAutomaticamente && !entrada.suprimirNotificacaoLocal && entrada.consulta.temResposta
     && !['pausado', 'indisponivel'].includes(entrada.consulta.statusConsulta);
   const snapshot = { chave, ativo, previa };
   const atual = useRef(snapshot); atual.current = snapshot;

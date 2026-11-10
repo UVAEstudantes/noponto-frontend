@@ -20,6 +20,13 @@ const projectId =
   '';
 const standalone = Constants.expoConfig?.extra?.radarStandalone === true;
 const configuredOrigin = Constants.expoConfig?.extra?.radarApiOrigin;
+const nativePackageId = Constants.expoConfig?.android?.package;
+const nativeV1 = Platform.OS === 'android'
+  && Constants.expoConfig?.extra?.nativeRadarV1Enabled === true
+  && Constants.expoConfig?.extra?.radarRemoteEnabled === true
+  && (nativePackageId === 'com.guilhermedesales.nononto.dev'
+    || (Constants.expoConfig?.extra?.nativeNotificationProbe === true
+      && nativePackageId === 'com.guilhermedesales.nononto.nativeprobe'));
 
 const storageOptions = {
   keychainService: 'noponto.radar.dev.v1',
@@ -28,6 +35,7 @@ const storageOptions = {
 
 export const radarRemotoAndroid = criarRadarRemoto({
   projectId,
+  nativeV1,
 
   id: () => Crypto.randomUUID(),
 
@@ -47,19 +55,20 @@ export const radarRemotoAndroid = criarRadarRemoto({
     credential?: string,
     body?: unknown
   ): Promise<T> {
-    // Ambos os perfis usam o applicationId com FCM já configurado.
+    // Só Dev e Native Probe com Firebase correspondente podem usar este cliente.
     // APK standalone aceita somente a origem HTTPS declarada pelo seu build.
     diagnosticarRadar('http.configuracao', 'inicio');
     const url = await etapaRadar('http.url', async () => new URL(baseUrl));
+    const packageId = Constants.expoConfig?.android?.package;
+    const packageAllowed = packageId === 'com.guilhermedesales.nononto.dev'
+      || (nativeV1 && packageId === 'com.guilhermedesales.nononto.nativeprobe');
     diagnosticarRadar('http.plataforma', Platform.OS === 'android' ? 'android' : 'incompativel');
-    diagnosticarRadar('http.pacote-manifesto', Constants.expoConfig?.android?.package ===
-      'com.guilhermedesales.nononto.dev' ? 'compativel' : 'incompativel');
+    diagnosticarRadar('http.pacote-manifesto', packageAllowed ? 'compativel' : 'incompativel');
     diagnosticarRadar('http.perfil', standalone ? 'standalone' : 'metro');
 
     if (
       Platform.OS !== 'android' ||
-      Constants.expoConfig?.android?.package !==
-        'com.guilhermedesales.nononto.dev' ||
+      !packageAllowed ||
       url.username !== '' || url.password !== '' ||
       (standalone && (url.protocol !== 'https:' || url.origin !== configuredOrigin)) ||
       (
@@ -219,6 +228,15 @@ export const radarRemotoAndroid = criarRadarRemoto({
         )
     );
     diagnosticarRadar('notificacoes.limpar', 'ok');
+  },
+
+  async stopLocalSession(sessionId) {
+    if (!nativeV1) return;
+    const { requireNativeModule } = await import('expo-modules-core');
+    const native = requireNativeModule<{ stopRadarNotification: (id: string | null) => Promise<boolean> }>(
+      'RadarNativeNotification',
+    );
+    await native.stopRadarNotification(sessionId);
   },
 });
 diagnosticarRadar('modulo.android', 'carregado');

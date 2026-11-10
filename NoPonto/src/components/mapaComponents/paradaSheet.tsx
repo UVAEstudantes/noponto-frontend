@@ -5,7 +5,7 @@ import {renderRadarVehicleCard} from './radarVehicleCardView';
 import {terminalRadarVehicles,type TerminalPresence} from '@/src/services/terminalTracking';
 import { useTema } from "@/src/hooks/useTema";
 import { Parada } from "@/src/types/transporte";
-import { BusFront, ChevronDown, ChevronRight, ChevronUp, Clock3,
+import { Bell, BusFront, ChevronDown, ChevronRight, ChevronUp, Clock3,
   Map, MapPin, RefreshCw, TrainFront, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
@@ -80,6 +80,11 @@ interface Props {
   contextoIndisponivel?: boolean;
   onRecuperarContexto?: () => void;
   onAtualizar?: () => void;
+  nativeProbeEnabled?: boolean;
+  nativeProbeReady?: boolean;
+  nativeProbeActive?: boolean;
+  nativeProbeStarting?: boolean;
+  onStartNativeProbe?: () => void;
   onFocarVeiculo?: (chegada: ChegadaParadaInfo) => void;
   expandido: boolean;
   onToggleExpandir: () => void;
@@ -153,6 +158,11 @@ const ParadaSheet = ({
   contextoIndisponivel = false,
   onRecuperarContexto,
   onAtualizar,
+  nativeProbeEnabled = false,
+  nativeProbeReady = false,
+  nativeProbeActive = false,
+  nativeProbeStarting = false,
+  onStartNativeProbe,
   onFocarVeiculo,
   expandido,
   onToggleExpandir,
@@ -555,6 +565,23 @@ const ParadaSheet = ({
                 {atualizadoLabel}
               </Text>
             ) : null)}
+
+            {nativeProbeEnabled && onStartNativeProbe && (
+              <Pressable
+                onPress={onStartNativeProbe}
+                disabled={!nativeProbeReady || nativeProbeStarting || nativeProbeActive}
+                accessibilityRole="button"
+                accessibilityLabel="Iniciar sessão de notificação nativa com chegadas reais desta parada"
+                accessibilityState={{ disabled: !nativeProbeReady || nativeProbeStarting || nativeProbeActive, busy: nativeProbeStarting }}
+                style={{ minHeight: 48, marginBottom: 8, paddingHorizontal: 12, borderRadius: 12,
+                  backgroundColor: cores.fundoSecundario, flexDirection: "row", alignItems: "center",
+                  justifyContent: "center", opacity: nativeProbeReady && !nativeProbeStarting && !nativeProbeActive ? 1 : 0.55 }}>
+                <Bell size={15} color={cores.textoPrimario} />
+                <Text style={{ marginStart: 7, fontSize: 12, fontWeight: "700", color: cores.textoPrimario }}>
+                  {nativeProbeActive ? "Sessão nativa ativa" : nativeProbeStarting ? "Iniciando notificação…" : "Iniciar sessão nativa · dados reais"}
+                </Text>
+              </Pressable>
+            )}
 
             <ScrollView
               showsVerticalScrollIndicator={false}

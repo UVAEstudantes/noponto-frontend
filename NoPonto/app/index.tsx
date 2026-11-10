@@ -21,9 +21,11 @@ import {useTerminalRadarCatalog,useTerminalRadarPresence} from '@/src/hooks/useT
 import {mergeTerminalEvidence,mergeTerminalRadarLines} from '@/src/services/terminalRadarContext';
 import { usePhysicalPresence } from "@/src/services/physicalPresence";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
+import { adaptarPreviaRadarNativa } from "@/src/services/notificacaoRadarNativa";
 import { useRadarEspera } from "@/src/hooks/useRadarEspera";
 import { compararSnapshotsRadar, type SnapshotDiagnosticoRadar } from '@/src/services/diagnosticoConsistenciaRadar';
 import { useIsFocused } from "@react-navigation/native";
+import Constants from "expo-constants";
 import {
   LinhaSelecionadaInfo,
   useMobilidadeRio,
@@ -73,7 +75,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Keyboard, Pressable, Text, View } from "react-native";
+import { Alert, AppState, Keyboard, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MAX_LINHAS = 10;
@@ -190,6 +192,16 @@ const Home = () => {
     null,
   );
   const [paradaExpandida, setParadaExpandida] = useState(false);
+  const nativeProbeEnabled = Platform.OS === "android"
+    && Constants.expoConfig?.extra?.nativeNotificationProbe === true
+    && Constants.expoConfig?.android?.package === "com.guilhermedesales.nononto.nativeprobe";
+  const [nativeProbeSession, setNativeProbeSession] = useState<{ id: string; paradaId: string } | null>(null);
+  const nativeProbeSessionRef = useRef<{ id: string; paradaId: string } | null>(null);
+  const nativeProbeStartingRef = useRef(false);
+  const [nativeProbeStarting, setNativeProbeStarting] = useState(false);
+  const nativeProbePayloadRef = useRef<string | null>(null);
+  const nativeProbeRevisionRef = useRef(0);
+  const nativeProbeReceivedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     async function requestLocationPermissions() {
@@ -533,7 +545,125 @@ const Home = () => {
     modal: modalRadar, linhas: linhasSelecionadasFiltradas,
     itinerarios: { ...terminalCatalog.itineraries, ...itinerariosPorId },
     realtime: estruturasRealtimePorVersao, presencasFisicas: radarTerminalPresence,
+    suprimirNotificacaoLocal: nativeProbeEnabled && nativeProbeSession != null,
   });
+  const nativeProbePresentation = useMemo(() => {
+    const previa = acompanhamento.previa;
+    if (!nativeProbeEnabled || !paradaSelecionada || !contextoDetalhe || !consultaDetalhe.foreground
+      || !consultaDetalhe.temResposta || ["pausado", "indisponivel"].includes(consultaDetalhe.statusConsulta)
+      || !previa || previa.contexto.paradaId !== paradaSelecionada.paradaId
+      || contextoDetalhe.parada.paradaId !== paradaSelecionada.paradaId) return null;
+    return adaptarPreviaRadarNativa(previa, acompanhamento.preferencias.prioritarias);
+  }, [nativeProbeEnabled, paradaSelecionada?.paradaId, contextoDetalhe?.parada.paradaId,
+    consultaDetalhe.foreground, consultaDetalhe.temResposta, consultaDetalhe.statusConsulta,
+    acompanhamento.previa, acompanhamento.preferencias.prioritarias]);
+  const nativeProbePayload = nativeProbePresentation ? JSON.stringify(nativeProbePresentation) : null;
+  const iniciarNativeProbe = useCallback(async () => {
+    const stopId = paradaSelecionada?.paradaId;
+    if (!telaAtiva || AppState.currentState !== "active" || !nativeProbePresentation || !nativeProbePayload || !stopId || nativeProbeStartingRef.current) return;
+    nativeProbeStartingRef.current = true;
+    setNativeProbeStarting(true);
+    const session = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, paradaId: stopId };
+    try {
+      const { iniciarNotificacaoRadarNativa } = await import("@/src/services/notificacaoNativaTeste");
+      if (!await iniciarNotificacaoRadarNativa(session.id, nativeProbePresentation)) {
+        Alert.alert("Notificação indisponível", "Autorize notificações e tente novamente.");
+        return;
+      }
+      if (!telaAtiva || AppState.currentState !== "active") {
+        const { encerrarNotificacaoRadarNativa } = await import("@/src/services/notificacaoNativaTeste");
+        await encerrarNotificacaoRadarNativa(session.id);
+        return;
+      }
+      nativeProbeSessionRef.current = session;
+      nativeProbePayloadRef.current = nativeProbePayload;
+      nativeProbeRevisionRef.current = 0;
+      nativeProbeReceivedAtRef.current = consultaDetalhe.recebidoEm;
+      setNativeProbeSession(session);
+    } catch (error) {
+      console.error(`[RadarNativeProbe:${session.id}] falha ao iniciar sessão real`, error);
+      Alert.alert("Falha no teste", "Não foi possível iniciar a notificação com dados do Radar.");
+    } finally {
+      nativeProbeStartingRef.current = false;
+      setNativeProbeStarting(false);
+    }
+  }, [nativeProbePresentation, nativeProbePayload, paradaSelecionada?.paradaId, consultaDetalhe.recebidoEm, telaAtiva]);
+
+  const liberarNativeProbe = useCallback((sessionId: string) => {
+    if (nativeProbeSessionRef.current?.id !== sessionId) return;
+    nativeProbeSessionRef.current = null;
+    nativeProbePayloadRef.current = null;
+    nativeProbeReceivedAtRef.current = null;
+    setNativeProbeSession(null);
+  }, []);
+  const encerrarNativeProbe = useCallback(async (sessionId?: string) => {
+    const session = nativeProbeSessionRef.current;
+    if (!session || (sessionId != null && session.id !== sessionId)) return;
+    liberarNativeProbe(session.id);
+    try {
+      const { encerrarNotificacaoRadarNativa } = await import("@/src/services/notificacaoNativaTeste");
+      await encerrarNotificacaoRadarNativa(session.id);
+    } catch (error) {
+      console.error(`[RadarNativeProbe:${session.id}] falha ao encerrar sessão`, error);
+    }
+  }, [liberarNativeProbe]);
+  const sincronizarNativeProbe = useCallback(async () => {
+    const session = nativeProbeSessionRef.current;
+    if (!session) return;
+    try {
+      const { notificacaoRadarNativaAtiva } = await import("@/src/services/notificacaoNativaTeste");
+      const ativa = await notificacaoRadarNativaAtiva(session.id);
+      if (!ativa) liberarNativeProbe(session.id);
+    } catch (error) {
+      console.error(`[RadarNativeProbe:${session.id}] falha ao consultar sessão`, error);
+    }
+  }, [liberarNativeProbe]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void sincronizarNativeProbe();
+      else void encerrarNativeProbe();
+    });
+    return () => subscription.remove();
+  }, [encerrarNativeProbe, sincronizarNativeProbe]);
+  useEffect(() => {
+    if (telaAtiva) void sincronizarNativeProbe();
+    else void encerrarNativeProbe();
+  }, [telaAtiva, encerrarNativeProbe, sincronizarNativeProbe]);
+
+  useEffect(() => {
+    const session = nativeProbeSession;
+    if (!session || !telaAtiva || !consultaDetalhe.foreground) return;
+    const encerrar = () => {
+      void encerrarNativeProbe(session.id);
+    };
+    if (!paradaSelecionada || paradaSelecionada.paradaId !== session.paradaId || !nativeProbePayload) {
+      encerrar();
+      return;
+    }
+    if (nativeProbePayload === nativeProbePayloadRef.current
+      && consultaDetalhe.recebidoEm === nativeProbeReceivedAtRef.current) return;
+    let vigente = true;
+    const revision = ++nativeProbeRevisionRef.current;
+    void import("@/src/services/notificacaoNativaTeste").then(({ atualizarNotificacaoRadarNativa }) =>
+      atualizarNotificacaoRadarNativa(session.id, revision, JSON.parse(nativeProbePayload))).then((atualizada) => {
+        if (!vigente || nativeProbeSessionRef.current?.id !== session.id) return;
+        if (atualizada) {
+          nativeProbePayloadRef.current = nativeProbePayload;
+          nativeProbeReceivedAtRef.current = consultaDetalhe.recebidoEm;
+        }
+        else {
+          liberarNativeProbe(session.id);
+        }
+      }).catch((error: unknown) => {
+        if (!vigente) return;
+        console.error(`[RadarNativeProbe:${session.id}] falha ao atualizar notificação`, error);
+        encerrar();
+      });
+    return () => { vigente = false; };
+  }, [nativeProbeSession, nativeProbePayload, consultaDetalhe.recebidoEm, telaAtiva,
+    encerrarNativeProbe, liberarNativeProbe,
+    consultaDetalhe.foreground, paradaSelecionada?.paradaId]);
   const radar = { ...radarConsultado, previaNotificacao: acompanhamento.previa };
   const ultimoCompacto = useRef<SnapshotDiagnosticoRadar | null>(null);
   if (__DEV__ && !paradaSelecionada && telaAtiva && !buscaAberta && !containerAberto) ultimoCompacto.current = { ...radarConsultado, presencasFisicas: radarTerminalPresence };
@@ -910,6 +1040,11 @@ const Home = () => {
         erroChegadas={consultaDetalhe.erro}
         atualizadoEm={consultaDetalhe.atualizadoEm}
         statusConsulta={consultaDetalhe.statusConsulta}
+        nativeProbeEnabled={nativeProbeEnabled}
+        nativeProbeReady={nativeProbePresentation != null}
+        nativeProbeActive={nativeProbeSession?.paradaId === paradaSelecionada?.paradaId}
+        nativeProbeStarting={nativeProbeStarting}
+        onStartNativeProbe={iniciarNativeProbe}
         contextoIndisponivel={Boolean(paradaSelecionada && !contextoDetalhe)}
         onRecuperarContexto={() => {
           setParadaSelecionada(null);

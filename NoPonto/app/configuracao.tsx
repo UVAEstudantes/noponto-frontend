@@ -1,6 +1,7 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
+import { router, type Href } from "expo-router";
 import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
 import {
@@ -11,6 +12,7 @@ import {
   Moon,
   Palette,
   Sun,
+  Volume2,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
@@ -36,12 +38,17 @@ const Configuracao = () => {
     (__DEV__ || Constants.expoConfig?.extra?.nativeNotificationProbe === true);
 
   const mostrarTesteNativo = async (cenario: "multiple-lines" | "empty", headsUp: boolean) => {
+    const inicio = performance.now();
+    const traceId = Math.random().toString(36).slice(2, 8);
+    console.info(`[RadarNativeProbe:${traceId}] clique`);
     try {
       const { mostrarNotificacaoNativaTeste } = await import("@/src/services/notificacaoNativaTeste");
-      if (!await mostrarNotificacaoNativaTeste(cenario, headsUp)) {
+      console.info(`[RadarNativeProbe:${traceId}] modulo_js_ms=${(performance.now() - inicio).toFixed(1)}`);
+      if (!await mostrarNotificacaoNativaTeste(cenario, headsUp, traceId)) {
         Alert.alert("Notificações desativadas", "Autorize notificações para este aplicativo e tente novamente.");
       }
-    } catch {
+    } catch (error) {
+      console.error(`[RadarNativeProbe:${traceId}] falha ao mostrar notificação de teste`, error);
       Alert.alert("Falha no teste", "Não foi possível exibir a notificação nativa.");
     }
   };
@@ -50,7 +57,8 @@ const Configuracao = () => {
     try {
       const { limparNotificacoesNativasTeste } = await import("@/src/services/notificacaoNativaTeste");
       await limparNotificacoesNativasTeste();
-    } catch {
+    } catch (error) {
+      console.error("[RadarNativeProbe] falha ao limpar notificações de teste", error);
       Alert.alert("Falha ao limpar", "Não foi possível remover as notificações do protótipo.");
     }
   };
@@ -348,6 +356,32 @@ const Configuracao = () => {
             As preferências são salvas automaticamente.
           </Text>
         </View>
+        <Pressable
+          className="mt-4 rounded-2xl p-4 flex-row items-center"
+          style={{
+            backgroundColor: cores.fundoCard,
+            borderColor: cores.borda,
+            borderWidth: 1,
+          }}
+          onPress={() => router.push("/laboratorio-voz" as Href)}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir Laboratório de Voz"
+        >
+          <View
+            className="h-11 w-11 items-center justify-center rounded-full"
+            style={{ backgroundColor: cores.fundoSecundario }}
+          >
+            <Volume2 size={20} color={cores.iconeSecundario} />
+          </View>
+          <View className="ml-3 flex-1">
+            <Text className="text-base font-semibold" style={{ color: cores.textoPrimario }}>
+              Laboratório de voz
+            </Text>
+            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
+              Compare as vozes instaladas neste aparelho
+            </Text>
+          </View>
+        </Pressable>
         <IndicadoresConfiguracao />
         {testeNativoDisponivel ? (
           <View

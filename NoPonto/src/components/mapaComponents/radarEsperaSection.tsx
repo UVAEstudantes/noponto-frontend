@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
-import { ArrowLeft, Bell, Check, Headphones, Star, X } from 'lucide-react-native';
+import { ArrowLeft, Bell, Check, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTema } from '@/src/hooks/useTema';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 import { fundoIdentificador, textoSobreCor } from './radarVehicleCard';
+import RadarAvisosPorVoz from './radarAvisosPorVoz';
 
 /** Configuração é um rascunho: voltar descarta; salvar aplica uma única reconfiguração. */
 export default function RadarEsperaSection({ controle: c }: { controle: ControleRadarEspera }) {
@@ -209,10 +210,7 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
                 onPress={() => setJanela(janela + 1)} style={botaoMinuto(maisDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>+</Text></Pressable>
             </View>
           </View>
-          <View accessibilityLabel="Alertas por voz. Em breve. Indisponível" style={{ ...card, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Headphones size={22} color={cores.iconeSecundario} />
-            <View><Text style={{ ...texto, fontWeight: '600' }}>Alertas por voz no fone</Text><Text style={secundario}>Em breve</Text></View>
-          </View>
+          <RadarAvisosPorVoz />
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
             ? estadoRemoto === 'ativo'
               ? `Acompanhamento remoto ativo.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
@@ -232,7 +230,7 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
             <Text style={texto}>Retomar</Text>
           </Pressable>}
         </ScrollView>
-        <View style={{ padding: 16, paddingBottom: Math.max(insets.bottom, 16), gap: 8, backgroundColor: cores.fundoPainel, borderTopWidth: 1, borderColor: cores.borda }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: Math.max(insets.bottom, 10), gap: 6, backgroundColor: cores.fundoPainel, borderTopWidth: 1, borderColor: cores.borda }}>
           {aviso && aviso !== avisoFechado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8,
             borderRadius: 10, borderWidth: 1, borderColor: cores.perigo, backgroundColor: cores.fundoCard,
             paddingLeft: 10, paddingRight: 4, paddingVertical: 4 }}>

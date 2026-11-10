@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.TTS_SERVICE" />
+    </intent>
+  </queries>
+  <application>
+    <service
+        android:name="expo.modules.radarnativenotification.RadarFirebaseMessagingService"
+        android:enabled="true"
+        android:exported="false">
+      <intent-filter android:priority="-1">
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+    <receiver
+        android:name="expo.modules.radarnativenotification.RadarStopReceiver"
+        android:enabled="true"
+        android:exported="false" />
+    <service
+        android:name="expo.modules.radarnativenotification.RadarVoicePlaybackService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+  </application>
+</manifest>
