@@ -4,7 +4,7 @@
     "slug": "NoPonto",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/iconeNovo.png",
+    "icon": "./assets/noponto_launcher_legacy.png",
     "scheme": "noponto",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,8 +14,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/iconeNovoSemFundo.png",
-        "backgroundColor": "#0B0B0B"
+        "foregroundImage": "./assets/noponto_adaptive_foreground.png",
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
