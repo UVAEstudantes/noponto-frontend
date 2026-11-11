@@ -72,7 +72,12 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
   const escritas = useRef(Promise.resolve());
   const disponiveis = entrada.linhas.filter(l => l.ativa && (entrada.modal === 'todos' || l.modal === entrada.modal)
     && entrada.parada?.vinculos.some(v => v.linhaId === l.linhaId));
-  const ids = (monitoradas ?? disponiveis.map(l => l.linhaId)).filter(id => disponiveis.some(l => l.linhaId === id));
+  const selecionadasDisponiveis = (monitoradas ?? disponiveis.map(l => l.linhaId))
+    .filter(id => disponiveis.some(l => l.linhaId === id));
+  // Uma sessão restaurada pode ter linhas de outro modal; não deixe esses IDs
+  // incompatíveis esvaziarem a configuração atual ao alternar Ônibus ↔ BRT.
+  const ids = monitoradas?.length && !selecionadasDisponiveis.length
+    ? disponiveis.map(l => l.linhaId) : selecionadasDisponiveis;
   const ancoragem = ancoragemSessao;
   if (entrada.selecaoDeliberada && entrada.parada && ancoragem.current) {
     if (remotoHabilitado && ancoragem.current.id !== entrada.parada.parada.paradaId) remotoSujo.current = true;
@@ -193,7 +198,9 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
   const configuracaoPreservada = remotoHabilitado && configuracaoRemota.current != null
     && estadoRemoto?.modo !== 'inativo'
     && !(estadoRemoto?.modo === 'indisponivel' && estadoRemoto.sessao == null);
-  const configuracaoAtualDisponivel = !mudouAutomaticamente && !!entrada.parada && ids.length > 0;
+  // A tela pode ter um rascunho selecionado mesmo quando o estado anterior
+  // não tem linhas válidas para esta modalidade (ou está explicitamente vazio).
+  const configuracaoAtualDisponivel = !mudouAutomaticamente && !!entrada.parada && disponiveis.length > 0;
   const podeSolicitarAtivacao = Platform.OS === 'android' && (remotoHabilitado
     ? carregado && !!remoto && (configuracaoPreservada || configuracaoAtualDisponivel)
     : ativo);

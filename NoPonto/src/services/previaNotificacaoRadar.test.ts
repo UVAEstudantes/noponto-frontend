@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { criarPreviaNotificacaoRadar as previa, type EntradaPreviaNotificacaoRadar } from './previaNotificacaoRadar';
 import { chaveContextoRadar, type ParadaRadar } from './radarParada';
+import { adaptarPreviaRadarNativa } from './notificacaoRadarNativa';
+import { configurarRadarRemoto } from './radarRemotoContexto';
 import type { EventoParadaDto } from './eventosParada';
 import type { LinhaSelecionadaInfo } from '../hooks/useMobilidadeRio';
 import type { ItinerarioLinha } from '../types/transporte';
@@ -209,4 +211,27 @@ test('remove linha piloto nao selecionada e sentido ampliado pelo catalogo', () 
   assert.deepEqual(previa(e)!.candidatos.map(c => c.evento.eventId), ['a-volta']);
   e.linhas = [{ ...linha('A'), modoSentido: 'ambos' }];
   assert.deepEqual(previa(e)!.candidatos.map(c => c.evento.eventId).sort(), ['a', 'a-volta']);
+});
+
+test('BRT percorre o Radar remoto e a apresentação nativa sem perder linha, sentido, estação ou veículo', () => {
+  const e = entrada([{ ...evento('brt-10'), codigoLinha: '10', tipoRota: 'brt', vehicleId: 'BRT-123' }]);
+  e.modal = 'brt';
+  e.linhas = e.linhas.map(l => ({ ...l, linhaCodigo: '10', modal: 'brt' }));
+  e.itinerarios = Object.fromEntries(Object.entries(e.itinerarios).map(([id, route]) =>
+    [id, route && { ...route, modal: 'brt' }]));
+  e.consulta.contextoConsulta = chaveContextoRadar(e.parada, 'brt');
+
+  const result = previa(e)!;
+  const event = result.candidatos[0].evento;
+  const native = adaptarPreviaRadarNativa(result, []);
+  const remote = configurarRadarRemoto(e, ['A'], [], 10);
+
+  assert.deepEqual(remote?.contextos, [{ linhaId: 'A', sentidoId: 'ida',
+    padraoOperacionalId: 'A-ida-op', padraoVersaoId: 'A-ida-v1' }]);
+  assert.equal(event.tipoRota, 'brt');
+  assert.equal(event.codigoLinha, '10');
+  assert.equal(event.sentidoId, 'ida');
+  assert.equal(event.vehicleId, 'BRT-123');
+  assert.equal(native.paradaNome, 'parada');
+  assert.deepEqual(native.linhas.map(l => [l.codigo, l.principal]), [['10', '2 min']]);
 });

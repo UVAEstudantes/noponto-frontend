@@ -15,13 +15,14 @@ function montar(estado = 'encerrado') {
  'lucide-react-native':Object.fromEntries(['ArrowLeft','Bell','Check','ChevronRight','Headphones','Star','X'].map(n=>[n,n])),
  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:32})},
  './radarVehicleCard':{textoSobreCor:()=>'#FFFFFF',fundoIdentificador:c=>c},
+ './radarAvisosPorVoz':{__esModule:true,default:'Headphones'},
  '@/src/hooks/useTema':{useTema:()=>({cores:temas[tema].cores,temaAtual:tema})}}).default;
  const render=()=>h.render(()=>Component({controle:c})); const botao=label=>nodes(h.output).find(n=>n.props?.accessibilityLabel===label);
  render();return {h,c,chamadas,render,botao,tema:t=>{tema=t;render();},abrir:()=>{botao('Gerenciar Radar de Espera').props.onPress();render();}};
 }
 test('resumo compacto abre configuracao sem checkboxes nem previa DEV no mapa',()=>{
  const m=montar();assert.equal(m.botao('Acompanhar linha 838'),undefined);assert.equal(nodes(m.h.output).filter(n=>n.type==='Pressable').length,1);
- m.abrir();assert.ok(m.botao('Acompanhar linha 838'));assert.match(texto(m.h.output),/Em breve/);
+ m.abrir();assert.ok(m.botao('Acompanhar linha 838'));assert.match(texto(m.h.output),/Sem previsão elegível/);
  assert.equal(nodes(m.h.output).filter(n=>n.type==='Headphones').length,1);assert.equal(m.h.timerCount,0);
  nodes(m.h.output).find(n=>n.type==='Modal').props.onRequestClose();m.render();assert.equal(m.botao('Acompanhar linha 838'),undefined);assert.deepEqual(m.chamadas,[]);
 });
@@ -103,6 +104,15 @@ test('sessao expirada mostra reativacao e permanece aberta apos renovar',()=>{
  assert.deepEqual(m.chamadas,[['salvar',['A'],[],10],['ativar']]);assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));
  m.c.estadoRemoto='ativo';m.c.estado='ativo';m.c.podeReativarRemoto=false;m.render();
  assert.ok(nodes(m.h.output).some(n=>n.type==='Modal'));assert.ok(m.botao('Salvar alterações'));
+});
+
+test('sessao expirada habilita salvar BRT selecionado mesmo sem previa elegivel',()=>{
+ const m=montar('encerrado');m.c.modoRemoto=true;m.c.estadoRemoto='expirado';m.c.expiraEm='2026-11-06T13:00:00Z';
+ m.c.selecionadas=['brt-10','brt-12'];m.c.disponiveis=m.c.selecionadas.map((linhaId,i)=>({linhaId,linhaCodigo:String(10+i*2)}));
+ m.c.previa=null;m.c.podeReativarRemoto=true;m.c.podeSolicitarAtivacao=true;m.render();m.abrir();
+ assert.equal(m.botao('Reativar Radar').props.disabled,false);
+ assert.equal(m.botao('Acompanhar linha 10').props.accessibilityState.checked,true);
+ assert.equal(m.botao('Acompanhar linha 12').props.accessibilityState.checked,true);
 });
 
 test('reativa alvo preservado mesmo visualizando outra parada sem salvar rascunho',()=>{

@@ -39,6 +39,7 @@ function mount(opcoes = {}) {
   process.env.EXPO_PUBLIC_RADAR_REMOTE_ENABLED = 'true';
   const { useRadarEspera } = h.carregar('useRadarEspera.ts', {
     'react-native': { AppState: h.appState, Platform: { OS: 'android' } },
+    'expo-constants': { __esModule: true, default: { expoConfig: { extra: { radarRemoteEnabled: true } } } },
     '../services/storage': { carregarPreferenciasRadarEspera: async () => ({ prioritarias: [], janelaMinutos: 10 }), salvarPreferenciasRadarEspera: async () => {} },
     '../services/radarRemotoAndroid': { radarRemotoAndroid: remote },
     '../services/notificacaoRadarLocal': { clienteRadarEspera: { invalidar() {}, remover: async () => { local.push('remove-local'); return 'encerrada'; },
@@ -56,6 +57,7 @@ test('renders e abrir fechar modal nao reconciliam novamente', async () => {
     'lucide-react-native': Object.fromEntries(['ArrowLeft', 'Bell', 'Check', 'ChevronRight', 'Headphones', 'Star'].map(n => [n, n])),
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     './radarVehicleCard': { textoSobreCor: () => '#FFFFFF', fundoIdentificador: c => c },
+    './radarAvisosPorVoz': { __esModule: true, default: () => null },
     '@/src/hooks/useTema': { useTema: () => ({ cores: require('../constants/tema.ts').temas.claro.cores, temaAtual: 'claro' }) },
   }).default;
   const nodes = v => Array.isArray(v) ? v.flatMap(nodes) : v && typeof v === 'object' ? [v, ...nodes(v.props?.children)] : [];
@@ -121,6 +123,60 @@ test('hook remoto informa expiracao e nao reativa silenciosamente apos uma hora'
   assert.equal(f.h.output.estadoRemoto, 'expirado'); assert.equal(f.h.output.estado, 'encerrado');
   assert.match(f.h.output.mensagem, /renovar intencionalmente/);
   assert.equal(f.calls.some(c => c.method === 'POST'), false); f.h.unmount();
+});
+
+test('BRT reativa apos expiracao com duas linhas e sem previsao elegivel, apos trocar da selecao de onibus', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush(); await f.h.avancar(3600000);
+  const stop = f.input.parada.parada;
+  const brt = ['brt-10', 'brt-12'].map((linhaId, i) => ({ linhaId, linhaCodigo: String(10 + i * 2),
+    ativa: true, modoSentido: 'ambos', modal: 'brt' }));
+  f.input.modal = 'brt'; f.input.linhas = brt;
+  f.input.parada = { ...f.input.parada, vinculos: brt.map(l => ({ linhaId: l.linhaId,
+    sentidoId: 'ida', padraoVersaoId: `${l.linhaId}-v1`, destino: `Destino ${l.linhaCodigo}` })) };
+  f.input.itinerarios = Object.fromEntries(brt.map(l => [l.linhaId, { linha: l.linhaId, modal: 'brt', segmentos: [],
+    padroesV2: [{ linhaId: l.linhaId, sentidoId: 'ida', padraoVersaoId: `${l.linhaId}-v1`,
+      padraoOperacionalId: `${l.linhaId}-op`, ehVersaoAtual: true, paradas: [stop] }] }]));
+  f.render(); await f.h.flush();
+
+  assert.deepEqual(f.h.output.selecionadas, ['brt-10', 'brt-12']);
+  assert.equal(f.h.output.previa, null);
+  assert.equal(f.h.output.podeConfigurar, true);
+  assert.equal(f.h.output.podeSolicitarAtivacao, true);
+  const config = f.h.output.aplicarConfiguracao(['brt-10', 'brt-12'], [], 10);
+  assert.deepEqual(config?.contextos.map(c => [c.linhaId, c.sentidoId, c.padraoOperacionalId, c.padraoVersaoId]), [
+    ['brt-10', 'ida', 'brt-10-op', 'brt-10-v1'], ['brt-12', 'ida', 'brt-12-op', 'brt-12-v1'],
+  ]);
+  await f.h.output.ativar(config); await f.h.flush();
+  const activation = f.calls.filter(c => c.method === 'POST' && c.route === '/radar/sessao').at(-1);
+  assert.deepEqual(activation.body.linhasSelecionadas, ['brt-10', 'brt-12']);
+  assert.equal(f.h.output.estadoRemoto, 'ativo');
+  f.h.unmount();
+});
+
+test('BRT aceita rascunho apos trocar da selecao de onibus explicitamente vazia', async () => {
+  const f = mount(); await f.h.flush(); await f.h.flush(); await f.h.avancar(3600000);
+  f.h.output.selecionarLinha('838'); f.h.render();
+  f.h.output.selecionarLinha('884'); f.h.render();
+  const stop = f.input.parada.parada;
+  const brt = ['brt-10', 'brt-12'].map((linhaId, i) => ({ linhaId, linhaCodigo: String(10 + i * 2),
+    ativa: true, modoSentido: 'ambos', modal: 'brt' }));
+  f.input.modal = 'brt'; f.input.linhas = brt;
+  f.input.parada = { ...f.input.parada, vinculos: brt.map(l => ({ linhaId: l.linhaId,
+    sentidoId: 'ida', padraoVersaoId: `${l.linhaId}-v1`, destino: `Destino ${l.linhaCodigo}` })) };
+  f.input.itinerarios = Object.fromEntries(brt.map(l => [l.linhaId, { linha: l.linhaId, modal: 'brt', segmentos: [],
+    padroesV2: [{ linhaId: l.linhaId, sentidoId: 'ida', padraoVersaoId: `${l.linhaId}-v1`,
+      padraoOperacionalId: `${l.linhaId}-op`, ehVersaoAtual: true, paradas: [stop] }] }]));
+  f.render(); await f.h.flush();
+
+  assert.deepEqual(f.h.output.selecionadas, []);
+  assert.equal(f.h.output.podeConfigurar, true);
+  assert.equal(f.h.output.podeSolicitarAtivacao, true);
+  const config = f.h.output.aplicarConfiguracao(['brt-10', 'brt-12'], [], 10);
+  assert.deepEqual(config?.linhasSelecionadas, ['brt-10', 'brt-12']);
+  assert.deepEqual(config?.contextos.map(c => [c.linhaId, c.padraoOperacionalId, c.padraoVersaoId]), [
+    ['brt-10', 'brt-10-op', 'brt-10-v1'], ['brt-12', 'brt-12-op', 'brt-12-v1'],
+  ]);
+  f.h.unmount();
 });
 
 test('hook remoto reativa sessao expirada de outra parada sem transferir o alvo', async () => {
