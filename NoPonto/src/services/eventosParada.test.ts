@@ -24,6 +24,20 @@ test("renderiza qualidade sem transformar saída em chegada", () => {
     source: "ScheduledEstimated", quality: "ScheduleOnly" }), "Programado");
   assert.equal(rotuloQualidadeEvento({ ...base, source: "ScheduleEstimated",
     quality: "ScheduleAnchored" }), "Estimado");
+  assert.equal(rotuloQualidadeEvento({ ...base, modal: "trem", source: "RealtimeEstimated",
+    quality: "RealtimeAnchored" }), "Estimado");
+});
+
+test("estado ferroviário explícito prevalece sobre source/quality e status desconhecido é conservador", () => {
+  assert.equal(rotuloQualidadeEvento({ ...base, modal: "trem", operationalStatus: "Scheduled",
+    source: "RealtimeEstimated", quality: "RealtimeAnchored" }), "Programado");
+  assert.equal(rotuloQualidadeEvento({ ...base, modal: "trem", operationalStatus: "Estimated",
+    source: "RealtimeGps", quality: "MultiSatelliteAnchored" }), "Estimado");
+  assert.equal(rotuloQualidadeEvento({ ...base, modal: "trem", operationalStatus: "Live",
+    source: "ScheduledEstimated", quality: "ScheduleOnly" }), "Ao vivo");
+  assert.equal(rotuloQualidadeEvento({ ...base, modal: "trem", operationalStatus: "FutureStatus",
+    source: "RealtimeEstimated", quality: "RealtimeAnchored" }), "Estimado");
+  assert.equal(rotuloQualidadeEvento(base), "Ao vivo");
 });
 
 test("lista usa saídas somente quando todos os eventos são da origem operacional", () => {

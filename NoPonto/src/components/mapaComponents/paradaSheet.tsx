@@ -19,7 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StatusConsultaParada } from "@/src/hooks/useConsultaEventosParada";
-import { resumoConsultaParada } from "@/src/services/apresentacaoRadar";
+import { resumoConsultaParada, textoEtaOperacional } from "@/src/services/apresentacaoRadar";
 import type { VinculoParada } from '@/src/services/radarParada';
 
 export interface LinhaParadaInfo {
@@ -32,9 +32,15 @@ export interface LinhaParadaInfo {
 
 export interface ChegadaParadaInfo {
   id: string;
+  modal?: "onibus" | "trem";
+  tipoRota?: "onibus" | "brt" | "trem";
   vehicleId?: string | null;
   railVehicleId?: string | null;
   expectedRunId?: string | null;
+  scheduledStopId?: string | null;
+  operationalStatus?: string | null;
+  trainCode?: string | null;
+  lineName?: string | null;
   sentidoId?: string;
   padraoOperacionalId?: string | null;
   ocorrenciaParadaPadraoId?: string;
@@ -79,6 +85,7 @@ interface Props {
   statusConsulta: StatusConsultaParada;
   contextoIndisponivel?: boolean;
   onRecuperarContexto?: () => void;
+  onMonitorarRadar?: () => void;
   onAtualizar?: () => void;
   nativeProbeEnabled?: boolean;
   nativeProbeReady?: boolean;
@@ -98,13 +105,6 @@ function formatEta(segundos: number | null): string {
   const sec = total % 60;
   if (min > 0) return `${min}m ${sec < 10 ? "0" : ""}${sec}s`;
   return `${sec}s`;
-}
-
-function copyEvento(c: ChegadaParadaInfo) {
-  if (c.etaSeg == null) return 'Sem previsão';
-  if (c.etaSeg != null && c.etaSeg <= 45)
-    return c.nextVehiclesMode === "Departures" ? "Saindo agora" : "Chegando agora";
-  return `${c.nextVehiclesMode === "Departures" ? "Saída em" : "Chega em"} ${formatEta(c.etaSeg)}`;
 }
 
 function formatStatus(status?: number | null): string | null {
@@ -157,6 +157,7 @@ const ParadaSheet = ({
   statusConsulta,
   contextoIndisponivel = false,
   onRecuperarContexto,
+  onMonitorarRadar,
   onAtualizar,
   nativeProbeEnabled = false,
   nativeProbeReady = false,
@@ -363,6 +364,13 @@ const ParadaSheet = ({
                   Ponto de embarque
                 </Text>
               </View>
+              {onMonitorarRadar && <Pressable onPress={onMonitorarRadar} accessibilityRole="button"
+                accessibilityLabel={physicalModal === "trem" ? "Monitorar esta estação" : "Monitorar esta parada"}
+                hitSlop={6} style={{ width: 36, height: 36, borderRadius: 18,
+                  alignItems: "center", justifyContent: "center", backgroundColor: misturar(cores.iconePrimario, cores.fundoCard,
+                    temaAtual === "escuro" ? 0.2 : 0.12) }}>
+                <Bell size={17} color={cores.iconePrimario} />
+              </Pressable>}
               <Pressable
                 onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar detalhes da parada" hitSlop={6}
                 style={{
@@ -595,7 +603,8 @@ const ParadaSheet = ({
                   const confiancaLabel = formatConfianca(c.confianca);
                   const horarioLabel =
                     c.etaSeg == null ? 'Sem previsão' : c.horarioPrevistoLocal ?? formatEta(c.etaSeg);
-                  const etaLabel = c.horarioPrevistoLocal ? copyEvento(c) : null;
+                  const etaLabel = textoEtaOperacional(c.operationalStatus, c.eventType, c.etaSeg,
+                    c.horarioPrevistoLocal, c.modal === "trem" || c.tipoRota === "trem");
                   const isAssinada = c.assinada !== false;
                   const itemOpacity = isAssinada ? 1 : 0.55;
                   const isRealtime = c.qualidade === "Ao vivo";
@@ -629,7 +638,8 @@ const ParadaSheet = ({
                             marginTop: 2,
                           }}
                         >
-                          {[c.tipoServico, c.plataforma && `Plataforma ${c.plataforma}`]
+                          {[c.lineName, c.trainCode && `Trem ${c.trainCode}`, c.tipoServico,
+                            c.plataforma && `Plataforma ${c.plataforma}`]
                             .filter(Boolean).join(" · ")}
                         </Text>
                         <View
@@ -680,7 +690,7 @@ const ParadaSheet = ({
                               marginTop: 2,
                             }}
                           >
-                            {c.etaSeg!=null?`${c.eventType==='DEPARTURE'?'Sai':'Chega'} em ${Math.max(0,Math.ceil(c.etaSeg/60))} min`:etaLabel}
+                            {etaLabel}
                           </Text>
                         )}
                         {c.distanciaMetros != null && (

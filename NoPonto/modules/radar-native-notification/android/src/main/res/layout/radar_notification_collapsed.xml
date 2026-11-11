@@ -109,6 +109,16 @@
     </LinearLayout>
   </LinearLayout>
   <TextView
+      android:id="@+id/collapsed_context"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="2dp"
+      android:maxLines="1"
+      android:ellipsize="end"
+      android:textSize="11sp"
+      style="@style/TextAppearance.Compat.Notification.Line2"
+      android:visibility="gone" />
+  <TextView
       android:id="@+id/collapsed_empty"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"

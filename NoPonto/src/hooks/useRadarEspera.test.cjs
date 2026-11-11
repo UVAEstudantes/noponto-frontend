@@ -20,18 +20,22 @@ function entrada(now) {
       segmentos: [], padroesV2: [{ sentidoId: 'ida', padraoVersaoId: 'v', padraoOperacionalId: 'op', paradas: [stop] }] }])),
     realtime: {}, presencasFisicas: [] };
 }
-function montar() {
+function montar(opcoes = {}) {
   const h = criarHarness(), chamadas = [], salvas = [];
   const client = { async autorizar() { chamadas.push('permissao'); return 'exibida'; },
     async publicar(c, _pedir, vigente) { if (!vigente()) return 'cancelada'; chamadas.push(c); return 'exibida'; },
     async remover() { chamadas.push('remover'); return 'encerrada'; }, invalidar() {} };
   const { useRadarEspera } = h.carregar('useRadarEspera.ts', {
     'react-native': { AppState: h.appState, Platform: { OS: 'android' } },
+    'expo-constants': { __esModule: true, default: { expoConfig: { extra: {
+      radarRemoteEnabled: !!opcoes.remoto } } } },
     '../services/storage': { async carregarPreferenciasRadarEspera() { return { prioritarias: ['C'], janelaMinutos: 5 }; },
       async salvarPreferenciasRadarEspera(p) { salvas.push(p); } },
     '../services/notificacaoRadarLocal': { clienteRadarEspera: client },
+    ...(opcoes.remoto ? { '../services/radarRemotoAndroid': { radarRemotoAndroid: opcoes.remoto } } : {}),
   });
   const e = entrada(h.now);
+  opcoes.preparar?.(e);
   const render = () => h.render(() => useRadarEspera(e));
   render(); return { h, e, render, chamadas, salvas };
 }
@@ -43,6 +47,18 @@ test('hook restaura preferencias sem restaurar sessao e limpa entrada anterior',
   assert.equal(m.h.output.previa.conteudo.destaque.id, 'C');
   assert.deepEqual(m.chamadas, ['remover']);
   assert.equal(m.h.timerCount, 0); m.h.unmount();
+});
+
+test('selecionar uma parada deixa a sessão encerrada até o usuário tocar em ativar', async () => {
+  const m = montar(); await m.h.flush();
+  m.e.selecaoDeliberada = true; m.render(); await m.h.flush();
+  assert.equal(m.h.output.estado, 'encerrado');
+  assert.equal(m.chamadas.filter(c => c === 'permissao').length, 0);
+  assert.equal(m.chamadas.filter(c => typeof c === 'object').length, 0);
+  await m.h.output.ativar(); await m.h.flush();
+  assert.equal(m.h.output.estado, 'ativo');
+  assert.equal(m.chamadas.filter(c => c === 'permissao').length, 1);
+  m.h.unmount();
 });
 
 test('hook limpa no background pausa e retoma somente com consulta ativa', async () => {
@@ -153,4 +169,47 @@ test('ativacao usa rascunho salvo antes do efeito de observacao do pai',async()=
  const publicadas=m.chamadas.filter(c=>typeof c==='object');assert.equal(publicadas.length,1);
  assert.deepEqual(publicadas[0].data.candidatos.map(c=>c.linhaId),['A']);
  await m.h.flush();assert.equal(m.h.output.estado,'ativo');m.h.unmount();
+});
+
+test('hook inicializa sem parada e sem configuracao remota restaurada', async () => {
+  const m = montar({ preparar: e => { e.parada = null; } });
+  await m.h.flush();
+  assert.equal(m.h.output.paradaIdMonitorada, null);
+  assert.equal(m.h.output.podeConfigurar, false);
+  assert.deepEqual(m.h.output.sentidosSelecionados, []);
+  assert.equal(m.h.output.estado, 'encerrado');
+  m.h.unmount();
+});
+
+test('transicao de nenhuma parada para estacao manual inicializa sem excecao', async () => {
+  const m = montar({ preparar: e => { e.parada = null; } });
+  await m.h.flush();
+  m.e.parada = entrada(m.h.now).parada;
+  m.e.selecaoDeliberada = true;
+  m.render(); await m.h.flush();
+  assert.equal(m.h.output.podeConfigurar, true);
+  assert.equal(m.h.output.paradaNome, 'Parada');
+  m.h.unmount();
+});
+
+test('configuracao remota restaurada preserva selecao e alvo da sessao', async () => {
+  const ouvintes = [];
+  const remoto = { assinar(fn) { ouvintes.push(fn); return () => {}; }, reconciliar() {},
+    atualizar() { return Promise.resolve(); }, ativar() { return Promise.resolve(); },
+    encerrar() { return Promise.resolve(); }, expirar() {}, confirmar() { return Promise.resolve(); } };
+  const m = montar({ remoto });
+  await m.h.flush();
+  const sessao = { sessaoId: 's', instalacaoId: 'i', revisao: 1, estado: 'ativa',
+    expiraEm: new Date(m.h.now + 3600000).toISOString(), paradaId: 'stop',
+    contextos: [{ linhaId: 'A', sentidoId: 'ida' }], linhasSelecionadas: ['A'],
+    linhasPrioritarias: [], antecedenciaMinutos: 10 };
+  ouvintes.forEach(fn => fn({ modo: 'ativo', sessao, solicitando: false, operacao: null, mensagem: null }));
+  await m.h.flush();
+  assert.deepEqual(m.h.output.selecionadas, ['A']);
+  assert.equal(m.h.output.paradaIdMonitorada, 'stop');
+  assert.equal(m.h.output.paradaNome, 'Parada');
+  assert.equal(m.h.output.preferencias.janelaMinutos, 10);
+  assert.equal(m.h.output.estado, 'ativo');
+  assert.equal(m.h.output.podeReativarRemoto, true);
+  m.h.unmount();
 });

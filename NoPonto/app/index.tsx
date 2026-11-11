@@ -192,6 +192,11 @@ const Home = () => {
     null,
   );
   const [paradaExpandida, setParadaExpandida] = useState(false);
+  const [radarOpenRequest, setRadarOpenRequest] = useState(0);
+  const radarOpenRequestSequence = useRef(0);
+  const confirmarAberturaRadar = useCallback((request: number) => {
+    setRadarOpenRequest((current) => current === request ? 0 : current);
+  }, []);
   const nativeProbeEnabled = Platform.OS === "android"
     && Constants.expoConfig?.extra?.nativeNotificationProbe === true
     && Constants.expoConfig?.android?.package === "com.guilhermedesales.nononto.nativeprobe";
@@ -530,6 +535,8 @@ const Home = () => {
 
   const modalRadar = viewMode === "favoritos" ? "todos" : normalModal;
   const contextoDetalhe = paradaSelecionada ? radarConsultado.parada : null;
+  const paradaSelecionadaId = paradaSelecionada?.paradaId;
+  const contextoDetalheId = contextoDetalhe?.parada.paradaId;
   const consultaDetalhe = radarConsultado;
   const scopedTerminalPresence=useTerminalRadarPresence(terminalCatalog,contextoDetalhe??radarConsultado.parada,
     terminalRadarEnabled&&!buscaAberta&&!containerAberto&&(!radarConsultado.foraContexto||!!contextoDetalhe)
@@ -549,12 +556,12 @@ const Home = () => {
   });
   const nativeProbePresentation = useMemo(() => {
     const previa = acompanhamento.previa;
-    if (!nativeProbeEnabled || !paradaSelecionada || !contextoDetalhe || !consultaDetalhe.foreground
+    if (!nativeProbeEnabled || !paradaSelecionadaId || !contextoDetalheId || !consultaDetalhe.foreground
       || !consultaDetalhe.temResposta || ["pausado", "indisponivel"].includes(consultaDetalhe.statusConsulta)
-      || !previa || previa.contexto.paradaId !== paradaSelecionada.paradaId
-      || contextoDetalhe.parada.paradaId !== paradaSelecionada.paradaId) return null;
+      || !previa || previa.contexto.paradaId !== paradaSelecionadaId
+      || contextoDetalheId !== paradaSelecionadaId) return null;
     return adaptarPreviaRadarNativa(previa, acompanhamento.preferencias.prioritarias);
-  }, [nativeProbeEnabled, paradaSelecionada?.paradaId, contextoDetalhe?.parada.paradaId,
+  }, [nativeProbeEnabled, paradaSelecionadaId, contextoDetalheId,
     consultaDetalhe.foreground, consultaDetalhe.temResposta, consultaDetalhe.statusConsulta,
     acompanhamento.previa, acompanhamento.preferencias.prioritarias]);
   const nativeProbePayload = nativeProbePresentation ? JSON.stringify(nativeProbePresentation) : null;
@@ -637,7 +644,7 @@ const Home = () => {
     const encerrar = () => {
       void encerrarNativeProbe(session.id);
     };
-    if (!paradaSelecionada || paradaSelecionada.paradaId !== session.paradaId || !nativeProbePayload) {
+    if (!paradaSelecionadaId || paradaSelecionadaId !== session.paradaId || !nativeProbePayload) {
       encerrar();
       return;
     }
@@ -663,7 +670,7 @@ const Home = () => {
     return () => { vigente = false; };
   }, [nativeProbeSession, nativeProbePayload, consultaDetalhe.recebidoEm, telaAtiva,
     encerrarNativeProbe, liberarNativeProbe,
-    consultaDetalhe.foreground, paradaSelecionada?.paradaId]);
+    consultaDetalhe.foreground, paradaSelecionadaId]);
   const radar = { ...radarConsultado, previaNotificacao: acompanhamento.previa };
   const ultimoCompacto = useRef<SnapshotDiagnosticoRadar | null>(null);
   if (__DEV__ && !paradaSelecionada && telaAtiva && !buscaAberta && !containerAberto) ultimoCompacto.current = { ...radarConsultado, presencasFisicas: radarTerminalPresence };
@@ -1012,6 +1019,8 @@ const Home = () => {
       <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
         onDiagnostico={diagnosticarRadares}
         acompanhamento={acompanhamento}
+        abrirRadarSolicitacao={radarOpenRequest}
+        onAberturaRadarConcluida={confirmarAberturaRadar}
         terminalPresence={radarTerminalPresence}
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}
@@ -1051,6 +1060,13 @@ const Home = () => {
           setParadaExpandida(false);
           radar.selecaoAutomatica();
         }}
+        onMonitorarRadar={contextoDetalhe && !radarConsultado.foraContexto ? () => {
+          radarConsultado.selecionar(contextoDetalhe);
+          setParadaSelecionada(null);
+          setParadaExpandida(false);
+          const request = ++radarOpenRequestSequence.current;
+          setRadarOpenRequest(request);
+        } : undefined}
         onAtualizar={consultaDetalhe.atualizar}
         onFocarVeiculo={(chegada) => {
           const evento = consultaDetalhe.eventosPorId.get(chegada.id);

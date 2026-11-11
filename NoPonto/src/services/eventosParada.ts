@@ -14,6 +14,8 @@ export interface EventoParadaDto {
   expectedRunId?: string | null; codigoVeiculo?: string | null; trainCode?: string | null;
   scheduledAt?: string | null; estimatedAt?: string | null; secondsUntilEvent?: number | null;
   source: string; quality: string; lastRealtimeEvidenceUtc?: string | null;
+  operationalStatus?: string | null; scheduledStopId?: string | null;
+  destinationName?: string | null; lineName?: string | null;
   isEstimated: boolean; distanciaRestanteMetros?: number | null;
   stationRole?: "Origin" | "Intermediate" | "Destination";
   nextVehiclesMode?: "Departures" | "Arrivals";
@@ -61,7 +63,8 @@ export function ordenarEventosParada(eventos: EventoParadaDto[], recebidoEm = Da
 }
 
 export function rotuloQualidadeEvento(event: EventoParadaDto) {
-  return rotuloConfianca(event.source, event.quality);
+  const label = rotuloConfianca(event.source, event.quality, event.operationalStatus);
+  return event.modal === "trem" && event.operationalStatus == null && label === "Ao vivo" ? "Estimado" : label;
 }
 
 export function modoListaEventos(eventos: readonly EventoParadaDto[]) {

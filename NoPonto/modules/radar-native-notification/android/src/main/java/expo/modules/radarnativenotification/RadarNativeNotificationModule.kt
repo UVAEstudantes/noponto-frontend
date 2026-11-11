@@ -9,6 +9,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
@@ -31,6 +33,10 @@ internal data class RadarLinePresentation(
   val departure: Boolean,
   val eta: String,
   val next: List<String>,
+  val detail: String? = null,
+  val headsUp: Boolean = false,
+  val deadline: Long? = null,
+  val dataUntil: Long? = null,
 )
 
 internal data class RadarPresentation(
@@ -48,7 +54,20 @@ internal data class RadarRemoteItem(
   val etaSeconds: Long,
   val predictedAt: Long?,
   val priority: Boolean,
-)
+  val modal: String? = null,
+  val routeType: String? = null,
+  val operationalStatus: String? = null,
+  val trainCode: String? = null,
+  val railVehicleId: String? = null,
+  val expectedRunId: String? = null,
+  val scheduledStopId: String? = null,
+  val destinationName: String? = null,
+  val lineName: String? = null,
+) {
+  val isRail get() = modal?.equals("trem", ignoreCase = true) == true
+    || routeType?.equals("trem", ignoreCase = true) == true
+  val railStatus get() = operationalStatus ?: "Scheduled"
+}
 
 internal data class RadarRemotePayload(
   val sessionId: String,
@@ -252,7 +271,7 @@ class RadarNativeNotificationModule : Module() {
 
   fun receiveRemote(context: Context, data: Map<String, String>, effectivePriority: Int, sentTime: Long, ttlSeconds: Int) {
     val payload = try {
-      parseRemotePayload(data)
+      parseRemotePayload(data, sentTime)
     } catch (error: Exception) {
       logRemoteDiscard("payload_parse_exception type=${error.javaClass.simpleName}")
       return
@@ -270,7 +289,8 @@ class RadarNativeNotificationModule : Module() {
       logRemoteDiscard("notifications_disabled")
       return
     }
-    val headsUp = payload.presentation.lines.firstOrNull()?.eta?.contains("Chegando") == true
+    val firstLine = payload.presentation.lines.firstOrNull()
+    val headsUp = firstLine?.headsUp == true || firstLine?.eta?.contains("Chegando") == true
     val channelId = if (headsUp) CHANNEL_HEADS_UP else CHANNEL_NORMAL
     try {
       ensureChannel(context, channelId, headsUp)
@@ -297,12 +317,13 @@ class RadarNativeNotificationModule : Module() {
       val updated = RadarNotificationSession.updateRemote(context, payload.sessionId, payload.revision, payload.predictionVersion,
         payload.contextKey, payload.paradaId, notification)
       if (updated) RadarVoicePlaybackService.startIfEligible(context, payload, notification, effectivePriority, sentTime, ttlSeconds)
+      if (updated) scheduleLocalRefresh(context, payload)
     } catch (error: Exception) {
       Log.e(LOG_TAG, "remote_publish_exception type=${error.javaClass.simpleName}")
     }
   }
 
-  private fun parseRemotePayload(data: Map<String, String>): RadarRemotePayload? {
+  private fun parseRemotePayload(data: Map<String, String>, sentTime: Long): RadarRemotePayload? {
     if (data["mode"] != "remote-radar-native-v1") return rejectRemotePayload("mode_mismatch")
     val sessionId = data["sessionId"]?.let(::canonicalGuid) ?: return rejectRemotePayload("session_id_invalid")
     val revision = data["revision"]?.toLongOrNull()?.takeIf { it > 0 }
@@ -332,8 +353,14 @@ class RadarNativeNotificationModule : Module() {
         ?: return rejectRemotePayload("event_id_invalid")
       if (!eventIds.add(eventId)) return rejectRemotePayload("duplicate_event_id")
       val vehicleId = (item.opt("vehicleId") as? String)?.trim()?.takeIf { it.isNotEmpty() && it.length <= 128 }
-      val code = (item.opt("codigoLinha") as? String)?.trim()?.takeIf { it.isNotEmpty() && it.length <= 12 }
-        ?: return rejectRemotePayload("line_code_invalid")
+      val modal = safeOptionalText(item, "modal", 16)
+      val routeType = safeOptionalText(item, "tipoRota", 16)
+      val isRail = modal?.equals("trem", ignoreCase = true) == true
+        || routeType?.equals("trem", ignoreCase = true) == true
+      val maxLineCodeLength = if (isRail) 80 else 12
+      val code = (item.opt("codigoLinha") as? String)?.trim()
+        ?.takeIf { it.isNotEmpty() && it.length <= maxLineCodeLength }
+        ?: return rejectRemotePayload(if (isRail) "rail_line_code_invalid" else "line_code_invalid")
       val departure = when (item.opt("type") as? String) {
         "ARRIVAL" -> false
         "DEPARTURE" -> true
@@ -346,23 +373,66 @@ class RadarNativeNotificationModule : Module() {
       }
       val predictedAt = (item.opt("predictedAt") as? String)?.let(::parseValidUntil)
       val priority = item.opt("priority") as? Boolean ?: return rejectRemotePayload("item_priority_invalid")
-      items += RadarRemoteItem(eventId, vehicleId, code, departure, etaSeconds, predictedAt, priority)
+      val status = (item.opt("operationalStatus") as? String)?.takeIf { it in RAIL_STATES }
+      items += RadarRemoteItem(eventId, vehicleId, code, departure, etaSeconds, predictedAt, priority,
+        modal, routeType, status, safeOptionalText(item, "trainCode", 40),
+        optionalGuid(item, "railVehicleId"), optionalGuid(item, "expectedRunId"),
+        optionalGuid(item, "scheduledStopId"), safeOptionalText(item, "destinationName", 80),
+        safeOptionalText(item, "lineName", 80))
     }
 
     val groups = items.sortedWith(compareBy<RadarRemoteItem> { it.etaSeconds }
       .thenByDescending { it.priority }.thenBy { it.eventId })
-      .groupBy { it.code to it.departure }.values.toList()
-    val lines = groups.take(MAX_LINES).map { group ->
+      .groupBy { if (it.isRail) "rail:${it.eventId}" else "road:${it.code}:${it.departure}" }.values.toList()
+    val visibleGroups = groups.take(MAX_LINES)
+    val now = System.currentTimeMillis()
+    // O payload não traz o instante da observação ferroviária. O carimbo de envio do FCM é o
+    // proxy mais próximo (o push nasce junto da coleta) e não infla com atraso de entrega.
+    // Sem ele, o recebimento local é o fallback — que pode superestimar o frescor.
+    // shortcut: sentTime como proxy de observação; trocar quando o payload trouxer observedAt/consultadoEm.
+    val observedAt = sentTime.takeIf { it > 0 && it <= now + 60_000 } ?: now
+    val lines = visibleGroups.map { group ->
       val first = group.first()
       val shown = group.take(3)
-      RadarLinePresentation(first.code, group.any { it.priority }, first.departure,
-        (if (first.departure) "Saída em " else "") + etaText(first.etaSeconds),
-        shown.drop(1).map { etaText(it.etaSeconds) })
+      // Horário absoluto derivado do envio; não depende de quando o FCM chegou ao aparelho.
+      val sentPredictedAt = observedAt + first.etaSeconds * 1000
+      val predicted = first.predictedAt
+      val deadline = when {
+        predicted == null -> sentPredictedAt
+        // Já vencido: preserva o absoluto antigo para não ressuscitar um ETA futuro.
+        predicted < now - LOCAL_STALE_AFTER_MS -> predicted
+        predicted <= sentPredictedAt + LOCAL_PREDICTED_SLACK_MS -> predicted
+        else -> sentPredictedAt // incoerente com o ETA do envio: conserva o ETA, não o desloca
+      }
+      val dataUntil = when {
+        !first.isRail -> null
+        first.operationalStatus == "Scheduled" -> Long.MAX_VALUE
+        first.operationalStatus == "Live" -> observedAt + LOCAL_LIVE_FRESH_MS
+        else -> observedAt + LOCAL_ESTIMATE_FRESH_MS // Estimated ou estado desconhecido
+      }
+      val railExpired = first.isRail &&
+        ((dataUntil != null && now > dataUntil) || now > deadline + LOCAL_STALE_AFTER_MS)
+      val railEta = if (railExpired) "desatualizado"
+        else etaText(((deadline - now) / 1000).coerceAtLeast(0))
+      RadarLinePresentation(
+        if (first.isRail) railDestination(first) else first.code,
+        group.any { it.priority },
+        first.departure,
+        if (first.isRail) railEta else (if (first.departure) "Saída em " else "") + etaText(first.etaSeconds),
+        if (first.isRail) emptyList() else shown.drop(1).map { etaText(it.etaSeconds) },
+        if (first.isRail) railDetail(first) else null,
+        first.isRail && !first.departure && first.railStatus != "Scheduled" && !railExpired && deadline - now < 60_000,
+        deadline.takeIf { first.isRail },
+        dataUntil,
+      )
     }
-    val omittedItems = (items.size - groups.take(MAX_LINES).sumOf { minOf(it.size, 3) }).coerceAtLeast(0)
+    val hiddenGroups = groups.drop(MAX_LINES)
+    val hiddenRoadLines = hiddenGroups.count { !it.first().isRail }
+    val hiddenRailItems = hiddenGroups.filter { it.first().isRail }.sumOf { it.size }
+    val hiddenGroupedPredictions = visibleGroups.sumOf { (it.size - 3).coerceAtLeast(0) }
     val presentation = RadarPresentation(stopName, lines,
-      (additionalLines + (groups.size - MAX_LINES).coerceAtLeast(0)).coerceAtMost(999),
-      (additionalVehicles + omittedItems).coerceAtMost(999))
+      (additionalLines + hiddenRoadLines).coerceAtMost(999),
+      (additionalVehicles + hiddenRailItems + hiddenGroupedPredictions).coerceAtMost(999))
     return RadarRemotePayload(sessionId, revision, predictionVersion, contextKey, paradaId, validUntil, items, presentation)
   }
 
@@ -370,6 +440,13 @@ class RadarNativeNotificationModule : Module() {
     logRemoteDiscard(reason)
     return null
   }
+
+  private fun safeOptionalText(item: JSONObject, key: String, maxLength: Int): String? =
+    (item.opt(key) as? String)?.filterNot { it.isISOControl() }?.trim()?.take(maxLength)
+      ?.takeIf(String::isNotEmpty)
+
+  private fun optionalGuid(item: JSONObject, key: String): String? =
+    (item.opt(key) as? String)?.let(::canonicalGuid)
 
   private fun logRemoteDiscard(reason: String) {
     Log.w(LOG_TAG, "remote_discard reason=$reason")
@@ -393,8 +470,18 @@ class RadarNativeNotificationModule : Module() {
     return parser.parse(normalized, position)?.time?.takeIf { position.index == normalized.length }
   }
 
-  private fun etaText(seconds: Long): String = if (seconds < 60) "Chegando"
-    else "${seconds / 60 + if (seconds % 60 == 0L) 0 else 1} min"
+  private fun railDestination(item: RadarRemoteItem) = item.destinationName?.take(32) ?: "Destino não informado"
+
+  private fun railDetail(item: RadarRemoteItem): String = listOfNotNull(
+    when (item.railStatus) {
+      "Live" -> "Ao vivo"
+      "Estimated" -> "Estimado"
+      else -> "Programado"
+    },
+    if (item.departure) "partida" else "chegada",
+    item.predictedAt?.let { SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(java.util.Date(it)) },
+    item.lineName,
+  ).joinToString(" · ").take(120)
 
   private fun requireNotificationsEnabled(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -512,6 +599,9 @@ class RadarNativeNotificationModule : Module() {
         setBadge(this, R.id.collapsed_badge_two_priority, R.id.collapsed_badge_two_normal, it)
         setTextViewText(R.id.collapsed_eta_two, it.eta)
       }
+      val contextText = data.lines.mapNotNull { it.detail }.distinct().take(2).joinToString(" · ").take(120)
+      setTextViewText(R.id.collapsed_context, contextText)
+      setViewVisibility(R.id.collapsed_context, if (contextText.isEmpty()) View.GONE else View.VISIBLE)
       setTextViewText(R.id.collapsed_empty, "Sem previsões válidas no momento")
     }
 
@@ -526,8 +616,9 @@ class RadarNativeNotificationModule : Module() {
         setInt(R.id.heads_up_badge, "setBackgroundResource",
           if (it.priority) R.drawable.radar_route_badge else R.drawable.radar_route_badge_normal)
         setTextViewText(R.id.heads_up_eta, it.eta)
-        setTextViewText(R.id.heads_up_next, nextText(it))
-        setViewVisibility(R.id.heads_up_next, if (it.next.isEmpty()) View.GONE else View.VISIBLE)
+        val detail = it.detail ?: nextText(it)
+        setTextViewText(R.id.heads_up_next, detail)
+        setViewVisibility(R.id.heads_up_next, if (detail.isEmpty()) View.GONE else View.VISIBLE)
       }
     }
 
@@ -544,14 +635,16 @@ class RadarNativeNotificationModule : Module() {
       first?.let {
         setBadge(this, R.id.route_one_badge_priority, R.id.route_one_badge_normal, it)
         setTextViewText(R.id.route_one_eta, it.eta)
-        setTextViewText(R.id.route_one_next, nextText(it))
-        setViewVisibility(R.id.route_one_next, if (it.next.isEmpty()) View.GONE else View.VISIBLE)
+        val detail = it.detail ?: nextText(it)
+        setTextViewText(R.id.route_one_next, detail)
+        setViewVisibility(R.id.route_one_next, if (detail.isEmpty()) View.GONE else View.VISIBLE)
       }
       second?.let {
         setBadge(this, R.id.route_two_badge_priority, R.id.route_two_badge_normal, it)
         setTextViewText(R.id.route_two_eta, it.eta)
-        setTextViewText(R.id.route_two_next, nextText(it))
-        setViewVisibility(R.id.route_two_next, if (it.next.isEmpty()) View.GONE else View.VISIBLE)
+        val detail = it.detail ?: nextText(it)
+        setTextViewText(R.id.route_two_next, detail)
+        setViewVisibility(R.id.route_two_next, if (detail.isEmpty()) View.GONE else View.VISIBLE)
       }
       setTextViewText(R.id.expanded_more, moreText(data) ?: "")
       setViewVisibility(R.id.expanded_more, if (moreText(data) == null) View.GONE else View.VISIBLE)
@@ -568,7 +661,7 @@ class RadarNativeNotificationModule : Module() {
       }
     }
 
-  private fun nextText(line: RadarLinePresentation) = "${if (line.departure) "Próximas saídas" else "Próximos"}: ${line.next.mapIndexed { i, eta ->
+  private fun nextText(line: RadarLinePresentation) = if (line.next.isEmpty()) "" else "${if (line.departure) "Próximas saídas" else "Próximos"}: ${line.next.mapIndexed { i, eta ->
     if (i < line.next.lastIndex) eta.removeSuffix(" min") else eta
   }.joinToString(" e ")}"
 
@@ -577,8 +670,99 @@ class RadarNativeNotificationModule : Module() {
     private const val REQUEST_CODE_STOP = 748205
     private const val REQUEST_CODE_VOICE = 748206
     private const val MAX_LINES = 2
+    private val RAIL_STATES = setOf("Scheduled", "Estimated", "Live")
     private const val CHANNEL_NORMAL = "radar-native-probe-normal-v1"
     private const val CHANNEL_HEADS_UP = "radar-native-probe-heads-up-v1"
+    private const val LOCAL_REFRESH_INTERVAL_MS = 30_000L
+    private const val LOCAL_STALE_AFTER_MS = 90_000L
+    // predictedAt é comparado com o ETA calculado no envio (sentTime), não com o recebimento.
+    private const val LOCAL_PREDICTED_SLACK_MS = 120_000L
+    // Live envelhece mais rápido; Estimated usa o mesmo teto de evidência do seletor do backend (300 s).
+    private const val LOCAL_LIVE_FRESH_MS = 120_000L
+    private const val LOCAL_ESTIMATE_FRESH_MS = 300_000L
+    private val LOCAL_COLLAPSED_ETA = intArrayOf(R.id.collapsed_eta_one, R.id.collapsed_eta_two)
+    private val LOCAL_EXPANDED_ETA = intArrayOf(R.id.route_one_eta, R.id.route_two_eta)
+
+    private data class LocalLine(val index: Int, val deadline: Long, val dataUntil: Long)
+
+    private val localHandler = Handler(Looper.getMainLooper())
+    private val localTick = Runnable { refreshLocal() }
+    private var localContext: Context? = null
+    private var localSessionId: String? = null
+    private var localLines: List<LocalLine> = emptyList()
+    private var localText: Array<String?> = arrayOfNulls(MAX_LINES)
+
+    private fun etaText(seconds: Long): String = if (seconds < 60) "Chegando"
+      else "${seconds / 60 + if (seconds % 60 == 0L) 0 else 1} min"
+
+    // Atualização visual local: recalcula o minuto a partir do instante absoluto previsto.
+    // Só re-renderiza o RemoteViews já publicado; não altera canal, voz, som ou estado da sessão.
+    private fun scheduleLocalRefresh(context: Context, payload: RadarRemotePayload) {
+      val app = context.applicationContext
+      localHandler.post {
+        val now = System.currentTimeMillis()
+        val lines = payload.presentation.lines.take(MAX_LINES).mapIndexedNotNull { index, line ->
+          val deadline = line.deadline ?: return@mapIndexedNotNull null
+          val dataUntil = line.dataUntil ?: return@mapIndexedNotNull null
+          deadline.takeIf { it > now }?.let { LocalLine(index, it, dataUntil) }
+        }
+        localHandler.removeCallbacks(localTick)
+        localContext = app
+        localSessionId = payload.sessionId
+        localLines = lines
+        localText = arrayOfNulls(MAX_LINES)
+        if (lines.isNotEmpty()) localHandler.postDelayed(localTick, LOCAL_REFRESH_INTERVAL_MS)
+      }
+    }
+
+    private fun refreshLocal() {
+      val context = localContext ?: return
+      val sessionId = localSessionId ?: return
+      if (!RadarNotificationSession.isActive(context, sessionId) || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        clearLocalRefresh()
+        return
+      }
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val notification = manager.activeNotifications
+        .firstOrNull { it.id == RadarNotificationSession.NOTIFICATION_ID }?.notification
+      val content = notification?.contentView
+      val big = notification?.bigContentView
+      if (notification == null || big == null) {
+        clearLocalRefresh()
+        return
+      }
+      val now = System.currentTimeMillis()
+      var changed = false
+      var live = 0
+      for (line in localLines) {
+        val expired = now > line.dataUntil || now > line.deadline + LOCAL_STALE_AFTER_MS
+        val text = if (expired) "desatualizado"
+          else etaText(((line.deadline - now) / 1000).coerceAtLeast(0))
+        if (!expired) live++
+        if (text == localText.getOrNull(line.index)) continue
+        localText[line.index] = text
+        content?.setTextViewText(LOCAL_COLLAPSED_ETA[line.index], text)
+        big.setTextViewText(LOCAL_EXPANDED_ETA[line.index], text)
+        changed = true
+      }
+      localHandler.removeCallbacks(localTick)
+      if (changed) {
+        try {
+          NotificationManagerCompat.from(context).notify(RadarNotificationSession.NOTIFICATION_ID, notification)
+        } catch (error: Exception) {
+          Log.e(LOG_TAG, "local_refresh_failed type=${error.javaClass.simpleName}")
+        }
+      }
+      if (live > 0) localHandler.postDelayed(localTick, LOCAL_REFRESH_INTERVAL_MS) else clearLocalRefresh()
+    }
+
+    private fun clearLocalRefresh() {
+      localHandler.removeCallbacks(localTick)
+      localContext = null
+      localSessionId = null
+      localLines = emptyList()
+      localText = arrayOfNulls(MAX_LINES)
+    }
 
     private fun voicePendingIntent(context: Context, sessionId: String, muted: Boolean): PendingIntent {
       val action = if (muted) RadarStopReceiver.ACTION_UNMUTE_VOICE else RadarStopReceiver.ACTION_MUTE_VOICE
