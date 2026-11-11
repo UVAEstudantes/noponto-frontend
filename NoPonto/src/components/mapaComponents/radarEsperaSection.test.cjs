@@ -157,3 +157,55 @@ test('ativacao remota usa a configuracao aplicada no mesmo toque',()=>{
  m.render();m.abrir();m.botao('Reativar Radar').props.onPress();
  assert.deepEqual(m.chamadas,[['salvar',['A'],[],10],['ativar',configuracao]]);
 });
+
+function modal(root) {
+  if (!root || typeof root !== 'object') return null;
+  if (root.type === 'Modal') return root;
+  const children = root.props?.children;
+  for (const child of Array.isArray(children) ? children : [children]) {
+    const match = modal(child);
+    if (match) return match;
+  }
+  return null;
+}
+
+function montarSolicitacao(solicitacao) {
+  const h = criarHarness();
+  const chamadas = { ativar: 0, concluidas: [] };
+  const cores = new Proxy({}, { get: (_target, key) => String(key) });
+  const component = h.carregar('../components/mapaComponents/radarEsperaSection.tsx', {
+    'react-native': Object.fromEntries(['ActivityIndicator', 'Modal', 'Pressable', 'ScrollView', 'StatusBar', 'Text', 'View']
+      .map((name) => [name, name])),
+    'lucide-react-native': Object.fromEntries(['ArrowLeft', 'Bell', 'Check', 'Star', 'X']
+      .map((name) => [name, name])),
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    '@/src/hooks/useTema': { useTema: () => ({ cores, temaAtual: 'claro' }) },
+    './radarVehicleCard': { fundoIdentificador: () => '#000', textoSobreCor: () => '#fff' },
+    './radarAvisosPorVoz': 'RadarAvisosPorVoz',
+  }).default;
+  const controle = {
+    modoRemoto: false, estado: 'encerrado', estadoRemoto: 'inativo', expiraEm: null,
+    chaveConfiguracao: 'station-b-context', podeConfigurar: true, podeSolicitarAtivacao: true,
+    podeReativarRemoto: false, podeAtivar: true, solicitando: false, operacaoRemota: null,
+    erroPreferencias: null, mensagem: null, motivoPausa: null, outraParada: false,
+    paradaNome: 'Estação B', selecionadas: ['line-b'], disponiveis: [], destinos: {}, previa: null,
+    preferencias: { prioritarias: [], janelaMinutos: 10 },
+    aplicarConfiguracao() {}, ativar() { chamadas.ativar++; }, encerrar() {},
+  };
+  const props = { controle, solicitacaoAbrir: solicitacao,
+    onSolicitacaoConcluida: (request) => chamadas.concluidas.push(request) };
+  const render = () => h.render(() => component(props));
+  render();
+  return { h, props, render, chamadas };
+}
+
+test('pedido vindo da ficha abre o painel no contexto selecionado sem ativar o Radar', () => {
+  const m = montarSolicitacao(0);
+  assert.equal(modal(m.h.output), null);
+  m.props.solicitacaoAbrir = 1;
+  m.render();
+  assert.equal(modal(m.h.output)?.props.visible, true);
+  assert.deepEqual(m.chamadas.concluidas, [1]);
+  assert.equal(m.chamadas.ativar, 0);
+  m.h.unmount();
+});

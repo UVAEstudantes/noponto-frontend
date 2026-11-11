@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
 import { ArrowLeft, Bell, Check, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,13 +7,19 @@ import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 import { fundoIdentificador, textoSobreCor } from './radarVehicleCard';
 import RadarAvisosPorVoz from './radarAvisosPorVoz';
 
+const SEM_SENTIDOS: string[] = [];
+
 /** Configuração é um rascunho: voltar descarta; salvar aplica uma única reconfiguração. */
-export default function RadarEsperaSection({ controle: c }: { controle: ControleRadarEspera }) {
+export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, onSolicitacaoConcluida }: {
+  controle: ControleRadarEspera; solicitacaoAbrir?: number;
+  onSolicitacaoConcluida?: (request: number) => void;
+}) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const [aberta, setAberta] = useState(false);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const [prioritarias, setPrioritarias] = useState<string[]>([]);
+  const [sentidos, setSentidos] = useState<string[]>([]);
   const [janela, setJanela] = useState(10);
   const [iniciar, setIniciar] = useState(false);
   const [contexto, setContexto] = useState('');
@@ -21,6 +27,16 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   // Um salvamento intencional muda a chave do controlador; o rascunho aberto
   // acompanha essa mudança em vez de se declarar obsoleto.
   const [aplicandoRascunho, setAplicandoRascunho] = useState(false);
+  const ultimaSolicitacaoAbrir = useRef(0);
+  const selecionadasAtuais = c.selecionadas;
+  const prioritariasAtuais = c.preferencias.prioritarias;
+  const janelaAtual = c.preferencias.janelaMinutos;
+  const chaveAtual = c.chaveConfiguracao;
+  const ativarAtual = c.ativar;
+  const sentidosAtuais = c.sentidosSelecionados ?? SEM_SENTIDOS;
+  const dadosParaAbrir = useRef({ selecionadas: selecionadasAtuais, prioritarias: prioritariasAtuais,
+    sentidos: sentidosAtuais,
+    janela: janelaAtual, chave: chaveAtual });
   const remoto = c.modoRemoto === true;
   const estadoRemoto = c.estadoRemoto ?? 'inativo';
   const ativa = remoto ? estadoRemoto === 'ativo' : c.estado !== 'encerrado';
@@ -46,8 +62,13 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   // carregando ou outra parada apenas visualizada), sem transferir o alvo.
   const podeAtivarPreservado = remoto && !ativa && c.podeReativarRemoto === true
     && contextoValido && (!editavel || semLinhasDisponiveis);
+  const direcoesDisponiveis = c.sentidosDisponiveis ?? SEM_SENTIDOS;
+  const direcoesCompletas = selecionadas.every(linhaId => {
+    const opcoes = direcoesDisponiveis.filter(item => item.linhaId === linhaId);
+    return opcoes.length === 0 || opcoes.some(item => sentidos.includes(item.chave));
+  });
   const podeSalvar = !operacaoBloqueante && (
-    (editavel && selecionadas.length > 0 && (ativa || c.podeSolicitarAtivacao))
+    (editavel && selecionadas.length > 0 && direcoesCompletas && (ativa || c.podeSolicitarAtivacao))
     || podeAtivarPreservado);
   const estado = remoto
     ? estadoRemoto === 'ativo' ? 'Ativo'
@@ -72,14 +93,14 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   useEffect(() => {
     if (!aplicandoRascunho) return;
     setAplicandoRascunho(false);
-    setContexto(c.chaveConfiguracao);
-  }, [aplicandoRascunho, c.chaveConfiguracao]);
+    setContexto(chaveAtual);
+  }, [aplicandoRascunho, chaveAtual]);
   useEffect(() => {
     if (!iniciar) return;
-    setContexto(c.chaveConfiguracao);
+    setContexto(chaveAtual);
     setIniciar(false);
-    void c.ativar();
-  }, [iniciar, c.ativar, c.chaveConfiguracao]);
+    void ativarAtual();
+  }, [iniciar, ativarAtual, chaveAtual]);
   useEffect(() => {
     if (!aviso) { setAvisoFechado(null); return; }
     const timer = setTimeout(() => setAvisoFechado(aviso), 6000);
@@ -88,12 +109,29 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
   const abrir = () => {
     setSelecionadas([...c.selecionadas]);
     setPrioritarias(c.preferencias.prioritarias.filter(id => c.selecionadas.includes(id)));
+    setSentidos([...sentidosAtuais]);
     setJanela(c.preferencias.janelaMinutos); setContexto(c.chaveConfiguracao); setAberta(true);
   };
+  useEffect(() => {
+    dadosParaAbrir.current = { selecionadas: selecionadasAtuais, prioritarias: prioritariasAtuais,
+      sentidos: sentidosAtuais,
+      janela: janelaAtual, chave: chaveAtual };
+  }, [selecionadasAtuais, prioritariasAtuais, sentidosAtuais, janelaAtual, chaveAtual]);
+  useEffect(() => {
+    if (solicitacaoAbrir <= ultimaSolicitacaoAbrir.current) return;
+    ultimaSolicitacaoAbrir.current = solicitacaoAbrir;
+    const dados = dadosParaAbrir.current;
+    setSelecionadas([...dados.selecionadas]);
+    setPrioritarias(dados.prioritarias.filter(id => dados.selecionadas.includes(id)));
+    setSentidos([...dados.sentidos]);
+    setJanela(dados.janela); setContexto(dados.chave); setAberta(true);
+    onSolicitacaoConcluida?.(solicitacaoAbrir);
+  }, [solicitacaoAbrir, onSolicitacaoConcluida]);
   const salvar = () => {
     if (!podeSalvar) return;
     const configuracao = editavel && selecionadas.length > 0
-      ? c.aplicarConfiguracao(selecionadas, prioritarias, janela) : null;
+      ? c.aplicarConfiguracao(selecionadas, prioritarias, janela,
+        ...(direcoesDisponiveis.length ? [sentidos] : [])) : null;
     if (editavel && selecionadas.length > 0) setAplicandoRascunho(true);
     // A ativação só fecha por ação explícita do usuário; erros permanecem visíveis.
     if (!ativa) {
@@ -192,6 +230,23 @@ export default function RadarEsperaSection({ controle: c }: { controle: Controle
               </View>;
             })}
           </View>
+          {!!c.sentidosDisponiveis?.length && <View style={card}>
+            <Text style={{ ...texto, fontWeight: '700' }}>Sentidos</Text>
+            <Text style={secundario}>Escolha os destinos que o Radar deve acompanhar nesta estação.</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {c.sentidosDisponiveis.filter(item => selecionadas.includes(item.linhaId)).map(item => {
+                const marcado = sentidos.includes(item.chave);
+                return <Pressable key={item.chave} accessibilityRole="checkbox"
+                  accessibilityLabel={`Acompanhar sentido ${item.nome}`} accessibilityState={{ checked: marcado, disabled: !edicaoHabilitada }}
+                  disabled={!edicaoHabilitada} onPress={() => setSentidos(marcado
+                    ? sentidos.filter(chave => chave !== item.chave) : [...sentidos, item.chave])}
+                  style={{ minHeight: 44, borderRadius: 12, paddingHorizontal: 14, justifyContent: 'center',
+                    backgroundColor: marcado ? cores.fundoPrimario : cores.fundoSecundario, opacity: edicaoHabilitada ? 1 : 0.5 }}>
+                  <Text style={{ color: marcado ? cores.textoSobrePrimario : cores.textoPrimario, fontWeight: '600' }}>{item.nome}</Text>
+                </Pressable>;
+              })}
+            </View>
+          </View>}
           <View style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Avisar com antecedência</Text>
             <Text style={secundario}>Mostrar veículos previstos dentro deste intervalo.</Text>

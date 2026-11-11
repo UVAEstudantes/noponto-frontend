@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chegadasDoRadar, resumoConsultaParada } from "./apresentacaoRadar";
+import { chegadasDoRadar, resumoConsultaParada, textoEtaOperacional } from "./apresentacaoRadar";
 import type { EventoParadaDto } from "./eventosParada";
 import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
@@ -23,6 +23,23 @@ test("ParadaSheet recebe identidade, saída e qualidade sem transformar programa
   assert.equal(chegada.etaSeg, 90);
   assert.equal(chegada.distanciaMetros, null);
   assert.equal(chegada.referenciaDisponivel, false);
+});
+
+test("apresentação ferroviária preserva estado, identidade e origem/destino fornecidos", () => {
+  const [arrival] = chegadasDoRadar([{ ...evento, eventType: "ARRIVAL", stationRole: "Intermediate",
+    operationalStatus: "Estimated", scheduledStopId: "scheduled-stop-1", trainCode: "T-12",
+    lineName: "Ramal Santa Cruz", destinationName: "Central" }], null, [], recebidoEm,
+    recebidoEm + 30000, [], []);
+  assert.equal(arrival.operationalStatus, "Estimated");
+  assert.equal(arrival.scheduledStopId, "scheduled-stop-1");
+  assert.equal(arrival.trainCode, "T-12");
+  assert.equal(arrival.lineName, "Ramal Santa Cruz");
+  assert.equal(arrival.destino, "Central");
+  assert.equal(textoEtaOperacional("Scheduled", "ARRIVAL", 30, "12:02"), "Horário programado às 12:02");
+  assert.equal(textoEtaOperacional("Estimated", "ARRIVAL", 30), "Chegada estimada em 1 min");
+  assert.equal(textoEtaOperacional("Live", "DEPARTURE", 300), "Previsão atualizada de partida em 5 min");
+  assert.equal(textoEtaOperacional("Unknown", "ARRIVAL", 30), "Chegada estimada em 1 min");
+  assert.equal(textoEtaOperacional(null, "ARRIVAL", 30, null, true), "Chegada estimada em 1 min");
 });
 test("foco ferroviário depende do ExpectedRun renderizado, sem aproximação por linha", () => {
   const rail = [{ railVehicleId: "rv-1", railRunId: "run-1", platformLabel: "2" }] as RailVehicleForMap[];

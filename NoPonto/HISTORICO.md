@@ -188,3 +188,9 @@ Teste falhou antes da correção (7rodadas no ciclo artificial limitado, em vez 
 Preservadas alterações anteriores do diagnóstico e otimização ferroviária; nenhum arquivo backend, Worker, token/credencial persistido, configuração Firebase ou infraestrutura alterado. Sem deploy/EAS/Docker/Gradle/migrações/commit/push; sem relatório novo.
 
 Validação final adicional: ESLint somente dos três arquivos de código/teste alterados aprovado, zero erros/avisos.
+
+## 2026-11-11 — Radar ferroviário: estado operacional no app e no native-v1
+
+Frontend e módulo Android existente agora consomem `operationalStatus` e os metadados ferroviários opcionais do contrato native-v1. A interface distingue Scheduled/Estimated/Live e não anuncia trens programados como chegada em tempo real; o TTS aplica frases ferroviárias próprias e preserva as frases de ônibus/BRT. A notificação mantém os layouts V5.1, mostra linha/destino quando disponíveis e não agrupa viagens ferroviárias distintas. O native-v1 antigo continua aceito sem os campos opcionais, com estado conservador.
+
+Testes direcionados de apresentação/contrato e TypeScript aprovados. Kotlin não compilado e APK não testado nesta etapa; validar no Xiaomi após publicar o backend ferroviário correspondente e compilar o app. Nenhuma alteração no backend nesta etapa, sem Docker, build Android, prebuild, EAS, deploy, commit ou push.

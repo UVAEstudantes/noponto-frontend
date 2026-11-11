@@ -28,8 +28,11 @@ export function chegadasDoRadar(eventos: readonly EventoParadaDto[], parada: Par
       || (evento.expectedRunId && item.railRunId === evento.expectedRunId));
     return {
       id: evento.eventId, linhaId: evento.linhaId, codigo: evento.codigoLinha,
+      modal: evento.modal, tipoRota: evento.tipoRota,
       vehicleId: evento.vehicleId ?? evento.codigoVeiculo ?? null,
       railVehicleId: evento.railVehicleId ?? null, expectedRunId: evento.expectedRunId ?? null,
+      scheduledStopId: evento.scheduledStopId ?? null, operationalStatus: evento.operationalStatus ?? null,
+      trainCode: evento.trainCode ?? null, lineName: evento.lineName ?? null,
       sentidoId: evento.sentidoId, padraoOperacionalId: evento.padraoOperacionalId,
       ocorrenciaParadaPadraoId: evento.ocorrenciaParadaPadraoId,
       padraoVersaoId:evento.padraoVersaoId,paradaId:evento.paradaId,
@@ -43,11 +46,26 @@ export function chegadasDoRadar(eventos: readonly EventoParadaDto[], parada: Par
       distanciaMetros: evento.distanciaRestanteMetros != null && evento.distanciaRestanteMetros >= 0
         ? evento.distanciaRestanteMetros : null,
       horarioPrevistoLocal: instante == null || instante < agora ? null : new Date(instante).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-      destino: trem?.destinationName ?? trem?.destination
+      destino: evento.destinationName ?? trem?.destinationName ?? trem?.destination
         ?? parada?.vinculos.find((item) => item.linhaId === evento.linhaId && item.sentidoId === evento.sentidoId
           && item.padraoVersaoId === evento.padraoVersaoId)?.destino ?? null,
       plataforma: trem?.platformLabel ?? null,
-      tipoServico: trem?.trainType ?? null,
+      tipoServico: evento.modal === "trem" ? trem?.trainType ?? "Trem" : trem?.trainType ?? null,
     };
   });
+}
+
+export function textoEtaOperacional(status: string | null | undefined, eventType: "ARRIVAL" | "DEPARTURE",
+  etaSeconds: number | null, horarioPrevistoLocal?: string | null, isRail = false): string {
+  if (etaSeconds == null) return "Sem previsão";
+  const minutos = Math.max(0, Math.ceil(etaSeconds / 60));
+  const eta = `${minutos} min`;
+  if (status === "Scheduled") return eventType === "DEPARTURE"
+    ? `Partida programada${horarioPrevistoLocal ? ` às ${horarioPrevistoLocal}` : ` em ${eta}`}`
+    : `Horário programado${horarioPrevistoLocal ? ` às ${horarioPrevistoLocal}` : ` em ${eta}`}`;
+  if (status === "Estimated" || (status != null && status !== "Live") || (isRail && status == null)) return eventType === "DEPARTURE"
+    ? `Partida estimada em ${eta}` : `Chegada estimada em ${eta}`;
+  if (status === "Live") return eventType === "DEPARTURE"
+    ? `Previsão atualizada de partida em ${eta}` : `Previsão atualizada de chegada em ${eta}`;
+  return `${eventType === "DEPARTURE" ? "Sai" : "Chega"} em ${eta}`;
 }

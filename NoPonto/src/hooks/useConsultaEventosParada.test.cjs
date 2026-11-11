@@ -107,6 +107,111 @@ test("erro e finalização tardios de A não encerram loading nem apagam B", asy
   h.unmount();
 });
 
+test("seleção da ficha mantém estação ferroviária distante e contextos reais após fechar a ficha", () => {
+  const { configurarRadarRemoto } = require("../services/radarRemotoContexto.ts");
+  const { chaveContextoRadar } = require("../services/radarParada.ts");
+  for (const modal of ["trem", "brt", "onibus"]) {
+    const h = criarHarness();
+    const consulta = (parada, atual) => ({ foreground: true, contextoConsulta: chaveContextoRadar(parada, atual),
+      statusConsulta: parada ? "sucesso" : "indisponivel", eventos: [], eventosRecebidos: [], eventosPorId: new Map(),
+      recebidoEm: h.now, agora: h.now, carregando: false, erro: null, temResposta: Boolean(parada),
+      atualizadoEm: h.now, consultaConcluida: Boolean(parada), atualizar() {} });
+    const useRadar = h.carregar("useRadarParada.ts", {
+      "./useConsultaEventosParada": { useConsultaEventosParada: consulta },
+      "../services/radarParadaMetadata": { metadataParadaRadar: async () => null },
+    }).useRadarParada;
+    const station = { paradaId: `station-${modal}`, nome: "Estação Central", latitude: -22.9,
+      longitude: -43.6, ordem: 4, posicaoLinha: 0.4 };
+    const lines = ["a", "b"].map((id) => ({ linhaId: `${modal}-${id}`, linhaCodigo: id,
+      ativa: true, modal, modoSentido: "ambos" }));
+    const itinerarios = Object.fromEntries(lines.map((line) => [line.linhaId, { linha: line.linhaCodigo,
+      modal, segmentos: [], padroesV2: [{ linhaId: line.linhaId, sentidoId: "sentido-real",
+        sentidoNome: "Destino real", padraoVersaoId: `versao-${line.linhaId}`,
+        padraoOperacionalId: `operacao-${line.linhaId}`, paradas: [station] }] }]));
+    const props = { linhas: lines, modal, itinerarios, realtime: {}, local: { latitude: -22.8, longitude: -43.4 },
+      enabled: true, paradaVisualizada: station };
+    const render = () => h.render(() => useRadar(props));
+    render();
+
+    assert.equal(h.output.candidatos.length, 0, `${modal}: estação está fora do raio de descoberta`);
+    assert.equal(h.output.parada.parada.paradaId, station.paradaId);
+    h.output.selecionar(h.output.parada);
+    props.paradaVisualizada = null;
+    props.local = null;
+    render();
+
+    assert.equal(h.output.foraContexto, false, `${modal}: seleção manual não depende de GPS`);
+    assert.equal(h.output.parada.parada.paradaId, station.paradaId);
+    assert.equal(JSON.parse(h.output.contextoConsulta)[0], modal);
+    const config = configurarRadarRemoto({ parada: h.output.parada, linhas: lines, modal, itinerarios, realtime: {} },
+      lines.map((line) => line.linhaId), [], 10);
+    assert.equal(config.paradaId, station.paradaId);
+    assert.deepEqual(config.linhasSelecionadas, lines.map((line) => line.linhaId));
+    assert.deepEqual(config.contextos.map((context) => [context.linhaId, context.sentidoId,
+      context.padraoVersaoId, context.padraoOperacionalId]), lines.map((line) => [line.linhaId,
+      "sentido-real", `versao-${line.linhaId}`, `operacao-${line.linhaId}`]));
+    assert.equal(h.output.estado, "Sem próximos eventos previstos.", `${modal}: localização não bloqueia estação manual`);
+    h.unmount();
+  }
+});
+
+test("entrada normal do Radar continua usando descoberta próxima sem seleção manual", () => {
+  const h = criarHarness();
+  const useRadar = h.carregar("useRadarParada.ts", {
+    "./useConsultaEventosParada": { useConsultaEventosParada: (parada) => ({ foreground: true,
+      contextoConsulta: parada?.parada.paradaId ?? "", statusConsulta: "sucesso", eventos: [], eventosRecebidos: [],
+      eventosPorId: new Map(), recebidoEm: h.now, agora: h.now, carregando: false, erro: null,
+      temResposta: Boolean(parada), atualizadoEm: h.now, consultaConcluida: Boolean(parada), atualizar() {} }) },
+    "../services/radarParadaMetadata": { metadataParadaRadar: async () => null },
+  }).useRadarParada;
+  const stop = { paradaId: "near", nome: "Próxima", latitude: 0, longitude: 0,
+    ordem: 1, posicaoLinha: 0 };
+  const props = { linhas: [{ linhaId: "bus", ativa: true, modal: "onibus", modoSentido: "ambos" }],
+    modal: "onibus", itinerarios: { bus: { segmentos: [], padroesV2: [{ sentidoId: "ida",
+      sentidoNome: "Destino", padraoVersaoId: "v1", padraoOperacionalId: "op1", paradas: [stop] }] } },
+    realtime: {}, local: { latitude: 0, longitude: 0 }, enabled: true, paradaVisualizada: null };
+  h.render(() => useRadar(props));
+  assert.equal(h.output.manual, false);
+  assert.equal(h.output.parada.parada.paradaId, "near");
+  assert.equal(h.output.candidatos[0].parada.paradaId, "near");
+  h.unmount();
+});
+
+test("alternar entre duas estações manuais distantes atualiza parada e contexto sem GPS", () => {
+  const h = criarHarness();
+  const { chaveContextoRadar, paradaDetalhadaRadar } = require('../services/radarParada.ts');
+  const { useConsultaEventosParada } = h.carregar('useConsultaEventosParada.ts', {
+    '../services/eventosParada': { buscarEventosParada: async () => [] },
+  });
+  const useRadar = h.carregar('useRadarParada.ts', {
+    './useConsultaEventosParada': { useConsultaEventosParada },
+    '../services/radarParadaMetadata': { metadataParadaRadar: async () => null },
+  }).useRadarParada;
+  const stationA = { paradaId: 'station-a', nome: 'Estação A', latitude: -22.9, longitude: -43.6,
+    ordem: 1, posicaoLinha: 0 };
+  const stationB = { ...stationA, paradaId: 'station-b', nome: 'Estação B', ordem: 2, posicaoLinha: 1 };
+  const lines = [{ linhaId: 'rail-line', linhaCodigo: 'Ramal longo', ativa: true, modal: 'trem', modoSentido: 'ambos' }];
+  const itinerarios = { 'rail-line': { modal: 'trem', padroesV2: [{ sentidoId: 'direction',
+    padraoVersaoId: 'version', padraoOperacionalId: 'operation', paradas: [stationA, stationB] }] } };
+  const props = { linhas: lines, modal: 'trem', itinerarios, realtime: {},
+    local: { latitude: -23.1, longitude: -43.9 }, enabled: true, paradaVisualizada: stationA };
+  const render = () => h.render(() => useRadar(props));
+
+  render();
+  h.output.selecionar(h.output.parada);
+  props.paradaVisualizada = null;
+  render();
+  assert.equal(h.output.parada.parada.paradaId, 'station-a');
+  const escolhaB = paradaDetalhadaRadar(stationB, lines, 'trem', itinerarios, {});
+  assert.ok(escolhaB);
+  h.output.selecionar(escolhaB);
+  render();
+  assert.equal(h.output.parada.parada.paradaId, 'station-b');
+  assert.equal(h.output.contextoConsulta, chaveContextoRadar(escolhaB, 'trem'));
+  assert.equal(h.output.foraContexto, false);
+  h.unmount();
+});
+
 test("erro tardio de A não substitui sucesso já concluído de B", async () => {
   const { h, pedidos, escolher } = iniciar();
   escolher(parada("B"));
@@ -292,8 +397,8 @@ test("Radar mantém seleção manual e recebe os estados do mesmo hook de consul
   render(); assert.equal(h.output.estado, "Falha ao atualizar");
   props.local = { latitude: 1, longitude: 1 }; render();
   assert.equal(h.output.parada.parada.paradaId, "B");
-  assert.equal(h.output.foraContexto, true);
-  assert.equal(selecoes.at(-1)[0], undefined);
+  assert.equal(h.output.foraContexto, false);
+  assert.equal(selecoes.at(-1)[0], "B");
   h.output.selecaoAutomatica(); props.local = { latitude: 0, longitude: 0 }; render();
   assert.equal(h.output.parada.parada.paradaId, "A");
   assert.equal(h.output.manual, false);

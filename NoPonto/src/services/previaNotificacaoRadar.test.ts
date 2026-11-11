@@ -199,6 +199,29 @@ test('encaminha politica N1 e conserva identidade ferroviaria sem vehicleId', ()
   assert.equal(previa(e)!.conteudo.destaque?.qualidade, 'Programado');
 });
 
+test('preserva nome ferroviario extenso e metadados do payload nativo sem truncar para codigo de onibus', () => {
+  const codigoLinha = 'Ramal Santa Cruz - Serviço Expresso';
+  const ferroviario: EventoParadaDto = { ...evento('rail-item', 'A', 300), codigoLinha,
+    modal: 'trem', tipoRota: 'trem', vehicleId: null, railVehicleId: 'rail-vehicle',
+    expectedRunId: 'expected-run', scheduledStopId: 'scheduled-stop', trainCode: 'T-12',
+    lineName: 'Ramal Santa Cruz', destinationName: 'Central do Brasil', operationalStatus: 'Estimated' };
+  const e = entrada([ferroviario]);
+  e.modal = 'trem';
+  e.linhas = [{ ...linha('A'), modal: 'trem' }];
+  e.itinerarios = { A: { ...itinerario('A'), modal: 'trem' } };
+  e.consulta.contextoConsulta = chaveContextoRadar(e.parada, 'trem');
+  e.politica = { janelaSegundos: 900 };
+
+  const result = previa(e)!;
+  const native = adaptarPreviaRadarNativa(result, []);
+  assert.equal(result.candidatos[0].evento.codigoLinha, codigoLinha);
+  assert.equal(result.candidatos[0].evento.operationalStatus, 'Estimated');
+  assert.equal(result.candidatos[0].evento.expectedRunId, 'expected-run');
+  assert.equal(result.candidatos[0].evento.scheduledStopId, 'scheduled-stop');
+  assert.equal(native.linhas[0].codigo, codigoLinha);
+  assert.equal(native.linhas[0].eventType, 'ARRIVAL');
+});
+
 test('remove linha piloto nao selecionada e sentido ampliado pelo catalogo', () => {
   const e = entrada([evento('a'), evento('c', 'C'), { ...evento('a-volta'), sentidoId: 'volta',
     padraoVersaoId: 'A-volta-v1', padraoOperacionalId: 'A-volta-op' }]);

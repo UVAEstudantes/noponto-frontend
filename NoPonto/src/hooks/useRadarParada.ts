@@ -4,7 +4,7 @@ import type { ItinerarioLinha, Parada } from "../types/transporte";
 import type { ItinerarioPadraoVersaoV2, ParadaV2 } from "../types/estruturaV2";
 import { metadataParadaRadar } from "../services/radarParadaMetadata";
 import { useConsultaEventosParada } from "./useConsultaEventosParada";
-import { escolherParadaAutomatica, paradaDetalhadaRadar, paradasElegiveisRadar, resolverParadaMonitorada,
+import { escolherParadaAutomatica, paradaDetalhadaRadar, paradasElegiveisRadar,
   type CoordenadasRadar, type ParadaRadar } from "../services/radarParada";
 
 export { INTERVALO_RADAR_MS } from "./useConsultaEventosParada";
@@ -31,7 +31,7 @@ export function useRadarParada({ linhas, modal, itinerarios, realtime, local, en
   const detalhe = useMemo(() => paradaDetalhadaRadar(paradaVisualizada ?? null, linhas, modal, itinerarios, realtime),
     [paradaVisualizada, linhas, modal, itinerarios, realtime]);
   const escolhida = paradaVisualizada ? detalhe
-    : manual ? resolverParadaMonitorada(candidatos, null, manual.escolha.parada.paradaId) : automatica;
+    : manual ? paradaDetalhadaRadar(manual.escolha.parada, linhas, modal, itinerarios, realtime) : automatica;
   const foraContexto = Boolean((paradaVisualizada || manual) && !escolhida);
   const parada = escolhida ?? (paradaVisualizada ? null : manual?.escolha ?? null);
   const consulta = useConsultaEventosParada(escolhida, modal, enabled);
@@ -68,7 +68,7 @@ export function useRadarParada({ linhas, modal, itinerarios, realtime, local, en
   const selecionar = useCallback((escolha: ParadaRadar) => setManual({ modal, escolha }), [modal]);
   const selecaoAutomatica = useCallback(() => setManual(null), []);
   const estado = foraContexto ? "Parada manual fora do contexto ou distante. Retorne à seleção automática."
-    : !local && !paradaVisualizada ? "Autorize a localização para encontrar uma parada próxima."
+    : !local && !paradaVisualizada && !manual ? "Autorize a localização para encontrar uma parada próxima."
     : !linhas.some((item) => item.ativa && (modal === "todos" || item.modal === modal)) ? "Ative uma linha para acompanhar próximos veículos."
     : !Object.values(itinerarios).some((item) => item?.padroesV2?.length) ? "Carregando paradas…"
     : !escolhida ? "Nenhuma parada elegível a até 1 km."

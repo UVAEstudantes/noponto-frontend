@@ -10,7 +10,7 @@ import type { clienteRadarEspera } from '../services/notificacaoRadarLocal';
 import type { ResultadoLocal } from '../services/notificacaoLocalCanal';
 import type { DiagnosticoCandidatoRadar } from '../services/notificacoesRadar';
 import type { ConfiguracaoRemota, EstadoRemoto, OperacaoRemota } from '../services/radarRemotoCore';
-import { configurarRadarRemoto } from '../services/radarRemotoContexto';
+import { configurarRadarRemoto, direcoesDisponiveisRadar } from '../services/radarRemotoContexto';
 import { diagnosticarRadar } from '../services/radarRemotoDiagnostico';
 
 const CONFIGURACAO_INDISPONIVEL = 'Não foi possível preparar a configuração remota. Aguarde os contextos desta parada carregarem e tente novamente.';
@@ -78,6 +78,16 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
   // incompatíveis esvaziarem a configuração atual ao alternar Ônibus ↔ BRT.
   const ids = monitoradas?.length && !selecionadasDisponiveis.length
     ? disponiveis.map(l => l.linhaId) : selecionadasDisponiveis;
+  const sentidosDisponiveis = direcoesDisponiveisRadar(entrada, disponiveis.map(l => l.linhaId));
+  // Sem parada ou sem configuração restaurada, ambos os lados seriam undefined e a
+  // comparação daria true; a guarda explícita evita ler contextos de uma config nula.
+  const configuracaoAtual = configuracaoRemota.current;
+  const configuracaoNoAlvo = configuracaoAtual != null && entrada.parada != null
+    && configuracaoAtual.paradaId === entrada.parada.parada.paradaId;
+  const sentidosSelecionados = configuracaoAtual != null && configuracaoNoAlvo
+    ? [...new Set(configuracaoAtual.contextos.map(context => JSON.stringify([context.linhaId, context.sentidoId])))]
+      .filter(key => sentidosDisponiveis.some(option => option.chave === key))
+    : sentidosDisponiveis.map(option => option.chave);
   const ancoragem = ancoragemSessao;
   if (entrada.selecaoDeliberada && entrada.parada && ancoragem.current) {
     if (remotoHabilitado && ancoragem.current.id !== entrada.parada.parada.paradaId) remotoSujo.current = true;
@@ -168,7 +178,8 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
   useEffect(() => {
     if (!remotoHabilitado || !remotoSujo.current || !remoto || !entrada.parada || mudouAutomaticamente) return;
     remotoSujo.current = false;
-    const configuration = configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos);
+    const configuration = configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos,
+      sentidosDisponiveis.length ? sentidosSelecionados : undefined);
     configuracaoRemota.current = configuration;
     if (!configuration) {
       setEstadoRemoto(previous => ({
@@ -211,6 +222,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
       ? 'A sessão de uma hora expirou. Ative novamente para renovar intencionalmente.' : null),
   } : situacao;
   return { ...situacaoAtual, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
+    sentidosDisponiveis, sentidosSelecionados,
     modoRemoto: remotoHabilitado, estadoRemoto: estadoRemoto?.modo ?? 'inativo', expiraEm: estadoRemoto?.sessao?.expiraEm ?? null,
     operacaoRemota: operacaoPendente ?? estadoRemoto?.operacao ?? null,
     paradaNome: ancoragem.current?.nome ?? entrada.parada?.parada.nome ?? 'Selecione uma parada',
@@ -224,7 +236,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
     podeReativarRemoto: remotoHabilitado && carregado && !!remoto && configuracaoPreservada,
     destinos: Object.fromEntries(disponiveis.map(l => [l.linhaId,
       [...new Set(entrada.parada?.vinculos.filter(v => v.linhaId === l.linhaId).map(v => v.destino))].join(' · ')])),
-    aplicarConfiguracao(selecionadas: string[], prioritarias: string[], janelaMinutos: number) {
+    aplicarConfiguracao(selecionadas: string[], prioritarias: string[], janelaMinutos: number, direcoes?: string[]) {
       if (!carregado || mudouAutomaticamente || !entrada.parada) return null;
       // Toques repetidos não podem reaplicar o rascunho enquanto a operação
       // anterior ainda aguarda a fila remota.
@@ -232,7 +244,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
       const novas = [...new Set(selecionadas)].filter(id => disponiveis.some(l => l.linhaId === id));
       const prioridades = prioritarias.filter(id => novas.includes(id));
       const configuration = remotoHabilitado
-        ? configurarRadarRemoto(entrada, novas, prioridades, janelaMinutos) : null;
+        ? configurarRadarRemoto(entrada, novas, prioridades, janelaMinutos, direcoes) : null;
       if (remotoHabilitado) {
         configuracaoRemota.current = configuration;
         if (!configuration) {
@@ -270,7 +282,8 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
         if (!iniciarOperacao('ativar')) return Promise.resolve();
         const configuration = configuracaoExplicita
           ?? (!mudouAutomaticamente
-            ? configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos) : null)
+            ? configurarRadarRemoto(entrada, ids, preferencias.prioritarias, preferencias.janelaMinutos,
+              sentidosDisponiveis.length ? sentidosSelecionados : undefined) : null)
           ?? configuracaoRemota.current;
         if (!configuration) {
           concluirOperacao('ativar');

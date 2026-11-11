@@ -194,7 +194,20 @@ internal class RadarVoicePlaybackService : Service() {
     val etaSeconds: Long,
     val predictedAt: Long,
     val kind: String,
-  )
+    val modal: String? = null,
+    val routeType: String? = null,
+    val operationalStatus: String? = null,
+    val trainCode: String? = null,
+    val railVehicleId: String? = null,
+    val expectedRunId: String? = null,
+    val scheduledStopId: String? = null,
+    val destinationName: String? = null,
+    val lineName: String? = null,
+  ) {
+    val isRail get() = modal?.equals("trem", ignoreCase = true) == true
+      || routeType?.equals("trem", ignoreCase = true) == true
+    val railStatus get() = operationalStatus ?: "Scheduled"
+  }
 
   private data class Request(
     val sessionId: String,
@@ -542,6 +555,20 @@ internal class RadarVoicePlaybackService : Service() {
       return "$minutes ${if (minutes == 1) "minuto" else "minutos"}"
     }
     fun description(item: SpeechItem, capitalize: Boolean = false): String {
+      if (item.isRail) {
+        val route = when {
+          !item.destinationName.isNullOrBlank() -> "para ${item.destinationName}"
+          !item.lineName.isNullOrBlank() -> "do ${item.lineName}"
+          else -> "da linha ${pronounceLine(item.code)}"
+        }
+        val action = when (item.railStatus) {
+          "Scheduled" -> if (item.departure) "partida programada" else "passagem programada"
+          "Estimated" -> if (item.departure) "partida estimada" else "chegada estimada"
+          "Live" -> if (item.departure) "previsão atualizada de partida" else "previsão atualizada de chegada"
+          else -> if (item.departure) "partida programada" else "passagem programada"
+        }
+        return "Trem $route com $action em ${eta(item)}"
+      }
       val line = pronounceLine(item.code)
       val departure = if (capitalize) "Saída" else "saída"
       if (item.kind == "arriving") return if (item.departure) "$departure da linha $line chegando" else "${if (capitalize) "Linha" else "linha"} $line chegando"
@@ -552,7 +579,7 @@ internal class RadarVoicePlaybackService : Service() {
     val first = items.first()
     val second = items.getOrNull(1)
     val brief = if (second == null) description(first, true) else {
-      val secondText = if (first.code == second.code) {
+      val secondText = if (!first.isRail && !second.isRail && first.code == second.code) {
         val secondTime = if (second.kind == "arriving") "chegando" else "em ${eta(second)}"
         "outro da mesma linha $secondTime"
       } else description(second)
@@ -561,6 +588,7 @@ internal class RadarVoicePlaybackService : Service() {
     if (style == "brief") return "$brief."
 
     fun clause(item: SpeechItem, includeArticle: Boolean): String {
+      if (item.isRail) return description(item)
       val line = pronounceLine(item.code)
       val subject = if (item.departure) "saída da linha $line" else "linha $line"
       val article = if (includeArticle) "A " else if (item.departure) "a " else "a "
@@ -571,15 +599,15 @@ internal class RadarVoicePlaybackService : Service() {
       }
     }
     val text = if (second == null) {
-      "${clause(first, true)} à parada $stopName"
+      "${clause(first, true)} ${if (first.isRail) "na estação" else "à parada"} $stopName"
     } else {
       val sameLine = first.code == second.code
       when {
-        sameLine && !first.departure && !second.departure && first.kind == "window" && second.kind == "window" ->
+        !first.isRail && !second.isRail && sameLine && !first.departure && !second.departure && first.kind == "window" && second.kind == "window" ->
           "A linha ${pronounceLine(first.code)} chega em ${eta(first)} e outro da mesma linha chega em ${eta(second)} à parada $stopName"
-        sameLine && !first.departure && !second.departure && first.kind == "arriving" && second.kind == "arriving" ->
+        !first.isRail && !second.isRail && sameLine && !first.departure && !second.departure && first.kind == "arriving" && second.kind == "arriving" ->
           "A linha ${pronounceLine(first.code)} está chegando e outro da mesma linha também, à parada $stopName"
-        else -> "${clause(first, true)} e ${clause(second, false)} à parada $stopName"
+        else -> "${clause(first, true)} e ${clause(second, false)} ${if (items.any { it.isRail }) "na estação" else "à parada"} $stopName"
       }
     }
     return when (style) {
@@ -616,6 +644,15 @@ internal class RadarVoicePlaybackService : Service() {
           json.getLong("etaSeconds").takeIf { it >= 0 } ?: return null,
           json.getLong("predictedAt").takeIf { it > 0 } ?: return null,
           json.optString("kind").takeIf { it == "window" || it == "arriving" } ?: return null,
+          json.optString("modal").takeIf(String::isNotBlank),
+          json.optString("tipoRota").takeIf(String::isNotBlank),
+          json.optString("operationalStatus").takeIf { it in setOf("Scheduled", "Estimated", "Live") },
+          json.optString("trainCode").takeIf(String::isNotBlank),
+          json.optString("railVehicleId").takeIf(String::isNotBlank),
+          json.optString("expectedRunId").takeIf(String::isNotBlank),
+          json.optString("scheduledStopId").takeIf(String::isNotBlank),
+          json.optString("destinationName").takeIf(String::isNotBlank),
+          json.optString("lineName").takeIf(String::isNotBlank),
         )
       }
     }.getOrNull() ?: return null
@@ -718,8 +755,15 @@ internal class RadarVoicePlaybackService : Service() {
       val role: String,
     )
 
-    private fun sameVehicle(first: RadarRemoteItem, second: RadarRemoteItem): Boolean =
-      first.eventId == second.eventId || (first.vehicleId != null && first.vehicleId == second.vehicleId)
+    private fun sameVehicle(first: RadarRemoteItem, second: RadarRemoteItem): Boolean {
+      if (first.eventId == second.eventId) return true
+      if (first.isRail || second.isRail) return first.isRail && second.isRail
+        && first.expectedRunId != null && first.expectedRunId == second.expectedRunId
+      return first.vehicleId != null && first.vehicleId == second.vehicleId
+    }
+
+    private fun stableVehicleId(item: RadarRemoteItem): String =
+      if (item.isRail) item.expectedRunId ?: item.eventId else item.vehicleId ?: item.eventId
 
     internal fun currentVoiceOutputRoute(context: Context) = RadarVoiceRouteAuthorization.status(context)
 
@@ -802,8 +846,8 @@ internal class RadarVoicePlaybackService : Service() {
         else -> {
           val remainder = eligible.filter { !sameVehicle(it.item, nearest.item) }.sortedWith(
             compareBy<VoiceCandidate> { candidate ->
-              val stableVehicleId = candidate.item.vehicleId ?: candidate.item.eventId
-              RadarVoiceAnnouncementStore.lastSpokenAt(context, payload.sessionId, stableVehicleId,
+              val voiceVehicleId = stableVehicleId(candidate.item)
+              RadarVoiceAnnouncementStore.lastSpokenAt(context, payload.sessionId, voiceVehicleId,
                 candidate.item.eventId, candidate.kind, if (candidate.item.priority) "favorite" else "summary", preferenceKey)
             }.thenByDescending { it.item.priority }.thenBy { it.predictedAt }.thenBy { it.item.eventId },
           ).map { it.copy(role = if (it.item.priority) "favorite" else "summary") }
@@ -815,10 +859,10 @@ internal class RadarVoicePlaybackService : Service() {
       for (candidate in ordered) {
         if (selected.size >= maxItems) break
         val item = candidate.item
-        val stableVehicleId = item.vehicleId ?: item.eventId
-        val reservation = RadarVoiceAnnouncementStore.reserve(context, payload.sessionId, stableVehicleId,
+        val voiceVehicleId = stableVehicleId(item)
+        val reservation = RadarVoiceAnnouncementStore.reserve(context, payload.sessionId, voiceVehicleId,
           item.eventId, candidate.kind, candidate.role, preferenceKey, preferences.announcementFrequency,
-          item.etaSeconds, predictionSignature, now)
+          item.etaSeconds, predictionSignature, now, item.isRail)
         if (reservation.key == null) {
           Log.i(TAG, "voice_discard reason=${reservation.reason}")
           continue
@@ -837,7 +881,16 @@ internal class RadarVoicePlaybackService : Service() {
             .put("priority", item.priority)
             .put("etaSeconds", item.etaSeconds)
             .put("predictedAt", candidate.predictedAt)
-            .put("kind", candidate.kind))
+            .put("kind", candidate.kind)
+            .put("modal", item.modal)
+            .put("tipoRota", item.routeType)
+            .put("operationalStatus", item.operationalStatus)
+            .put("trainCode", item.trainCode)
+            .put("railVehicleId", item.railVehicleId)
+            .put("expectedRunId", item.expectedRunId)
+            .put("scheduledStopId", item.scheduledStopId)
+            .put("destinationName", item.destinationName)
+            .put("lineName", item.lineName))
         }
       }.toString()
       val reservations = ArrayList(selected.map { it.second.key!! })
@@ -918,30 +971,34 @@ internal class RadarVoicePlaybackService : Service() {
     @Synchronized
     fun reserve(context: Context, sessionId: String, vehicleId: String, eventId: String, kind: String,
       role: String, policyKey: String, frequency: String, etaSeconds: Long, predictionSignature: String,
-      now: Long): Reservation {
+      now: Long, railway: Boolean = false): Reservation {
       val entryKey = key(sessionId, vehicleId, eventId, kind, role, policyKey)
       val preferences = context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
       val stored = runCatching { JSONObject(preferences.getString(entryKey, null) ?: "{}") }.getOrNull()
       val pendingUntil = stored?.optLong("pendingUntil", 0) ?: 0
       val lastSpokenAt = stored?.optLong("lastSpokenAt", 0) ?: 0
+      val lastEtaSeconds = stored?.optLong("lastEtaSeconds", -1L)?.takeIf { it >= 0 }
       if (pendingUntil > now) return Reservation(null, "announcement_pending")
       if (lastSpokenAt > 0) {
         when (frequency) {
           "essential" -> return Reservation(null, "important_event_already_announced")
           "balanced" -> {
             if (now - lastSpokenAt < BALANCED_REPEAT_MS) return Reservation(null, "repeat_interval_active")
-            if (kotlin.math.abs(etaSeconds - (stored?.optLong("lastEtaSeconds", 0) ?: 0)) < MIN_ETA_CHANGE_SECONDS) {
+            if (lastEtaSeconds != null && kotlin.math.abs(etaSeconds - lastEtaSeconds) < MIN_ETA_CHANGE_SECONDS) {
               return Reservation(null, "prediction_not_changed")
             }
           }
-          "eachUpdate" -> if (stored?.optString("lastPushSignature") == predictionSignature) {
-            return Reservation(null, "duplicate_update")
+          "eachUpdate" -> {
+            if (stored?.optString("lastPushSignature") == predictionSignature)
+              return Reservation(null, "duplicate_update")
+            if (railway && lastEtaSeconds != null && kotlin.math.abs(etaSeconds - lastEtaSeconds) < MIN_ETA_CHANGE_SECONDS)
+              return Reservation(null, "prediction_not_changed")
           }
         }
       }
       val value = JSONObject().put("pendingUntil", now + RESERVATION_MS)
         .put("lastSpokenAt", lastSpokenAt)
-        .put("lastEtaSeconds", stored?.optLong("lastEtaSeconds", 0) ?: 0)
+        .put("lastEtaSeconds", lastEtaSeconds ?: 0)
         .put("lastPushSignature", stored?.optString("lastPushSignature").orEmpty())
       if (!preferences.edit().putString(entryKey, value.toString()).commit()) return Reservation(null, "dedup_state_unavailable")
       return Reservation(entryKey, null)

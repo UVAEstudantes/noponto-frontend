@@ -1,6 +1,6 @@
 import {passengerRadar} from '@/src/services/radarPassenger';
 import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, X } from "lucide-react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -27,6 +27,8 @@ interface Props {
   /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
   onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
+  abrirRadarSolicitacao: number;
+  onAberturaRadarConcluida: (request: number) => void;
   terminalPresence?:TerminalPresence[];
   onTerminalVehicle?:(vehicle:TerminalRadarVehicle)=>void;
   radar: ReturnType<typeof useRadarParada> & { previaNotificacao?: PreviaNotificacaoRadar }; linhas: LinhaSelecionadaInfo[];
@@ -38,7 +40,8 @@ interface Props {
   onControlsBottomChange: (bottom: number | null) => void;
 }
 
-export default function RadarParada({ radar, linhas, modal, lateralidade, visivel,terminalPresence=[], acompanhamento,
+export default function RadarParada({ radar, linhas, modal, lateralidade, visivel, abrirRadarSolicitacao,
+  onAberturaRadarConcluida, terminalPresence=[], acompanhamento,
   onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
@@ -46,6 +49,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const [estadoPainel, enviarAcaoPainel] = useReducer(reduzirEstadoPainelRadar, estadoInicialPainelRadar);
   const recolhido = estadoPainel.modo !== "aberto";
   const [conteudoMontado, setConteudoMontado] = useState(!recolhido);
+  const ultimaSolicitacaoAbrir = useRef(0);
 
   const chegadas = chegadasDoRadar(radar.eventos, radar.parada, linhas, radar.recebidoEm, radar.agora, [], []);
   const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],chegadas,radar.agora);
@@ -58,6 +62,11 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       amostra: `${radar.atualizadoEm}:${temEventos}`, concluida: radar.consultaConcluida,
       temEventos });
   }, [visivel, seletor, radar.contextoConsulta, radar.atualizadoEm, radar.consultaConcluida, temEventos]);
+  useEffect(() => {
+    if (!visivel || abrirRadarSolicitacao <= ultimaSolicitacaoAbrir.current) return;
+    ultimaSolicitacaoAbrir.current = abrirRadarSolicitacao;
+    enviarAcaoPainel({ tipo: "abrir" });
+  }, [visivel, abrirRadarSolicitacao]);
   const progress = useSharedValue(0);
   const lado = lateralidade === "canhoto" ? "left" : "right";
   const { Icon, cor } = identidadeModalMapa(modal);
@@ -198,7 +207,8 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
-      {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento} />}
+      {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento}
+        solicitacaoAbrir={abrirRadarSolicitacao} onSolicitacaoConcluida={onAberturaRadarConcluida} />}
         </ScrollView>
       </View>
     </Animated.View>}
