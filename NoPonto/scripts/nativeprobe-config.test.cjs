@@ -36,6 +36,7 @@ test('perfis Dev, Radar e produção continuam com os applicationIds existentes'
     Object.assign(process.env, profiles.radar.env);
     assert.equal(configure({ config: structuredClone(base) }).android.package, 'com.guilhermedesales.nononto.dev');
     delete process.env.APP_VARIANT;
+    process.env.EAS_BUILD = 'true';
     assert.equal(configure({ config: structuredClone(base) }).android.package, base.android.package);
   } finally {
     for (const key of keys) {

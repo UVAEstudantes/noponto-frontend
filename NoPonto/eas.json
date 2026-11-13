@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "android": { "gradleCommand": ":app:assembleDevelopmentDebug" },
       "env": {
         "APP_VARIANT": "development"
       }
@@ -16,7 +17,8 @@
       "distribution": "internal",
       "environment": "development",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDevelopmentRelease"
       },
       "env": {
         "APP_VARIANT": "radar",
@@ -36,13 +38,21 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleProductionRelease"
+      },
+      "env": {
+        "APP_VARIANT": "production"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleProductionRelease"
+      },
+      "env": {
+        "APP_VARIANT": "production"
       }
     }
   },

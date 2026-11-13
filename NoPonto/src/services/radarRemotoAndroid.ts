@@ -25,6 +25,7 @@ const nativeV1 = Platform.OS === 'android'
   && Constants.expoConfig?.extra?.nativeRadarV1Enabled === true
   && Constants.expoConfig?.extra?.radarRemoteEnabled === true
   && (nativePackageId === 'com.guilhermedesales.nononto.dev'
+    || nativePackageId === 'com.guilhermedesales.nononto'
     || (Constants.expoConfig?.extra?.nativeNotificationProbe === true
       && nativePackageId === 'com.guilhermedesales.nononto.nativeprobe'));
 
@@ -61,6 +62,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
     const url = await etapaRadar('http.url', async () => new URL(baseUrl));
     const packageId = Constants.expoConfig?.android?.package;
     const packageAllowed = packageId === 'com.guilhermedesales.nononto.dev'
+      || (nativeV1 && packageId === 'com.guilhermedesales.nononto')
       || (nativeV1 && packageId === 'com.guilhermedesales.nononto.nativeprobe');
     diagnosticarRadar('http.plataforma', Platform.OS === 'android' ? 'android' : 'incompativel');
     diagnosticarRadar('http.pacote-manifesto', packageAllowed ? 'compativel' : 'incompativel');

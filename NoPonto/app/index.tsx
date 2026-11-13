@@ -1,3 +1,4 @@
+import { paradaDetalhadaRadar, eventosValidosRadar } from '@/src/services/radarParada';
 import { useFavoritos } from "@/src/hooks/useFavoritos";
 import { configurarFavoritas, linhasEfetivas, favoritasVisiveis, ehFerroviaria,
   LIMITE_FAVORITAS_VISIVEIS, type ViewModeMapa, type SearchCategoryMapa } from "@/src/services/linhasEfetivas";
@@ -886,7 +887,13 @@ const Home = () => {
     );
   }, [railVehicles, ferroviariasVisiveis, itinerariosPorId]);
 
-  const chegadasParada = chegadasDoRadar(consultaDetalhe.eventos, contextoDetalhe,
+  const contextoTrens = paradaSelecionada && linhasSelecionadasFiltradas.some(l => l.modal === 'trem' && l.ativa)
+    ? paradaDetalhadaRadar(paradaSelecionada, linhasSelecionadasFiltradas.map(l => l.modal === 'trem' ? { ...l, modoSentido: 'ambos' as const } : l),
+      viewMode === 'favoritos' ? 'todos' : normalModal, itinerariosPorId, estruturasRealtimePorVersao) : null;
+  const contextoFicha = contextoTrens ?? contextoDetalhe;
+  const eventosFicha = contextoTrens ? eventosValidosRadar(consultaDetalhe.eventosRecebidos, contextoTrens,
+    consultaDetalhe.recebidoEm ?? Date.now(), consultaDetalhe.agora) : consultaDetalhe.eventos;
+  const chegadasParada = chegadasDoRadar(eventosFicha, contextoFicha,
     linhasSelecionadasFiltradas, consultaDetalhe.recebidoEm, consultaDetalhe.agora,
     veiculos, railVehiclesVisiveis).map((item) => ({ ...item,
       plataforma: item.plataforma ?? (paradaSelecionada
@@ -1036,7 +1043,7 @@ const Home = () => {
       <ParadaSheet
         onDiagnostico={diagnosticarRadares}
         agora={consultaDetalhe.agora}
-        vinculos={contextoDetalhe?.vinculos}
+        vinculos={contextoFicha?.vinculos}
         terminalPresence={radarTerminalPresence}
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}

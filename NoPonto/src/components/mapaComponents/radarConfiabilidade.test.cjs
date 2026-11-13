@@ -104,6 +104,33 @@ function sheet() {
     onToggleExpandir() {}, onFechar() {}, onAtualizar() {} };
   return { h, render(changes = {}) { props = { ...props, ...changes }; return h.render(() => Component(props)); } };
 }
+function railSheet(overrides = {}) {
+  const h = criarHarness(), pan = {};
+  for (const key of ["activeOffsetY", "onStart", "onUpdate", "onEnd"]) pan[key] = () => pan;
+  const mocks = {
+    "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView",
+      Dimensions: { get: () => ({ height: 800, width: 400 }) } },
+    "lucide-react-native": Object.fromEntries(["Bell", "BusFront", "ChevronDown", "ChevronRight", "ChevronUp", "Clock3",
+      "Map", "MapPin", "RefreshCw", "X"].map(id => [id, id])),
+    "react-native-gesture-handler": { GestureDetector: "GestureDetector", Gesture: { Pan: () => pan } },
+    "react-native-reanimated": { __esModule: true, default: { View: "Animated.View" }, Easing: { out: x => x, cubic: "cubic" },
+      runOnJS: fn => fn, useSharedValue: value => h.react.useRef({ value }).current, useAnimatedStyle: fn => fn(), withTiming: x => x },
+    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
+    "@/src/hooks/useTema": { useTema: () => ({ cores: temas.claro.cores, temaAtual: "claro" }) },
+    "@/src/services/radarPassenger": { passengerRadar: (_vehicles, arrivals) => arrivals.map(arrival => ({ kind: "arrival", arrival })) },
+    "@/src/services/terminalTracking": { terminalRadarVehicles: () => [] },
+    "@/src/services/apresentacaoRadar": { resumoConsultaParada: () => "", textoEtaOperacional: () => "" },
+    "@/src/constants/modaisMapa": { identidadeModalMapa: modal => ({ Icon: modal === "metro" ? "MetroIcon" : "SurfaceTrainIcon" }) },
+    "./terminalPresenceSection": { renderTerminalPresenceSection: () => null },
+    "./radarVehicleCardView": { renderRadarVehicleCard: p => ({ type: "Card", props: { children: [p.badge, p.title, p.subtitle, p.metadata, p.trailing] } }) },
+    "./radarAvisosPorVoz": { __esModule: true, default: "Voice" }, "expo-blur": { BlurView: "BlurView" },
+    ...overrides,
+  };
+  const Component = h.carregar("../components/mapaComponents/paradaSheet.tsx", mocks).default;
+  let props = { visivel: true, parada: { paradaId: "A", nome: "Parada A" }, linhas: [], chegadas: [], vinculos: [],
+    statusConsulta: "sucesso", carregandoChegadas: false, expandido: true, onToggleExpandir() {}, onFechar() {}, onAtualizar() {} };
+  return { h, render(changes = {}) { props = { ...props, ...changes }; return h.render(() => Component(props)); } };
+}
 
 test('compacto usa mesma apresentacao do completo antes de ordenar ETA relativo e absoluto',()=>{
  const h=criarHarness(),mocks=ui(h),cards=[];
@@ -389,4 +416,91 @@ for(const dark of [false,true])test('passenger physical details keep shared them
  assert.match(texto(h.output),/VeículoD86286Atualização GPShá 0 s/);assert.doesNotMatch(texto(h.output),/Contado desde/);
  const info=nodes(h.output).find(n=>n.props?.accessibilityLabel==='Como contamos o tempo no terminal');let stopped=0;info.props.onPress({stopPropagation(){stopped++}});render();assert.equal(stopped,1);assert.match(texto(h.output),/Contado desde/);
  row=nodes(h.output).find(n=>n.props?.accessibilityLabel==='Detalhes da linha 855');assert.equal(row.props.accessibilityState.expanded,true);assert.ok(nodes(row).filter(n=>n.type==='Text').every(n=>n.props.allowFontScaling!==false));assert.ok(nodes(row).some(n=>n.type==='Text'&&n.props.style?.color===cores.textoPrimario));h.unmount();
+});
+
+test('rail selector shows only Santa Cruz and Central, filters locally and hides for one direction', () => {
+  const { h, render } = railSheet(); let requests = 0;
+  const vinculos = [{ sentidoId: 'out', destino: 'Central do Brasil' }, { sentidoId: 'back', destino: 'Terminal Santa Cruz' }];
+  const chegadas = vinculos.map((v, i) => ({ ...chegada, id: v.sentidoId, sentidoId: v.sentidoId, modal: 'trem', codigo: `TREM${i}`, qualidade: 'Programado', horarioPrevistoLocal: '15:47' }));
+  render({ physicalModal: 'trem', vinculos, chegadas, statusConsulta: 'sucesso', carregandoChegadas: false, onAtualizar: () => requests++ });
+  assert.match(texto(h.output), /TREM0/); assert.doesNotMatch(texto(h.output), /TREM1/);
+  assert.match(texto(h.output), /Central/); assert.match(texto(h.output), /Santa Cruz/);
+  assert.doesNotMatch(texto(h.output), /Central do Brasil|Terminal Santa Cruz/);
+  const option = nodes(h.output).find(n => n.type === 'Pressable' && texto(n) === 'Santa Cruz');
+  option.props.onPress(); render();
+  assert.match(texto(h.output), /TREM1/); assert.doesNotMatch(texto(h.output), /TREM0/);
+  assert.match(texto(h.output), /15:47/); assert.match(texto(h.output), /Programado/); assert.equal(requests, 0);
+  render({ vinculos: [vinculos[0]], chegadas: [chegadas[0]] });
+  assert.match(texto(h.output), /TREM0/); assert.doesNotMatch(texto(h.output), /Santa Cruz/);
+  assert.doesNotMatch(texto(h.output), /Ambos/); h.unmount();
+});
+test('rail refresh sends selected direction, shows friendly result and awaits event reload', async () => {
+  const previousDev = global.__DEV__, previousInfo = console.info, logs = [];
+  global.__DEV__ = true; console.info = (...args) => logs.push(args);
+  try {
+    const requests = []; let reloads = 0;
+    const { h, render } = railSheet({ '@/src/services/trensRefresh': { refreshTrens: async (...args) => { requests.push(args); return 'Atualizado agora.'; } } });
+    const vinculos = [{ sentidoId: 'central-id', destino: 'Central' }, { sentidoId: 'santa-id', destino: 'Santa Cruz' }];
+    render({ physicalModal: 'trem', vinculos, chegadas: vinculos.map((v, i) => ({ ...chegada, id: v.sentidoId,
+      sentidoId: v.sentidoId, modal: 'trem', codigo: `TREM${i}` })), onAtualizar: async () => { reloads++; } });
+    nodes(h.output).find(n => n.type === 'Pressable' && texto(n) === 'Santa Cruz').props.onPress(); render();
+    await nodes(h.output).find(n => n.type === 'Pressable' && texto(n) === 'Atualizar').props.onPress();
+    render();
+    const event = name => logs.find(args => args[0] === '[trem-refresh]' && args[1] === name)?.[2];
+    assert.deepEqual(requests, [['A', 'santa-id']]); assert.equal(reloads, 1);
+    assert.deepEqual(event('selected'), { paradaId: 'A', sentidoId: 'santa-id' });
+    assert.equal(event('event-list-refresh').state, 'started');
+    assert.equal(logs.filter(args => args[0] === '[trem-refresh]' && args[1] === 'event-list-refresh').at(-1)[2].state, 'completed');
+    assert.match(texto(h.output), /Atualizado agora/); h.unmount();
+  } finally {
+    console.info = previousInfo;
+    if (previousDev === undefined) delete global.__DEV__; else global.__DEV__ = previousDev;
+  }
+});
+
+test('rail refresh explains when event-list reload causes the UI fallback', async () => {
+  const previousDev = global.__DEV__, previousInfo = console.info, logs = [];
+  global.__DEV__ = true; console.info = (...args) => logs.push(args);
+  try {
+    let reloads = 0;
+    const { h, render } = railSheet({ '@/src/services/trensRefresh': { refreshTrens: async () => 'Atualizado agora.' } });
+    render({ physicalModal: 'trem', vinculos: [{ sentidoId: 'central-id', destino: 'Central' }],
+      chegadas: [{ ...chegada, modal: 'trem', sentidoId: 'central-id' }], onAtualizar: async () => { reloads++; throw new Error('event fetch failed'); } });
+    await nodes(h.output).find(n => n.type === 'Pressable' && texto(n) === 'Atualizar').props.onPress();
+    render();
+    const fallback = logs.find(args => args[0] === '[trem-refresh]' && args[1] === 'ui-fallback')?.[2];
+    assert.equal(reloads, 1);
+    assert.equal(fallback.stage, 'event_list_refresh');
+    assert.equal(fallback.reason, 'event_list_refresh_failed');
+    assert.equal(fallback.serviceMessage, 'Atualizado agora.');
+    assert.equal(fallback.errorMessage, 'event fetch failed');
+    assert.match(texto(h.output), /Falha na atualização\. Dados anteriores preservados/);
+    h.unmount();
+  } finally {
+    console.info = previousInfo;
+    if (previousDev === undefined) delete global.__DEV__; else global.__DEV__ = previousDev;
+  }
+});
+test('arrival badge icon follows transport modal regardless of event quality', () => {
+  const icons = [];
+  const { h, render } = railSheet({
+    '@/src/constants/modaisMapa': { identidadeModalMapa: modal => ({
+      Icon: modal === 'metro' ? 'MetroIcon' : modal === 'trem' ? 'SurfaceTrainIcon' : 'OtherIcon',
+    }) },
+    './radarVehicleCardView': { renderRadarVehicleCard: p => {
+      icons.push(p.badge?.type); return { type: 'Card', props: { children: p.badge } };
+    } },
+  });
+  for (const quality of ['Programado', 'Estimado', 'Ao vivo']) { render({ physicalModal: 'trem', vinculos: [{ sentidoId: 'c', destino: 'Central' }],
+    chegadas: [{ ...chegada, modal: 'trem', sentidoId: 'c', qualidade: quality }] }); assert.equal(icons.at(-1), 'SurfaceTrainIcon'); }
+  render({ physicalModal: 'metro', chegadas: [{ ...chegada, modal: 'metro' }] }); assert.equal(icons.at(-1), 'MetroIcon');
+  h.unmount();
+});
+test('bus and BRT refresh retain their callback without a rail selector', async () => {
+  for (const physicalModal of ['onibus', 'brt']) {
+    const { h, render } = railSheet(); let requests = 0;
+    render({ physicalModal, chegadas: [chegada], statusConsulta: 'sucesso', carregandoChegadas: false, onAtualizar: () => requests++ });
+    const button = nodes(h.output).find(n => n.type === 'Pressable' && texto(n) === 'Atualizar');
+    await button.props.onPress(); assert.equal(requests, 1); assert.match(texto(h.output), /084/); h.unmount();
+  }
 });

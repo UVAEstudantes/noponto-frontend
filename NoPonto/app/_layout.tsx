@@ -75,7 +75,6 @@ const ConteudoLayout = () => {
               <Tabs.Screen name="favoritos" />
               <Tabs.Screen name="linhas" />
               <Tabs.Screen name="configuracao" />
-              <Tabs.Screen name="laboratorio-voz" options={{ href: null }} />
             </Tabs>
 
             <NavBar />

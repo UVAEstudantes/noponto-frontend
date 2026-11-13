@@ -44,3 +44,21 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Local APK builds and credentials
+/.local-apks/
+.gradle/
+.cxx/
+**/build/
+*.apk
+*.aab
+*.keystore
+google-services.json
+credentials.json
+local.properties
+
+# Artefatos gerados pelos utilitarios .NET
+/scripts/terminal-gtfs-probe/**/bin/
+/scripts/terminal-gtfs-probe/**/obj/
+/scripts/terminal-presence-preflight/**/bin/
+/scripts/terminal-presence-preflight/**/obj/

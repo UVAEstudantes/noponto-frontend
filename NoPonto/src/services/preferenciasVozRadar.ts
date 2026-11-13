@@ -14,6 +14,7 @@ export * from "./radarVozPreferencias";
 const CHAVE = "@noponto/radar-voice-preferences:v1";
 const PACOTES_RADAR_NATIVO = new Set([
   "com.guilhermedesales.nononto.dev",
+  "com.guilhermedesales.nononto",
   "com.guilhermedesales.nononto.nativeprobe",
 ]);
 const FAMILIAS: Record<Exclude<VozRadar, "device">, string> = {
