@@ -5,8 +5,9 @@ export type TutorialMapRequest = {
   lineName: string;
   modal: string;
   mode: "marker" | "details";
+  nativeHighlight?: boolean;
   vehicleId?: string;
-  kind?: "vehicle" | "stop";
+  kind?: "vehicle" | "stop" | "route";
   reducedMotion: boolean;
 };
 export type TutorialMapEvent = {
@@ -38,6 +39,8 @@ export function mapTutorialRect(
       r.height,
       v.width,
       v.height,
+      frame.x,
+      frame.y,
       frame.width,
       frame.height,
     ].every(Number.isFinite) ||

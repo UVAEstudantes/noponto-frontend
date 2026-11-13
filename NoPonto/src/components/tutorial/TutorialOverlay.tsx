@@ -21,7 +21,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react-native";
-import TutorialSpotlight from "./TutorialSpotlight";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTema } from "@/src/hooks/useTema";
 import { useTutorial } from "./TutorialProvider";
@@ -31,30 +30,23 @@ import {
   RAIL_STATUS_GUIDE,
   tutorialPresentation,
   linePanelStep,
-  tutorialCardPlacement,
+  tutorialCardRegion,
 } from "./tutorialSteps";
 const YELLOW = "#FFC107";
 export default function TutorialOverlay({
   inLineModal = false,
   host = "root",
-}: { inLineModal?: boolean; host?: "root" | "radar" | "stopPicker" | "confirmation" } = {}) {
+  docked = false,
+}: { inLineModal?: boolean; host?: "root" | "radar" | "stopPicker" | "confirmation"; docked?: boolean } = {}) {
   const t = useTutorial();
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const root = useRef<View>(null);
   const cardScroll = useRef<ScrollView>(null);
-  const [contentHeight, setContentHeight] = useState(0);
-  const [frame, setFrame] = useState({ y: 0, x: 0, height, width: 0 });
+  const [descriptionContentHeight, setDescriptionContentHeight] = useState(0);
+  const [descriptionHeight, setDescriptionHeight] = useState(0);
+  const [frameHeight, setFrameHeight] = useState(height);
   const [keyboardTop, setKeyboardTop] = useState<number | null>(null);
-  const cardTop = useRef(new Animated.Value(0)).current;
-  const previousPlacement = useRef<{ top: number; upper: boolean } | null>(
-    null,
-  );
-  const lastCardTarget = useRef<{
-    owner: string;
-    rect: { x: number; y: number; width: number; height: number };
-  } | null>(null);
   const correctHost = t.chapter === 5 ? (t.radarHost ?? "root") === host && !inLineModal : host === "root" && Boolean(t.lineModalOpen) === inLineModal;
   const inModal = inLineModal || host !== "root";
   const reducedMotion = t.reducedMotion ?? true;
@@ -88,10 +80,6 @@ export default function TutorialOverlay({
   const step = t.step ?? "welcome";
   const search = t.step === "search";
   const compact = (search || transportSearchStep(t.step)) && t.searching;
-  const rawTarget = t.spotlight ?? (search ? t.target : null);
-  const r = rawTarget
-    ? { ...rawTarget, x: rawTarget.x - frame.x, y: rawTarget.y - frame.y }
-    : null;
   const info = tutorialPresentation(step, t.routeAvailable);
   const Icon = ({
     welcome: Navigation,
@@ -128,57 +116,24 @@ export default function TutorialOverlay({
     linePanelStep(t.step) ||
     t.step === "lineTab" ||
     ["vehicle", "vehicleDetails", "stop", "stopDetails"].includes(step);
-  const linePanel = !inLineModal && linePanelStep(t.step);
-  const details =
-    t.chapter === 5 || t.chapter === 6 || t.step === "vehicleDetails" || t.step === "stopDetails" || linePanel;
   const bottom =
     keyboardTop === null
       ? inModal
         ? insets.bottom + 8
         : Math.max(insets.bottom + 82, 96)
-      : Math.max(8, frame.y + frame.height - keyboardTop + 8);
-  const headerBottom =
-    !inModal && t.target
-      ? t.target.y + t.target.height - frame.y + 8
-      : insets.top + 8;
-  const owner = step + ":" + host + (inLineModal ? ":modal" : "");
-  if (!correctHost) lastCardTarget.current = null;
-  else if (r) lastCardTarget.current = { owner, rect: r };
-  const cardTarget =
-    r ??
-    (lastCardTarget.current?.owner === owner
-      ? lastCardTarget.current.rect
-      : null);
-  const placement = tutorialCardPlacement(
-    Math.max(insets.top + 8, headerBottom),
-    frame.height - bottom,
-    details || inModal ? cardTarget : null,
-    contentHeight,
-  );
+      : Math.max(8, frameHeight - keyboardTop + 8);
+  const fixedRegion = !inModal && tutorialCardRegion(t.step);
+  // The expanded stop sheet uses up to 74% of the window; reserve the remaining top area.
+  const fixedMaxHeight = fixedRegion === "radarTop" ? Math.min(260, height * 0.32) : fixedRegion === "top" || fixedRegion === "lineTop"
+    ? Math.max(0, frameHeight * (fixedRegion === "lineTop" ? 0.48 : 0.26) - insets.top - 16)
+    : Math.max(0, Math.min(340, frameHeight - bottom - insets.top - 8));
+  const dockedMaxHeight = Math.min(340, (height - insets.top - insets.bottom - 24) * 0.45);
+  const descriptionOverflow = descriptionContentHeight > descriptionHeight + 1;
   const section = radarSection(t.step);
   const count = t.chapter === 6 ? 7 : section === "5A" ? 5 : section === "5B" ? 6 : section === "5C" ? 9 : t.chapter === 4 ? 9 : 4;
-  const smallCard = compact || placement.compact;
+  const smallCard = height < 700 || docked || compact || (fixedRegion ? step === "vehicle" || step === "stop" || step === "stopDetails" : false);
   const visible =
     t.ready && Boolean(t.step) && correctHost;
-  useEffect(() => {
-    if (!visible) {
-      previousPlacement.current = null;
-      return;
-    }
-    const previous = previousPlacement.current;
-    previousPlacement.current = { top: placement.top, upper: placement.upper };
-    if (!previous || previous.upper === placement.upper || reducedMotion) {
-      cardTop.setValue(placement.top);
-      return;
-    }
-    const animation = Animated.timing(cardTop, {
-      toValue: placement.top,
-      duration: 140,
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [visible, placement.top, placement.upper, reducedMotion, cardTop]);
   if (!visible) return null;
   const secondary = (label: string, onPress: () => void) => (
     <Pressable
@@ -194,56 +149,38 @@ export default function TutorialOverlay({
   );
   return (
     <View
-      ref={root}
       pointerEvents="box-none"
-      style={[StyleSheet.absoluteFillObject, { zIndex: 1100 }]}
-      onLayout={() =>
-        root.current?.measureInWindow((x, y, width, h) =>
-          setFrame({ x, y, width, height: h }),
-        )
-      }
+      style={docked ? { marginBottom: 8, flexShrink: 0 } : [StyleSheet.absoluteFillObject, { zIndex: 1100 }]}
+      onLayout={(event) => {
+        if (!docked) setFrameHeight(event.nativeEvent.layout.height);
+      }}
     >
-      <Animated.View
-        pointerEvents="none"
-        importantForAccessibility="no-hide-descendants"
-        style={[StyleSheet.absoluteFillObject, {}]}
-      >
-        <TutorialSpotlight
-          rect={r}
-          owner={search ? "search" : step}
-          reducedMotion={reducedMotion}
-        />
-      </Animated.View>
       {!interactive && <View style={StyleSheet.absoluteFillObject} />}
       <Animated.View
         pointerEvents="box-none"
-        style={{
+        style={docked ? { maxHeight: dockedMaxHeight } : {
+          maxHeight: fixedMaxHeight,
           position: "absolute",
           left: 14,
           right: 14,
-          top: previousPlacement.current ? cardTop : placement.top,
+          ...(fixedRegion === "top" || fixedRegion === "lineTop" || fixedRegion === "radarTop" ? { top: insets.top + 8 } : { bottom }),
         }}
       >
-        <ScrollView
-          ref={cardScroll}
-          onContentSizeChange={(_, h) => setContentHeight(h)}
-          keyboardShouldPersistTaps="always"
+        <View
           accessibilityViewIsModal={!interactive}
           style={{
-            maxHeight: placement.maxHeight,
+            maxHeight: docked ? dockedMaxHeight : fixedMaxHeight,
+            flexShrink: 1,
+            paddingHorizontal: smallCard ? 10 : 14,
+            paddingVertical: 4,
             borderRadius: 24,
             backgroundColor:
               temaAtual === "claro" ? "#FFFFFF" : cores.fundoCard,
             borderWidth: 1,
             borderColor: cores.bordaSuave,
           }}
-          contentContainerStyle={{
-            paddingHorizontal: 18,
-            paddingVertical: smallCard ? 8 : 16,
-            gap: smallCard ? 4 : 12,
-          }}
         >
-          <View style={styles.row}>
+          <View style={[styles.row, { flexShrink: 0 }]}>
             <View
               style={{
                 flexDirection: "row",
@@ -252,7 +189,7 @@ export default function TutorialOverlay({
                 flex: 1,
               }}
             >
-              {Array.from(
+              {!smallCard && Array.from(
                 { length: count },
                 (_, index) => index,
               ).map((i) => (
@@ -278,19 +215,7 @@ export default function TutorialOverlay({
                 {count}
               </Text>
             </View>
-            {secondary("Pular", () =>
-              ![
-                "welcome",
-                "invite",
-                "done",
-                "vehiclesDone",
-                "stopsDone",
-                "linesDone",
-                "radarChapterDone",
-              ].includes(t.step ?? "")
-                ? t.advance("skip")
-                : t.end(),
-            )}
+            {secondary("Pular", () => t.advance("skip"))}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Encerrar tutorial"
@@ -300,6 +225,25 @@ export default function TutorialOverlay({
               <X size={16} color={cores.textoSecundario} />
             </Pressable>
           </View>
+              <Text
+                accessibilityRole="header"
+                style={{
+                  color: cores.textoPrimario,
+                  fontSize: smallCard ? 15 : 20,
+                  fontWeight: "700",
+                }}
+              >
+                {compact && t.chapter !== 6 ? "Escolha uma linha nos resultados." : info.title}
+              </Text>
+          <ScrollView
+            ref={cardScroll}
+            scrollEnabled
+            keyboardShouldPersistTaps="always"
+            style={{ flexShrink: 1 }}
+            contentContainerStyle={{ gap: smallCard ? 4 : 8, paddingVertical: 4 }}
+            onLayout={event => setDescriptionHeight(event.nativeEvent.layout.height)}
+            onContentSizeChange={(_width, contentHeight) => setDescriptionContentHeight(contentHeight)}
+          >
           <View
             style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}
           >
@@ -312,16 +256,6 @@ export default function TutorialOverlay({
               </View>
             )}
             <View style={{ flex: 1, gap: 5 }}>
-              <Text
-                accessibilityRole="header"
-                style={{
-                  color: cores.textoPrimario,
-                  fontSize: smallCard ? 15 : 20,
-                  fontWeight: "700",
-                }}
-              >
-                {compact && t.chapter !== 6 ? "Escolha uma linha nos resultados." : info.title}
-              </Text>
               {!compact && (
                 <Text
                   style={{
@@ -434,8 +368,9 @@ export default function TutorialOverlay({
               )}
             </Pressable>
           )}
-          {(!compact || t.chapter === 6) && (
-            <View style={styles.row}>
+          </ScrollView>
+          {descriptionOverflow && <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Role a explicação para ler mais ↕</Text>}
+            <View style={[styles.row, { flexShrink: 0 }]}>
               {t.step === "welcome" ? (
                 secondary("Agora não", t.end)
               ) : (
@@ -471,7 +406,7 @@ export default function TutorialOverlay({
                         fontWeight: "700",
                       }}
                     >
-                      {t.step === "transportIntro" ? "Vamos conhecer" : t.step === "journeyDone" ? "Explorar o NoPonto" : t.step === "radarIntro" ? "Conhecer o Radar" : t.step === "radarDone" ? "Conhecer notificações" : t.step === "notificationsDone" ? "Conhecer avisos por voz" : t.step === "radarChapterDone" ? (t.radarDraftPending ? "Revisar alterações" : "Conhecer outros transportes") : t.step === "linesDone" ? "Continuar para o Radar" : t.step === "invite"
+                      {t.step === "transportIntro" ? "Vamos conhecer" : t.step === "journeyDone" ? "Explorar o NoPonto" : t.step === "radarIntro" ? "Conhecer o Radar" : t.step === "radarDone" ? "Conhecer notificações" : t.step === "notificationsDone" ? "Conhecer avisos por voz" : t.step === "radarChapterDone" ? "Conhecer outros transportes" : t.step === "linesDone" ? "Continuar para o Radar" : t.step === "invite"
                         ? "Começar tutorial"
 
                           : t.step === "stopsDone"
@@ -486,19 +421,13 @@ export default function TutorialOverlay({
                                       t.step === "stopsIntro" ||
                                       t.step === "linesIntro"
                                     ? "Começar"
-                                    : "Continuar"}
+                                    : t.chapter === 5 && ["radarStart", "voiceEnable", "voiceSave"].includes(step) ? "Continuar sem ativar" : "Continuar"}
                     </Text>
                     <ArrowRight size={17} color="#222222" />
                   </Pressable>
                 )}
             </View>
-          )}
-          {compact && t.chapter !== 6 && (
-            <View style={styles.row}>
-              {secondary("Voltar", () => t.advance("back"))}
-            </View>
-          )}
-        </ScrollView>
+        </View>
       </Animated.View>
     </View>
   );
@@ -521,9 +450,9 @@ const styles = StyleSheet.create({
   },
   primary: {
     flex: 1,
-    minWidth: 140,
+    minWidth: 0,
     minHeight: 46,
-    padding: 12,
+    padding: 8,
     borderRadius: 13,
     backgroundColor: YELLOW,
     flexDirection: "row",

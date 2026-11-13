@@ -513,27 +513,10 @@ export function lineModalStep(step: Step) {
   ].includes(step ?? "");
 }
 
-export function tutorialCardPlacement(
-  top: number,
-  bottom: number,
-  target: TutorialRect | null,
-  contentHeight: number,
-) {
-  top = Math.max(0, Math.min(top, bottom));
-  bottom = Math.max(top, bottom);
-  const above = target ? Math.max(0, Math.min(bottom, target.y - 8) - top) : 0;
-  const below = target
-    ? Math.max(0, bottom - Math.max(top, target.y + target.height + 8))
-    : bottom - top;
-  const upper = Boolean(target && above >= below);
-  let maxHeight = Math.min(bottom - top, upper ? above : below);
-  // A nearly full-screen panel still leaves an accessible, scrollable compact guide.
-  if (maxHeight < 64) maxHeight = Math.min(64, bottom - top);
-  const height = Math.min(maxHeight, contentHeight || maxHeight);
-  return {
-    top: upper && above >= 64 ? top : bottom - height,
-    maxHeight,
-    compact: maxHeight < 200,
-    upper: upper && above >= 64,
-  };
+// Non-Radar guides use an explicit region, independent of target geometry.
+export function tutorialCardRegion(step: Step): "bottom" | "top" | "lineTop" | "radarTop" | null {
+  if (step === "stopDetails") return "top";
+  if (linePanelStep(step)) return "lineTop";
+  if (step && chapterOf(step) === 5) return "radarTop";
+  return step ? "bottom" : null;
 }

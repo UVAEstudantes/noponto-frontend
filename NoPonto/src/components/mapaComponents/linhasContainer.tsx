@@ -639,6 +639,13 @@ function LinhasContainer({
     [linhaConfigId, linhasSelecionadas, visualizacaoFavoritos, favoritasConfiguradas],
   );
 
+  const botaoFecharConfig = (
+    <Pressable accessibilityRole="button" accessibilityLabel="Fechar personalização da linha" hitSlop={8}
+      onPress={() => { setLinhaConfigId(null); tutorial.setLineModalOpen(false); }}
+      style={{ width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: cores.fundoSecundario }}>
+      <X size={16} color={cores.textoSecundario} />
+    </Pressable>
+  );
   const tutorialOwned = React.useRef(false);
   React.useEffect(() => {
     if (tutorialEditing && aberto) setLinhaConfigId(tutorial.lineId);
@@ -833,7 +840,7 @@ function LinhasContainer({
         </View>}
 
         {/* Lista */}
-        <ScrollView ref={listRef} onScroll={tutorial.chapter === 4 ? tutorial.invalidateTargets : undefined} scrollEventThrottle={64}
+        <ScrollView ref={listRef}
           key={visualizacaoFavoritos ? "favoritos" : "modal"}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 124 }}
@@ -857,7 +864,7 @@ function LinhasContainer({
               const selecionada = todasLinhasSelecionadas.find((linha) => linha.linhaId === favorita.linhaId);
               const config = favoritasConfiguradas.find((linha) => linha.linhaId === favorita.linhaId);
               const visivel = favoritasVisiveisIds.has(favorita.linhaId);
-              return <TutorialTarget key={favorita.linhaId} kind="line" clipRef={listRef}
+              return <TutorialTarget key={favorita.linhaId} kind="line" clipRef={listRef} dimmed={tutorial.chapter === 4 && tutorial.lineId !== favorita.linhaId}
                 enabled={tutorial.lineId === favorita.linhaId && tutorial.step === "lineControls"}
                 onLayout={event => { rowOffsets.current[favorita.linhaId] = event.nativeEvent.layout.y; }}
                 style={{ marginHorizontal: 16, marginBottom: 8,
@@ -909,7 +916,7 @@ function LinhasContainer({
             </View>
           ) : (
             linhasSelecionadas.map((linha, index) => (
-              <TutorialTarget key={linha.linhaId} kind="line" clipRef={listRef}
+              <TutorialTarget key={linha.linhaId} kind="line" clipRef={listRef} dimmed={tutorial.chapter === 4 && tutorial.lineId !== linha.linhaId}
                 enabled={tutorial.step === "lineControls" && tutorial.lineId === linha.linhaId}
                 onLayout={event => { rowOffsets.current[linha.linhaId] = event.nativeEvent.layout.y; if (tutorial.chapter === 4 && tutorial.lineId === linha.linhaId) listRef.current?.scrollTo({y: event.nativeEvent.layout.y, animated: !tutorial.reducedMotion}); }}>
               <LinhaCard
@@ -936,14 +943,14 @@ function LinhasContainer({
         transparent
         visible={Boolean(linhaConfig)}
         animationType={tutorial.chapter === 4 ? "none" : "fade"}
-        onShow={() => { if (tutorial.chapter === 4) { tutorial.setLineModalOpen(true); tutorial.invalidateTargets(); } }}
+        onShow={() => { if (tutorial.chapter === 4) tutorial.setLineModalOpen(true); }}
         onRequestClose={() => { setLinhaConfigId(null); tutorial.setLineModalOpen(false); }}
       >
         <View
           style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.4)",
-            justifyContent: "center",
+            justifyContent: tutorialEditing ? "flex-start" : "center",
             padding: 20,
           }}
         >
@@ -958,12 +965,14 @@ function LinhasContainer({
             onPress={() => { setLinhaConfigId(null); tutorial.setLineModalOpen(false); }}
           />
 
+          {tutorialEditing && <View style={{ alignItems: "flex-end", marginBottom: 8 }}>{botaoFecharConfig}</View>}
+          {tutorialEditing && <TutorialOverlay inLineModal docked />}
           {linhaConfig && (
-            <ScrollView ref={configRef} onScroll={tutorial.chapter === 4 ? tutorial.invalidateTargets : undefined} scrollEventThrottle={64} onContentSizeChange={() => { if(tutorial.chapter === 4) tutorial.invalidateTargets(); }}
+            <ScrollView ref={configRef}
               style={{
                 borderRadius: 20,
-                maxHeight: corAberta ? "90%" : undefined,
-                flexGrow: 0,
+                maxHeight: tutorialEditing ? undefined : corAberta ? "90%" : undefined,
+                flexGrow: tutorialEditing ? 1 : 0,
                 flexShrink: 1,
                 backgroundColor: cores.fundoPainel,
                 borderWidth: 1,
@@ -1008,19 +1017,7 @@ function LinhasContainer({
                     {linhaConfig.subtitulo || "Linha selecionada"}
                   </Text>
                 </View>
-                <Pressable
-                  onPress={() => { setLinhaConfigId(null); tutorial.setLineModalOpen(false); }}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: cores.fundoSecundario,
-                  }}
-                >
-                  <X size={16} color={cores.textoSecundario} />
-                </Pressable>
+                {!tutorialEditing && botaoFecharConfig}
               </View>
 
               {/* Opções */}
@@ -1032,7 +1029,8 @@ function LinhasContainer({
                     { title: "Paradas", subtitle: "Mostrar paradas da linha", active: linhaConfig.mostrarParadas,
                       icon: linhaConfig.mostrarParadas ? MapPin : MapPinOff,
                       action: () => aoToggleParadas(linhaConfig.linhaId) },
-                  ].map((tile) => <TutorialTarget key={tile.title} kind="line" clipRef={configRef}
+                  ].map((tile) => <TutorialTarget key={tile.title} kind="line" clipRef={configRef} reveal
+                    dimmed={tutorialEditing && !(tutorial.step === "lineVisibility" && tile.title === "Visibilidade")}
                     enabled={tutorial.step === "lineVisibility" && tile.title === "Visibilidade"} style={{flex: 1}}>
                     <Pressable onPress={tile.action} style={{ flex: 1,
                     minHeight: 96, padding: 12, borderRadius: 14, alignItems: "center", justifyContent: "center",
@@ -1044,7 +1042,7 @@ function LinhasContainer({
                   </Pressable></TutorialTarget>)}
                 </View>
 
-                <TutorialTarget kind="line" clipRef={configRef} enabled={tutorial.step === "lineDirection"}
+                <TutorialTarget kind="line" clipRef={configRef} reveal dimmed={tutorialEditing && tutorial.step !== "lineDirection"} enabled={tutorial.step === "lineDirection"}
                   style={{ marginTop: 4 }}>
                   <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginBottom: 8 }}>
                     <ArrowLeftRight size={18} color={linhaConfig.cor} />
@@ -1076,7 +1074,7 @@ function LinhasContainer({
               </View>
 
               {/* ColorWheel */}
-              <TutorialTarget kind="line" clipRef={configRef} enabled={tutorial.step === "lineColor"} style={{ marginTop: 10, borderRadius: 12, backgroundColor: cores.fundoSecundario,
+              <TutorialTarget kind="line" clipRef={configRef} reveal dimmed={tutorialEditing && tutorial.step !== "lineColor"} enabled={tutorial.step === "lineColor"} style={{ marginTop: 10, borderRadius: 12, backgroundColor: cores.fundoSecundario,
                 borderWidth: 1, borderColor: cores.bordaSuave, overflow: "hidden" }}>
                 <Pressable onPress={() => setCorAberta((value) => !value)} style={{ padding: 12,
                   flexDirection: "row", alignItems: "center", gap: 9 }}>
@@ -1102,7 +1100,7 @@ function LinhasContainer({
                   </View>
                 </View>}
               </TutorialTarget>
-              <TutorialTarget kind="line" clipRef={configRef} enabled={tutorial.step === "lineRemove"}>
+              <TutorialTarget kind="line" clipRef={configRef} reveal dimmed={tutorialEditing && tutorial.step !== "lineRemove"} enabled={tutorial.step === "lineRemove"}>
               <Pressable onPress={() => {
                 setLinhaConfigId(null); tutorial.setLineModalOpen(false);
                 if (visualizacaoFavoritos) favoritos.remover(linhaConfig.linhaId);
@@ -1116,7 +1114,6 @@ function LinhasContainer({
               </TutorialTarget>
             </ScrollView>
           )}
-          <TutorialOverlay inLineModal />
         </View>
       </Modal>
     </>

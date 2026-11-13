@@ -44,7 +44,7 @@ test("Radar tutorial configuration opens a draft without activating, requesting 
   context.abrir = handler("radarEsperaSection.tsx", "abrir", context);
   const apply = effect("radarEsperaSection.tsx", "owned.current", context);
   apply(); assert.equal(state.open, true); assert.deepEqual(Array.from(state.lines), ["line"]); assert.equal(state.window, 5);
-  context.aberta = true; context.tutorialRadar = false; context.rascunhoAlterado = true; apply();
+  context.aberta = true; context.tutorialRadar = false; context.tutorial.step = null; context.rascunhoAlterado = true; apply();
   assert.equal(state.open, true, "ending must not discard manual edits");
   context.owned.current = true; context.rascunhoAlterado = false; apply(); assert.equal(state.open, false);
 });
@@ -103,4 +103,26 @@ test("ending tutorial invalidates a pending headphone read before it can play au
   resolveRoute({automaticHeadphone: true}); await pending;
   assert.equal(spoken, 0);
   assert.equal(context.previewOwned.current, false);
+});
+
+test('continuing to other transports closes a dirty Radar surface without saving or activation', () => {
+  const state = {}, forbidden = () => {throw Error('unexpected operation');};
+  const context = {tutorialRadar: false, tutorial: {step: 'transportIntro'}, wasTutorial: {current: true},
+    owned: {current: true}, aberta: true, rascunhoAlterado: true, setAberta: v => state.open = v,
+    abrir: forbidden, salvar: forbidden, ativar: forbidden};
+  effect('radarEsperaSection.tsx', 'owned.current', context)();
+  assert.equal(state.open, false); assert.equal(context.rascunhoAlterado, true);
+});
+
+test('advancing guide dismisses native selectors without choosing stops or enabling voice', () => {
+  for (const step of ['radarLines', 'voiceSave', 'radarChapterDone', 'transportIntro']) {
+    const state = {}, forbidden = () => {throw Error('unexpected activation');};
+    effect('radarParada.tsx', 'tutorial.step !== "radarStop"', {
+      tutorial: {step}, setSeletor: v => state.stopPicker = v, selecionar: forbidden,
+    })();
+    effect('radarAvisosPorVoz.tsx', 'if (tutorial.step) setConfirmarAltoFalante', {
+      tutorial: {step}, setConfirmarAltoFalante: v => state.confirmation = v, salvar: forbidden, Speech: {speak: forbidden},
+    })();
+    assert.equal(state.stopPicker, false); assert.equal(state.confirmation, false);
+  }
 });

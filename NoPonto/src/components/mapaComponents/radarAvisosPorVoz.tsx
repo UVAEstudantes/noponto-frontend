@@ -1,4 +1,5 @@
 import TutorialTarget from "../tutorial/TutorialTarget";
+import TutorialOverlay from "../tutorial/TutorialOverlay";
 import { useTutorial } from "../tutorial/TutorialProvider";
 import * as Speech from "expo-speech";
 import { Check, ChevronDown, Clock3, Headphones, Minus, Play, Plus, Square, Volume2, VolumeX } from "lucide-react-native";
@@ -216,6 +217,10 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
     previousConfirmation.current = confirmarAltoFalante;
   }, [confirmarAltoFalante]);
 
+  useEffect(() => {
+    if (tutorial.step) setConfirmarAltoFalante(false);
+  }, [tutorial.step]);
+
   const ouvir = async () => {
     const request = ++falaAtual.current;
     setErro(null);
@@ -318,7 +323,7 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
 
   return (
     <View style={{ padding: 15, borderRadius: 18, backgroundColor: cores.fundoCard, borderWidth: 1, borderColor: cores.borda, gap: 12 }}>
-      <TutorialTarget kind="radar" enabled={tutorial.step === "voiceIntro" || tutorial.step === "voiceMute"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <TutorialTarget kind="radar" enabled={tutorial.step === "voiceIntro" || tutorial.step === "voiceMute"} dimmed={tutorial.chapter === 5 && !["voiceIntro", "voiceMute", "voiceEnable"].includes(tutorial.step ?? "")} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={expandida ? "Recolher avisos por voz" : "Expandir avisos por voz"}
@@ -381,7 +386,7 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
 
           {!preferenciasCarregadas ? <ActivityIndicator color={cores.iconePrimario} /> : null}
 
-          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceChoice"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceChoice"} dimmed={tutorial.chapter === 5 && tutorial.step !== "voiceChoice"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Text style={{ flex: 1, color: cores.textoPrimario, fontWeight: "700" }}>Voz do assistente</Text>
               <Text style={{ color: cores.iconePrimario, fontSize: 11, fontWeight: "600" }}>Português (BR)</Text>
@@ -405,7 +410,7 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
             </View>
           </TutorialTarget>
 
-          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceOptions"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceOptions"} dimmed={tutorial.chapter === 5 && tutorial.step !== "voiceOptions"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
               <Clock3 size={16} color={cores.iconePrimario} />
               <View style={{ flex: 1 }}>
@@ -505,7 +510,7 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
             </View>
           </View>
 
-          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceHeadphones"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceHeadphones"} dimmed={tutorial.chapter === 5 && tutorial.step !== "voiceHeadphones"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: cores.textoPrimario, fontWeight: "700" }}>Somente com fones</Text>
               <Text style={{ color: cores.textoSecundario, fontSize: 11, marginTop: 2 }}>A prévia só toca em uma saída reconhecida ou autorizada.</Text>
@@ -553,7 +558,7 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
           ) : null}
           {preferencias.headphonesOnly && erroRotaBluetooth ? <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>{erroRotaBluetooth}</Text> : null}
 
-          <TutorialTarget kind="radar" enabled={tutorial.step === "voicePreview"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voicePreview"} dimmed={tutorial.chapter === 5 && tutorial.step !== "voicePreview"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Ouvir exemplo de voz"
               disabled={!preferenciasCarregadas || !vozesCarregadas}
               onPress={() => void ouvir()}
@@ -586,13 +591,15 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setConfirmarAltoFalante(false)}>
-        <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(0,0,0,0.72)" }}>
+        <View style={{ flex: 1, justifyContent: tutorial.chapter === 5 ? "flex-start" : "center", padding: 24, backgroundColor: "rgba(0,0,0,0.72)" }}>
           <Pressable
             onPress={() => setConfirmarAltoFalante(false)}
             style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
             accessibilityLabel="Fechar confirmação" />
-          <Pressable onPress={() => {}} style={{ width: "100%", maxWidth: 420, alignSelf: "center", padding: 22, gap: 14,
+          {tutorial.chapter === 5 && <TutorialOverlay host="confirmation" docked />}
+          <TutorialTarget kind="radar" enabled={tutorial.chapter === 5 && tutorial.radarHost === "confirmation"} style={{ flexShrink: 1, width: "100%", maxWidth: 420, alignSelf: "center",
             borderRadius: 24, backgroundColor: cores.fundoCard, borderWidth: 1, borderColor: cores.borda }}>
+            <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: 22, gap: 14 }}>
             <View style={{ width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center",
               backgroundColor: "rgba(255,193,7,0.16)" }}>
               <Volume2 size={23} color="#FFC107" />
@@ -620,7 +627,8 @@ export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrol
                 paddingHorizontal: 14, borderWidth: 1, borderColor: cores.borda }}>
               <Text style={{ color: cores.textoPrimario, fontWeight: "700", textAlign: "center" }}>Permitir alto-falante</Text>
             </Pressable>
-          </Pressable>
+            </ScrollView>
+          </TutorialTarget>
         </View>
       </Modal>
     </View>

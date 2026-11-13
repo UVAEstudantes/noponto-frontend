@@ -93,6 +93,9 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   useEffect(() => {
     if (tutorialRadar && !seletor && tutorial.radarHost === "stopPicker") tutorial.setRadarHost("root");
   }, [seletor, tutorialRadar, tutorial.radarHost]);
+  useEffect(() => {
+    if (tutorial.step && tutorial.step !== "radarStop") setSeletor(false);
+  }, [tutorial.step]);
   const progress = useSharedValue(0);
   const lado = lateralidade === "canhoto" ? "left" : "right";
   const { Icon, cor } = identidadeModalMapa(modal);
@@ -100,7 +103,10 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   const escuro = temaAtual === "escuro";
   const bottom = Math.max(insets.bottom + 70, 88);
   // Busca existente: safe area + 12 + 44. Reserva também os controles (48 + 10 + 48).
-  const alturaDisponivel = Math.max(0, (viewportHeight ?? height) - (insets.top + 56 + 16) - 106 - 12 - bottom - 2);
+  const alturaDisponivel = Math.max(0, Math.min(
+    (viewportHeight ?? height) - (insets.top + 56 + 16) - 106 - 12 - bottom - 2,
+    tutorialRadar ? (viewportHeight ?? height) - bottom - insets.top - Math.min(260, height * 0.32) - 24 : Infinity,
+  ));
   useEffect(() => {
     onControlsBottomChange(visivel && !bloqueadoPeloTutorial && !recolhido && alturaPainel > 0
       ? bottom + Math.min(alturaPainel, alturaDisponivel) + 2 + 12 : null);
@@ -154,7 +160,7 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, {
           backgroundColor: hexParaRgba(cores.fundoPainel, Platform.OS === "ios" ? 0.78 : 0.95),
         }]} />
-        <ScrollView ref={scrollRef} onScroll={tutorialRadar ? tutorial.invalidateTargets : undefined} scrollEventThrottle={64} onContentSizeChange={tutorialRadar ? tutorial.invalidateTargets : undefined} style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+        <ScrollView ref={scrollRef} style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 }}>
         <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: corConsulta }} />
@@ -176,7 +182,7 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
         justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "root"} clipRef={scrollRef}>
+        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "root"} reveal clipRef={scrollRef}>
         <Pressable onPress={() => { enviarAcaoPainel({ tipo: "abrir" }); setSeletor(true); void radar.carregarMetadados(); }}
           accessibilityRole="button" accessibilityLabel="Trocar parada monitorada"
           style={{ minHeight: 44, maxWidth: "100%", borderRadius: 22, paddingHorizontal: 10,
@@ -256,10 +262,11 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
       </Pressable>
     </Animated.View>
     <Modal visible={seletor && visivel} transparent animationType={tutorialRadar ? "none" : "fade"} onShow={() => { if (tutorialRadar) { tutorial.setRadarHost("stopPicker"); tutorial.invalidateTargets(); } }} onRequestClose={() => setSeletor(false)}>
-      <View style={{ flex: 1, justifyContent: "flex-end", paddingHorizontal: 16,
+      <View style={{ flex: 1, justifyContent: tutorialRadar ? "flex-start" : "flex-end", paddingTop: tutorialRadar ? insets.top + 8 : 0, paddingHorizontal: 16,
         paddingBottom: Math.max(insets.bottom + 16, 24), backgroundColor: cores.overlay }}>
         <Pressable onPress={() => setSeletor(false)} accessibilityLabel="Fechar seletor de paradas" style={StyleSheet.absoluteFillObject} />
-        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "stopPicker"} style={{ maxHeight: height * 0.6, borderRadius: 22, padding: 14,
+        {tutorialRadar && <TutorialOverlay host="stopPicker" docked />}
+        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "stopPicker"} style={{ maxHeight: height * 0.6, flexShrink: 1, borderRadius: 22, padding: 14,
           borderWidth: 1, borderColor: cores.borda, backgroundColor: cores.fundoPainel }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: cores.textoPrimario }}>Monitorar parada</Text>
@@ -288,7 +295,6 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
           </ScrollView>
         </TutorialTarget>
       </View>
-      {tutorialRadar && <TutorialOverlay host="stopPicker" />}
     </Modal>
   </View>;
 }

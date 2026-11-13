@@ -1,11 +1,8 @@
 import { transportSearchStep } from "./tutorialSteps";
-import { observeTutorialTarget } from "./tutorialMeasurement";
 import React, { useEffect, useRef } from "react";
 import {
   View,
   ScrollView,
-  useWindowDimensions,
-  Keyboard,
   type ViewProps,
   type PressableProps,
 } from "react-native";
@@ -19,118 +16,49 @@ export default function TutorialTarget({
   clipRef,
   onLayout,
   reveal = false,
+  dimmed = false,
   ...props
 }: ViewProps & {
   kind?: "input" | "results" | "stopPanel" | "line" | "radar" | "filter";
   enabled?: boolean;
   reveal?: boolean;
+  dimmed?: boolean;
   onPress?: PressableProps["onPress"];
   clipRef?: React.RefObject<ScrollView | null>;
   component?: React.ElementType<ViewProps & React.RefAttributes<View>>;
 }) {
   const ref = useRef<View>(null);
-  const revealed = useRef<string | null>(null);
-  const refreshRef = useRef<(() => void) | null>(null);
   const tutorial = useTutorial();
   const { step } = tutorial;
-  const setTarget =
-    kind === "filter" ? tutorial.setFilterTarget : kind === "radar" ? tutorial.setRadarTarget : kind === "line"
-      ? tutorial.setLineTarget
-      : kind === "stopPanel"
-        ? tutorial.setStopTarget
-        : kind === "results"
-          ? tutorial.setResultsTarget
-          : tutorial.setTarget;
   const focused = useIsFocused();
-  const dimensions = useWindowDimensions();
+  const direct = Boolean(step);
+  const highlighted = direct && enabled && focused &&
+    ((step === "search" && (kind === "input" || kind === "results")) ||
+      (step === "stopDetails" && kind === "stopPanel") ||
+      (tutorial.chapter === 4 && kind === "line") ||
+      (transportSearchStep(step) && (kind === "input" || kind === "filter" || kind === "results")) ||
+      (step === "transportMap" && kind === "input") ||
+      (tutorial.chapter === 5 && kind === "radar"));
   useEffect(() => {
-    if (
-      (kind === "filter" ? !transportSearchStep(step) : kind === "radar" ? tutorial.chapter !== 5 : kind === "line"
-        ? !step?.startsWith("line")
-        : kind === "stopPanel"
-          ? step !== "stopDetails"
-          : kind === "input"
-            ? !step
-            : step !== "search" && !transportSearchStep(step)) ||
-      !focused ||
-      !enabled
-    )
-      return;
+    if (!highlighted || !reveal || !clipRef?.current || (kind === "line" && !tutorial.lineModalOpen)) return;
     let live = true;
-    const revealKey = String(step) + tutorial.radarHost;
-    if (reveal && revealed.current !== revealKey && clipRef?.current) {
-      revealed.current = revealKey;
-      const inner = clipRef.current.getInnerViewNode();
-      if (inner) ref.current?.measureLayout(inner, (_x, y) => { if (live) clipRef.current?.scrollTo({y: Math.max(0, y - 8), animated: false}); }, () => {});
-    }
-    const observation = observeTutorialTarget((done) => {
-      if (!ref.current) {
-        done(null);
-        return;
-      }
-      ref.current.measureInWindow((x, y, width, height) => {
-        const update = (left: number, top: number, w: number, h: number) => {
-          const right = Math.min(dimensions.width, left + w),
-            bottom = Math.min(dimensions.height, top + h);
-          left = Math.max(0, left);
-          top = Math.max(0, top);
-          done(
-            [left, top, right, bottom].every(Number.isFinite) &&
-              right > left &&
-              bottom > top
-              ? { x: left, y: top, width: right - left, height: bottom - top }
-              : null,
-          );
-        };
-        const viewport = clipRef?.current?.getNativeScrollRef();
-        if (viewport)
-          viewport.measureInWindow(
-            (cx: number, cy: number, cw: number, ch: number) => {
-              const left = Math.max(x, cx),
-                top = Math.max(y, cy);
-              update(
-                left,
-                top,
-                Math.max(0, Math.min(x + width, cx + cw) - left),
-                Math.max(0, Math.min(y + height, cy + ch) - top),
-              );
-            },
-          );
-        else update(x, y, width, height);
-      });
-    }, setTarget);
-    refreshRef.current = observation.refresh;
-    const show = Keyboard.addListener("keyboardDidShow", observation.refresh);
-    const hide = Keyboard.addListener("keyboardDidHide", observation.refresh);
-    return () => {
-      live = false;
-      refreshRef.current = null;
-      observation.stop();
-      show.remove();
-      hide.remove();
-    };
-  }, [
-    kind === "input" ? Boolean(step) : step,
-    kind,
-    clipRef,
-    kind === "input" ? null : tutorial.lineContext?.key,
-    kind === "input" ? null : tutorial.geometryVersion,
-    tutorial.radarHost,
-    reveal,
-    focused,
-    enabled,
-    dimensions.width,
-    dimensions.height,
-    dimensions.fontScale,
-    setTarget,
-  ]);
+    const scroll = clipRef.current as ScrollView & { getInnerViewRef(): View | null };
+    const target = ref.current;
+    // Fabric requires the native instance, not the numeric handle from getInnerViewNode.
+    const inner = scroll.getInnerViewRef();
+    if (inner && typeof inner.measureLayout === "function" && target) target.measureLayout(inner, (_x, y) => {
+      if (live && ref.current === target && clipRef.current === scroll && scroll.getInnerViewRef() === inner)
+        scroll.scrollTo({ y: Math.max(0, y - 8), animated: false });
+    }, () => {});
+    return () => { live = false; };
+  }, [highlighted, reveal, clipRef, step, tutorial.radarHost, tutorial.lineModalOpen, kind]);
   return (
     <Component
       {...props}
+      style={[props.style, highlighted && { outlineWidth: 2, outlineColor: "#FFC107", outlineOffset: -2 }, dimmed && !highlighted && { opacity: 0.72 }]}
       ref={ref}
       collapsable={false}
       onLayout={(event) => {
-        refreshRef.current?.();
         onLayout?.(event);
       }}
     >

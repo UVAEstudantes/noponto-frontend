@@ -194,6 +194,14 @@ const Home = () => {
 
   const mapRef = useRef<MapaOSMRef>(null);
   const [location, setLocation] = useState<LocationObject | null>(null);
+  const [initialMapReady, setInitialMapReady] = useState(false);
+  const initialLocationApplied = useRef(false);
+  useEffect(() => {
+    if (!initialMapReady || !tutorial.initialLocation || initialLocationApplied.current) return;
+    initialLocationApplied.current = true;
+    setLocation(tutorial.initialLocation);
+    mapRef.current?.fitToCoordinates([tutorial.initialLocation.coords]);
+  }, [initialMapReady, tutorial.initialLocation]);
   const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
     null,
   );
@@ -215,6 +223,7 @@ const Home = () => {
   const nativeProbeReceivedAtRef = useRef<number | null>(null);
 
   const solicitarLocalizacao = useCallback(async () => {
+    if (tutorial.initialLocationPending) return;
     try {
       const { granted } = await requestForegroundPermissionsAsync();
       if (!granted) { Alert.alert('Localização desativada', 'Autorize a localização nas configurações do aparelho para centralizar o mapa.'); return; }
@@ -222,7 +231,7 @@ const Home = () => {
       setLocation(loc);
       mapRef.current?.fitToCoordinates([loc.coords]);
     } catch { Alert.alert('Localização indisponível', 'Não foi possível obter sua posição. Tente novamente.'); }
-  }, []);
+  }, [tutorial.initialLocationPending]);
 
   const normalizarNome = useCallback((valor: string) => {
     return valor
@@ -727,6 +736,11 @@ const Home = () => {
 
   const tutorialPanelWasOpen = useRef(false);
   useEffect(() => {
+    if ((tutorial.step !== "search" && !transportSearchStep(tutorial.step)) || !telaAtiva) return;
+    setBuscaAberta(true);
+    setPedidoFocoBusca((pedido) => pedido + 1);
+  }, [tutorial.step, telaAtiva]);
+  useEffect(() => {
     const open = linePanelStep(tutorial.step) && Boolean(tutorial.lineContext);
     if (tutorial.step || tutorialPanelWasOpen.current) {
       setContainerAberto(open); if (tutorial.step !== "stopDetails" && tutorial.chapter !== 5 && tutorial.step !== "linesDone") setParadaSelecionada(null);
@@ -988,7 +1002,7 @@ const Home = () => {
     }} style={{ flex: 1, backgroundColor: cores.fundoApp }}>
       <MapaOSM
         onTerminalVehiclesChange={setTerminalPresence}
-        onReady={reportStartupReady}
+        onReady={() => { setInitialMapReady(true); reportStartupReady?.(); }}
         ref={mapRef}
         tutorialRequest={tutorial.mapRequest}
         onTutorialEvent={tutorial.onMapEvent}

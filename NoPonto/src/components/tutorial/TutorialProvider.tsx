@@ -13,6 +13,8 @@ import React, {
   useMemo,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
+import { resolveInitialLocation } from "./initialLocation";
 import { router, usePathname } from "expo-router";
 import { AccessibilityInfo, AppState, Keyboard } from "react-native";
 import {
@@ -38,6 +40,9 @@ function useController() {
   const [replayRequested, setReplayRequested] = useState<Step>(null);
   const [ready, setReady] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const initialLocationTask = useRef<Promise<Location.LocationObject | null> | null>(null);
+  const [initialLocation, setInitialLocation] = useState<Location.LocationObject | null>(null);
+  const [initialLocationResolved, setInitialLocationResolved] = useState(false);
   const [progress, setProgress] = useState({ ...EMPTY });
   const progressRef = useRef({ ...EMPTY });
   const [target, setTarget] = useState<Rect | null>(null);
@@ -117,7 +122,7 @@ function useController() {
     if (
       !foreground ||
       !lineContext ||
-      !["vehicle", "vehicleDetails", "stop"].includes(step ?? "")
+      !["route", "vehicle", "vehicleDetails", "stop"].includes(step ?? "")
     )
       return null;
     return {
@@ -125,8 +130,9 @@ function useController() {
       lineId: lineContext.lineId,
       lineName: lineContext.lineName,
       modal: lineContext.modal,
-      kind: step === "stop" ? "stop" : "vehicle",
+      kind: step === "route" ? "route" : step === "stop" ? "stop" : "vehicle",
       mode: step === "vehicleDetails" ? "details" : "marker",
+      nativeHighlight: true,
       vehicleId: step === "vehicleDetails" ? vehicleInfo?.vehicleId : undefined,
       reducedMotion,
     };
@@ -148,6 +154,7 @@ function useController() {
   const onMapEvent = useCallback((event: TutorialMapEvent) => {
     if (
       !requestRef.current ||
+      requestRef.current.kind === "route" ||
       !acceptsTutorialEvent(
         event,
         requestRef.current.requestId,
@@ -168,7 +175,7 @@ function useController() {
       return;
     }
     setVehicleTarget(event.rect ?? null);
-    if (event.rect) measuredRequestId.current = event.requestId;
+    if (event.rect || (requestRef.current.nativeHighlight && event.status === "target" && event.vehicleId)) measuredRequestId.current = event.requestId;
     setVehicleInfo(event);
     if (event.status === "selected" && requestRef.current.mode === "marker")
       setStep(
@@ -178,7 +185,7 @@ function useController() {
   useEffect(() => {
     if (
       !foreground ||
-      !["vehicle", "vehicleDetails", "stop", "stopDetails"].includes(step ?? "")
+      !["vehicle", "vehicleDetails", "stop"].includes(step ?? "")
     )
       return;
     if (!lineContext) {
@@ -189,9 +196,7 @@ function useController() {
     // A broken/reloading WebView must still offer a way forward.
     const deadline = setTimeout(() => {
       if (
-        step === "stopDetails"
-          ? !stopTarget
-          : measuredRequestId.current !== mapRequest?.requestId
+        measuredRequestId.current !== mapRequest?.requestId
       )
         setStep(
           step === "stop" || step === "stopDetails" ? "noStops" : "noVehicles",
@@ -235,8 +240,16 @@ function useController() {
   }, []);
   useEffect(() => {
     if (ready && hydrated && !progressRef.current.seen) {
-      save({ seen: true });
-      setStep("welcome");
+      let live = true;
+      initialLocationTask.current ??= resolveInitialLocation(AsyncStorage, Location);
+      void initialLocationTask.current.then(location => {
+        if (!live) return;
+        setInitialLocation(location);
+        setInitialLocationResolved(true);
+        save({ seen: true });
+        setStep("welcome");
+      });
+      return () => { live = false; };
     }
   }, [ready, hydrated, save]);
   const end = useCallback(() => {
@@ -286,7 +299,6 @@ function useController() {
   const advance = useCallback(
     (event: "next" | "back" | "selected" | "skip" | "demo") => {
       if (event !== "selected" && !transportSearchStep(step)) Keyboard.dismiss();
-      if (event === "next" && step === "radarChapterDone" && radarDraftPending) { setStep("voiceSave"); return; }
       if (event === "skip" && step) save({skippedSteps: [...new Set([...(progressRef.current.skippedSteps ?? []), step])]});
       if (event === "skip" && step === "search" && resumeVehicles) {
         setResumeVehicles(false);
@@ -330,7 +342,7 @@ function useController() {
       }
       setStep(next);
     },
-    [step, resumeVehicles, finishChapter, pathname, save, radarDraftPending],
+    [step, resumeVehicles, finishChapter, pathname, save],
   );
   const start = useCallback(() => {
     router.navigate("/");
@@ -416,18 +428,7 @@ function useController() {
     mapRequest,
     onMapEvent,
     vehicleInfo,
-    spotlight:
-      transportSearchStep(step) ? filterTarget : step === "transportMap" ? target : chapterOf(step) === 5 ? (radarTarget?.step === step && radarTarget.host === radarHost ? radarTarget.rect : null) : linePanelStep(step) || step === "lineTab"
-        ? lineTarget?.step === step && lineTarget.modal === lineModalOpen
-          ? lineTarget.rect
-          : null
-        : step === "stopDetails"
-          ? stopTarget
-          : step === "search"
-            ? unionTargets(target, resultsTarget)
-            : mapRequest && vehicleInfo?.requestId === mapRequest.requestId
-              ? vehicleTarget
-              : null,
+    spotlight: null,
     progress,
     searching,
     setSearching,
@@ -437,6 +438,8 @@ function useController() {
     step,
     ready,
     setReady,
+    initialLocation,
+    initialLocationPending: ready && hydrated && !progress.seen && !initialLocationResolved,
     target,
     setTarget,
     example,

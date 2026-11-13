@@ -144,7 +144,10 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
   }, [aberta, rascunhoAlterado, tutorial.setRadarDraftPending]);
   useEffect(() => {
     if (tutorialRadar && !wasTutorial.current && aberta) tutorial.setRadarHost("radar");
+    const continuingJourney = wasTutorial.current && !tutorialRadar && Boolean(tutorial.step);
     wasTutorial.current = tutorialRadar;
+    // Continuing the guide closes its surface without applying the local draft.
+    if (continuingJourney) setAberta(false);
     if (tutorialRadar && tutorial.step !== "radarIntro" && tutorial.step !== "radarStop" && tutorial.step !== "radarChapterDone" && !aberta) {
       owned.current = true; abrir();
     }
@@ -209,10 +212,11 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
           <Text accessibilityLiveRegion="polite" style={{ ...secundario,
             color: ativa ? cores.sucesso : expirada ? cores.perigo : cores.textoSecundario }}>{estado}</Text>
         </View>
-        <ScrollView ref={scrollRef} onScroll={tutorialRadar ? tutorial.invalidateTargets : undefined} scrollEventThrottle={64} onContentSizeChange={tutorialRadar ? tutorial.invalidateTargets : undefined} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
+        {tutorialRadar && <TutorialOverlay host="radar" docked />}
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
           {!contextoValido && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
           {c.outraParada && <Text style={secundario}>Monitorando {c.paradaNome}. Volte à parada acompanhada para editar. Para trocar o alvo, use o seletor de parada do Radar.</Text>}
-          <TutorialTarget kind="radar" enabled={["radarLines", "notificationLines"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
+          <TutorialTarget kind="radar" enabled={["radarLines", "notificationLines"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["radarLines", "notificationLines"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Linhas no Radar</Text>
             <Text style={secundario}>Selecione as linhas para acompanhar. Marque a estrela para destacar uma linha como prioritária.</Text>
             {c.modoRemoto && <Text style={secundario}>Limite do experimento: 20 linhas por sessão.</Text>}
@@ -277,7 +281,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
               })}
             </View>
           </View>}
-          <TutorialTarget kind="radar" enabled={["notificationIntro", "notificationTiming"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
+          <TutorialTarget kind="radar" enabled={["notificationIntro", "notificationTiming"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["notificationIntro", "notificationTiming"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Avisar com antecedência</Text>
             <Text style={secundario}>Mostrar veículos previstos dentro deste intervalo.</Text>
             <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -296,6 +300,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
             </View>
           </TutorialTarget>
           <RadarAvisosPorVoz tutorialScrollRef={scrollRef} />
+          <TutorialTarget kind="radar" enabled={tutorial.step === "notificationBackground"} reveal clipRef={scrollRef}>
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
             ? estadoRemoto === 'ativo'
               ? `Acompanhamento remoto ativo.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
@@ -305,6 +310,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
                 : estadoRemoto === 'indisponivel' ? 'Radar remoto indisponível. Confira a conexão e tente novamente.'
                 : 'Acompanhamento remoto desativado.'
             : 'Funciona com o aplicativo aberto e a consulta ativa. Ao sair, as previsões são removidas.'}</Text>
+          </TutorialTarget>
           {!ativa && !c.podeSolicitarAtivacao && <Text style={secundario}>{remoto
             ? 'Aguarde os contextos da parada acompanhada carregarem para reativar.'
             : 'Aguarde uma consulta válida desta parada para ativar.'}</Text>}
@@ -334,16 +340,15 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
             {mostrarProgressoAcao && <ActivityIndicator size="small" color={cores.textoSobrePrimario} />}
             <Text style={{ color: cores.textoSobrePrimario, fontWeight: '700' }}>{mostrarProgressoAcao ? rotuloCarregando : rotuloAcao}</Text>
           </Pressable>
-          </TutorialTarget>
           {configurada && <Pressable accessibilityRole="button" accessibilityLabel="Encerrar acompanhamento"
             accessibilityState={{ disabled: c.solicitando, busy: c.solicitando }}
             disabled={c.solicitando} onPress={() => { void c.encerrar(); }}
             style={{ ...toque, opacity: c.solicitando ? 0.5 : 1 }}>
             <Text style={{ color: cores.perigo }}>{c.operacaoRemota === 'encerrar' ? 'Encerrando…' : 'Encerrar acompanhamento'}</Text>
           </Pressable>}
+          </TutorialTarget>
         </View>
       </View>
-      {tutorialRadar && <TutorialOverlay host="radar" />}
     </Modal>}
   </View>;
 }

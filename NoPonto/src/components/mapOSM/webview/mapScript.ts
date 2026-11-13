@@ -227,7 +227,7 @@ function updateRailVehicles(now){
     var run=railRuns[key],distance=railDistanceNow(run,now),coord=railCoordinateAtDistance(run._geometry,distance);
     if(!coord)return;
     var marker=railMarkers[key];
-    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker}
+    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker;if(tutorialNativeHighlight())tutorialSchedule()}
     else{marker.setLngLat(coord);applyRailMarkerVisual(marker.getElement(),run)}
     applyRailHeading(marker,key,run,distance);
     if(activeRailPopupIdentity===key)openRailPopup(run,coord);
@@ -239,7 +239,7 @@ function updateRailVehicles(now){
       isEstimated:true,isClamped:Boolean(run.isClamped),stale:now>Date.parse(run.freshUntilUtc)
     }});
   });
-  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key]}});
+  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key];if(tutorialNativeHighlight())tutorialSchedule()}});
   if(now-railLastUiTick>=1000){
     document.querySelectorAll('[data-rail-evidence]').forEach(function(el){el.textContent='Atualizado '+railElapsed(el.getAttribute('data-rail-evidence'))});
     document.querySelectorAll('[data-rail-departure]').forEach(function(el){var at=Date.parse(el.getAttribute('data-rail-departure')),s=Math.max(0,Math.ceil((at-now)/1000));el.textContent=s===0?'Saindo agora':'Saída em '+Math.max(1,Math.ceil(s/60))+' min'});
@@ -445,7 +445,7 @@ function startDR(){
         dr.marker.getElement().style.opacity=now>=dr.backendValidUntil?'0':gpsMarkerOpacity(dr.gpsTimestamp);
         if(backendAge>gpsPolicy.publicMs||now>=dr.backendValidUntil){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
-          delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];return;
+          delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
         }
         if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
       }
@@ -721,7 +721,7 @@ function updateTimeAgo(){
   }
   Object.keys(physicalMarkers).forEach(function(key){
     var marker=physicalMarkers[key];if(!Number.isFinite(marker._physicalAt))return;
-    if(Date.now()-marker._physicalAt>gpsPolicy.publicMs){if(marker._physicalPopup)marker._physicalPopup.remove();marker.remove();delete physicalMarkers[key];}
+    if(Date.now()-marker._physicalAt>gpsPolicy.publicMs){if(marker._physicalPopup)marker._physicalPopup.remove();marker.remove();delete physicalMarkers[key];if(tutorialNativeHighlight())tutorialSchedule();}
     else marker.getElement().style.opacity=gpsMarkerOpacity(marker._physicalAt);
   });
 }
@@ -984,6 +984,7 @@ function updateStopMarkers(){
     });
     marker.addTo(map);
     stopMarkersByKey[key]={marker:marker,el:el,isCluster:false};
+    if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
     visible[key]=true;
   }
 
@@ -1003,6 +1004,7 @@ function updateStopMarkers(){
     if(!visible[k]){
       stopMarkersByKey[k].marker.remove();
       delete stopMarkersByKey[k];
+      if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
     }
   });
 }
@@ -1011,6 +1013,7 @@ function clearStops(){
   Object.keys(stopMarkersByKey).forEach(function(k){
     stopMarkersByKey[k].marker.remove();
     delete stopMarkersByKey[k];
+      if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
   });
 }
 
@@ -1310,7 +1313,7 @@ window.updateMap=function(data){
       if(structuralUpdate)lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
+        properties:{lineId:linha.linhaId,color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
       });
     });
 
@@ -1424,6 +1427,7 @@ window.updateMap=function(data){
 
   refreshIcons();
   if(window.updatePhysicalPresence)window.updatePhysicalPresence(lastPhysicalPresence);
+  if(tutorialNativeHighlight())tutorialSchedule();
   if(!structuralUpdate){
     realtimeMetric.updates++;realtimeMetric.snapshot=snapshotNow;
     realtimeMetric.created+=createdNow;realtimeMetric.updated+=updatedNow;realtimeMetric.removed+=removedNow;
@@ -1514,6 +1518,7 @@ window.updatePhysicalPresence=function(vehicles){
       });
       physicalMarkers[v.key]=marker;
     }
+    if(tutorialNativeHighlight())tutorialSchedule();
     marker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),statusText:physicalLocationLabels[v.location]||'Última posição conhecida'};
     marker._physicalAt=Date.parse(v.physicalAt);
     marker.setLngLat([v.longitude,v.latitude]);
@@ -1527,6 +1532,7 @@ window.updatePhysicalPresence=function(vehicles){
     if(!visible[key]){
       if(physicalMarkers[key]._physicalPopup)physicalMarkers[key]._physicalPopup.remove();
       physicalMarkers[key].remove();delete physicalMarkers[key];
+      if(tutorialNativeHighlight())tutorialSchedule();
     }
   });
 };

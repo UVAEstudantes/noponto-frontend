@@ -266,8 +266,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     useEffect(() => {
       if (!mapReady) return;
       injectWebViewCommand(webViewRef, `if(window.setTutorialVehicle) window.setTutorialVehicle(${JSON.stringify(tutorialRequest ?? null)});true;`);
-      return () => injectWebViewCommand(webViewRef, 'if(window.setTutorialVehicle) window.setTutorialVehicle(null);true;');
     }, [mapReady, mapGeneration, tutorialRequest]);
+    useEffect(() => () => injectWebViewCommand(webViewRef, 'if(window.setTutorialVehicle) window.setTutorialVehicle(null);true;'), []);
 
     // HTML final memoizado: só recria quando a âncora inicial muda.
     const mapHTML = useMemo(
@@ -312,6 +312,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
               const requestId = payload.requestId;
               const measurement = {};
               latestTutorialMeasurement.current = measurement;
+              if (activeTutorialRequest.current?.nativeHighlight) {
+                onTutorialEvent?.({ ...payload, rect: undefined, viewport: undefined });
+                return;
+              }
               nativeFrameRef.current?.measureInWindow((x, y, width, height) => {
                 if (activeTutorialRequest.current?.requestId !== requestId || latestTutorialMeasurement.current !== measurement) return;
                 const rect = mapTutorialRect(payload, requestId, { x, y, width, height });

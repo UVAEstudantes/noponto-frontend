@@ -1,6 +1,40 @@
 // Runs in the existing map runtime; only an active request installs observation.
 export const TUTORIAL_MAP_BRIDGE = `
 var tutorialRequest=null,tutorialTimer=null,tutorialFrame=null,tutorialLastSent=0,tutorialVehicleId=null,tutorialCameraMoved=false,tutorialSequence=0,tutorialLastPost='',tutorialAccessible=null,tutorialObservers=[],tutorialObserved=null;
+var tutorialHighlightedElement=null,tutorialPopup=null;
+function tutorialNativeHighlight(){return !!(tutorialRequest&&tutorialRequest.nativeHighlight)}
+function tutorialHighlight(element){
+  if(tutorialHighlightedElement!==element){
+    if(tutorialHighlightedElement)tutorialHighlightedElement.classList.remove('tutorial-vehicle-focus');
+    tutorialHighlightedElement=element;
+    if(element)element.classList.add('tutorial-vehicle-focus');
+  }
+  tutorialDimMap();
+}
+function tutorialPopupClosed(){
+  if(!tutorialNativeHighlight()||tutorialRequest.mode!=='details'||!tutorialPopup||tutorialPopup.isOpen())return;
+  tutorialHighlight(null);
+  tutorialPost('closed',{id:tutorialVehicleId});
+}
+function tutorialWatchPopup(popup){
+  if(tutorialPopup===popup)return;
+  if(tutorialPopup)tutorialPopup.off('close',tutorialPopupClosed);
+  tutorialPopup=popup;
+  if(popup)popup.on('close',tutorialPopupClosed);
+}
+function tutorialDimMap(){
+  if(!tutorialNativeHighlight()||(!tutorialHighlightedElement&&tutorialRequest.kind!=='route')||!map||!map.getLayer(linesSolidLayerId))return;
+  if(!map.getLayer('tutorial-dim'))map.addLayer({id:'tutorial-dim',type:'background',paint:{'background-color':'#000000','background-opacity':0.35}},linesSolidLayerId);
+  if(tutorialRequest.kind==='route'&&!map.getLayer('tutorial-route-focus')){
+    map.addLayer({id:'tutorial-route-focus',type:'line',source:linesSourceId,filter:['==',['get','lineId'],tutorialRequest.lineId],paint:{'line-color':'#FFC107','line-width':['+',['get','width'],4],'line-opacity':0.85}},linesSolidLayerId);
+  }
+}
+function tutorialClearHighlight(keepDim){
+  if(tutorialHighlightedElement)tutorialHighlightedElement.classList.remove('tutorial-vehicle-focus');
+  tutorialHighlightedElement=null;
+  if(map&&map.getLayer('tutorial-route-focus'))map.removeLayer('tutorial-route-focus');
+  if(!keepDim&&map&&map.getLayer('tutorial-dim'))map.removeLayer('tutorial-dim');
+}
 function tutorialCandidates(){
   if(tutorialRequest&&tutorialRequest.kind==='stop'){
     var line=lastMapData&&lastMapData.linhas&&lastMapData.linhas.find(function(l){return l.linhaId===tutorialRequest.lineId&&l.modal===tutorialRequest.modal});
@@ -53,21 +87,31 @@ function tutorialMeasure(){
   tutorialFrame=null;
   if(!tutorialRequest||!map)return;
   tutorialLastSent=Date.now();
+  if(tutorialRequest.kind==='route'){tutorialDimMap();return;}
   var candidates=tutorialCandidates(),wanted=tutorialRequest.vehicleId||tutorialVehicleId;
   var item=wanted?candidates.find(function(c){return c.id===wanted}):candidates[0];
-  if(!item){tutorialPost('unavailable');return;}
+  if(!item){if(tutorialNativeHighlight()){tutorialWatchPopup(null);tutorialClearHighlight();}tutorialPost('unavailable');return;}
   if(!tutorialVehicleId&&tutorialRequest.mode==='marker'&&item.popup&&item.popup.isOpen&&item.popup.isOpen()&&item.popup.remove)item.popup.remove();
   tutorialVehicleId=item.id;
   if(item.stop&&!item.marker){updateStopMarkers();item.marker=stopMarkersByKey['s:'+item.stop.key]&&stopMarkersByKey['s:'+item.stop.key].marker;}
   var markerElement=item.marker&&item.marker.getElement&&item.marker.getElement();
+  if(tutorialNativeHighlight()&&tutorialRequest.mode==='marker')tutorialHighlight(markerElement);
   if(!tutorialAccessible&&markerElement&&markerElement.setAttribute&&markerElement.getAttribute){
     tutorialAccessible={element:markerElement,attrs:['role','tabindex','aria-label'].map(function(name){return[name,markerElement.getAttribute(name)]})};
     markerElement.setAttribute('role','button');markerElement.setAttribute('tabindex','0');
     markerElement.setAttribute('aria-label',(item.stop?'Local de embarque':tutorialRequest.modal==='trem'?'Trem':'Veículo')+' da linha '+tutorialRequest.lineName+'. Toque para ver informações.');
   }
   if(tutorialRequest.mode==='details'){
-    if(!item.popup||!item.popup.isOpen||!item.popup.isOpen()){tutorialPost('closed',item);return;}
+    if(!item.popup||!item.popup.isOpen||!item.popup.isOpen()){
+      if(tutorialNativeHighlight()){tutorialWatchPopup(null);tutorialHighlight(null);}
+      tutorialPost('closed',item);return;
+    }
     var element=item.popup.getElement&&item.popup.getElement();
+    if(tutorialNativeHighlight()){
+      tutorialWatchPopup(item.popup);
+      tutorialHighlight(element&&(element.querySelector('.maplibregl-popup-content')||element));
+      tutorialPost('target',item,null);return;
+    }
     tutorialWatch(element);
     tutorialPost('target',item,tutorialPopupRect(element));return;
   }
@@ -77,6 +121,7 @@ function tutorialMeasure(){
     tutorialCameraMoved=true;autoFollow=false;
     runInternal(function(){map.easeTo({center:[c.lng,c.lat],zoom:Math.max(map.getZoom(),16),duration:tutorialRequest.reducedMotion?0:600,offset:[0,-window.innerHeight*.08]})},'tutorial-vehicle');
   }
+  if(tutorialNativeHighlight()){tutorialPost('target',item,null);return;}
   tutorialWatch(markerElement);
   var rect=tutorialRect(markerElement);
   // Layer-based vehicles use MapLibre projection, without DOM marker assumptions.
@@ -100,7 +145,7 @@ function tutorialWatch(element){
   if(typeof MutationObserver!=='undefined'){var mutation=new MutationObserver(tutorialSchedule);mutation.observe(element,{attributes:true,childList:true,subtree:true,characterData:true});tutorialObservers.push(mutation);}
 }
 function tutorialUserMove(event){
-  if(tutorialRequest){var item=tutorialCandidates().find(function(candidate){return candidate.id===tutorialVehicleId});tutorialPost(item?'target':'unavailable',item,null);}
+  if(tutorialRequest&&!tutorialNativeHighlight()){var item=tutorialCandidates().find(function(candidate){return candidate.id===tutorialVehicleId});tutorialPost(item?'target':'unavailable',item,null);}
   if(event&&event.originalEvent)tutorialCameraMoved=true;
 }
 function tutorialSchedule(){
@@ -113,10 +158,15 @@ function tutorialVehicleClicked(id){
   requestAnimationFrame(function(){
     if(!tutorialRequest||tutorialRequest.requestId!==requestId)return;
     var item=tutorialCandidates().find(function(c){return c.id===id});
-    if(item&&item.popup&&item.popup.isOpen&&item.popup.isOpen())tutorialPost('selected',item,tutorialRect(item.popup.getElement&&item.popup.getElement()));
+    if(item&&item.popup&&item.popup.isOpen&&item.popup.isOpen())tutorialPost('selected',item,tutorialNativeHighlight()?null:tutorialRect(item.popup.getElement&&item.popup.getElement()));
   });
 }
 window.setTutorialVehicle=function(request){
+  tutorialWatchPopup(null);
+  if(map&&tutorialNativeHighlight()){
+    map.off('styledata',tutorialDimMap);
+    tutorialClearHighlight(Boolean(request&&request.nativeHighlight&&request.lineId===tutorialRequest.lineId&&request.modal===tutorialRequest.modal));
+  }
   if(tutorialAccessible){tutorialAccessible.attrs.forEach(function(pair){if(pair[1]===null)tutorialAccessible.element.removeAttribute(pair[0]);else tutorialAccessible.element.setAttribute(pair[0],pair[1])});tutorialAccessible=null;}
   if(map&&tutorialRequest){map.off('move',tutorialSchedule);map.off('resize',tutorialSchedule);map.off('moveend',tutorialSchedule);map.off('movestart',tutorialUserMove)}
   tutorialWatch(null);
@@ -131,8 +181,12 @@ window.setTutorialVehicle=function(request){
     if(activeRailPopup&&activeRailPopup.remove)activeRailPopup.remove();
     Object.keys(physicalMarkers).forEach(function(key){var popup=physicalMarkers[key]._physicalPopup;if(popup&&popup.remove)popup.remove()});
   }
-  map.on('move',tutorialSchedule);map.on('resize',tutorialSchedule);map.on('moveend',tutorialSchedule);map.on('movestart',tutorialUserMove);
-  tutorialTimer=setInterval(tutorialSchedule,750);
+  if(tutorialNativeHighlight())map.on('styledata',tutorialDimMap);
+  else{
+    map.on('move',tutorialSchedule);map.on('resize',tutorialSchedule);map.on('moveend',tutorialSchedule);
+    tutorialTimer=setInterval(tutorialSchedule,750);
+  }
+  map.on('movestart',tutorialUserMove);
   tutorialMeasure();
 };
 `;

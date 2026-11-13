@@ -1,6 +1,7 @@
 // Responsabilidade: CSS do mapa renderizado dentro da WebView.
 // Mantemos este bloco isolado para facilitar ajustes visuais sem tocar na lógica JS do mapa.
 export const MAP_WEBVIEW_STYLES = `
+    .tutorial-vehicle-focus{outline:2px solid #FFC107;outline-offset:4px}
     /* R28: content only; marker anchoring and popup positioning stay unchanged. */
     .popup-card[data-road]{max-height:min(48vh,300px);overflow-y:auto;overscroll-behavior:contain;gap:8px}
     .popup-card[data-road] .popup-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}

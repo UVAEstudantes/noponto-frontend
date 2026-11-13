@@ -417,7 +417,7 @@ test("radar component hides and folds presentation without invoking tracking con
   assert.deepEqual(acknowledged, [4]);
 });
 
-function providerHarness(initial) {
+function providerHarness(initial, location = {}) {
   const React = require("react"),
     slots = [];
   let cursor = 0,
@@ -477,6 +477,8 @@ function providerHarness(initial) {
     react: mock,
     "./tutorialSteps": load("tutorialSteps.ts"),
     "./tutorialMapContract": load("tutorialMapContract.ts"),
+    "./initialLocation": load("initialLocation.ts"),
+    "expo-location": location,
     "@react-native-async-storage/async-storage": {
       getItem: async () => stored,
       setItem: async (key, v) => {
@@ -825,7 +827,7 @@ test("chapter three replay preserves history, accepts real stop selection, and c
     assert.equal(h.value.mapRequest, null);
     h.value.setStopTarget({ x: 0, y: 500, width: 400, height: 260 });
     await h.flush();
-    assert.equal(h.value.spotlight.height, 260);
+    assert.equal(h.value.spotlight, null);
     h.value.onMapEvent({ requestId: oldId, status: "unavailable" });
     await h.flush();
     assert.equal(h.value.step, "stopDetails");
@@ -940,7 +942,7 @@ test("chapter four replay persists completion, returns from Linhas, and clears m
       assert.equal(h.value.mapRequest, null);
       h.value.setLineTarget({ x: 12, y: 120, width: 300, height: 50 });
       await h.flush();
-      assert.equal(h.value.spotlight.height, 50);
+      assert.equal(h.value.spotlight, null);
     }
     h.value.openLines();
     await h.flush();
@@ -988,7 +990,7 @@ test("chapter four missing selection reuses search and old native measurements c
     const oldMeasure = h.value.setLineTarget;
     oldMeasure({ x: 10, y: 30, width: 200, height: 40 });
     await h.flush();
-    assert.equal(h.value.spotlight.width, 200);
+    assert.equal(h.value.spotlight, null);
     h.value.advance("next");
     await h.flush();
     assert.equal(h.value.spotlight, null);
@@ -1008,69 +1010,6 @@ test("chapter four missing selection reuses search and old native measurements c
   }
 });
 
-test("native measurement publishes settled geometry and rejects previous layout callbacks", () => {
-  const { observeTutorialTarget } = load("tutorialMeasurement.ts");
-  const frames = new Map();
-  let next = 0,
-    pending,
-    rect = null;
-  const o = observeTutorialTarget(
-    (done) => (pending = done),
-    (value) => (rect = value),
-    (fn) => {
-      frames.set(++next, fn);
-      return next;
-    },
-    (id) => frames.delete(id),
-  );
-  const tick = () => {
-    const jobs = [...frames.values()];
-    frames.clear();
-    jobs.forEach((fn) => fn());
-  };
-  tick();
-  const old = pending;
-  o.refresh();
-  tick();
-  old({ x: 1, y: 1, width: 100, height: 40 });
-  assert.equal(rect, null);
-  pending({ x: 10, y: 80, width: 100, height: 40 });
-  tick();
-  pending({ x: 10, y: 120, width: 100, height: 40 });
-  tick();
-  assert.equal(rect, null);
-  const settled = { x: 10, y: 160, width: 100, height: 40 };
-  pending(settled);
-  tick();
-  pending(settled);
-  tick();
-  pending(settled);
-  assert.equal(rect.y, 160);
-  assert.equal(frames.size, 0);
-  o.stop();
-});
-test("guide fits actual free area above expanded stop and beside modal controls", () => {
-  const { tutorialCardPlacement } = load("tutorialSteps.ts");
-  for (const target of [
-    { x: 0, y: 240, width: 400, height: 560 },
-    { x: 20, y: 120, width: 360, height: 510 },
-    { x: 0, y: 90, width: 400, height: 700 },
-  ]) {
-    const p = tutorialCardPlacement(88, 784, target, 420);
-    assert.ok(p.top >= 88);
-    assert.ok(p.top + Math.min(420, p.maxHeight) <= 784);
-    assert.ok(p.maxHeight > 0);
-  }
-  const above = tutorialCardPlacement(
-    88,
-    704,
-    { x: 0, y: 240, width: 400, height: 560 },
-    420,
-  );
-  assert.equal(above.top, 88);
-  assert.equal(above.maxHeight, 144);
-  assert.equal(above.compact, true);
-});
 test("popup observers refresh after expansion and disconnect when tutorial ends", () => {
   const r = runtime(),
     observations = [];
@@ -1144,7 +1083,7 @@ test("chapter five resumes only valid saved steps and keeps spotlight in its nat
     assert.equal(h.value.step, "notificationTiming");
     h.value.setRadarHost("radar"); await h.flush();
     h.value.setRadarTarget({x: 10, y: 120, width: 350, height: 80}); await h.flush();
-    assert.equal(h.value.spotlight.height, 80);
+    assert.equal(h.value.spotlight, null);
     h.value.setRadarHost("confirmation"); await h.flush();
     assert.equal(h.value.spotlight, null);
     h.value.advance("back"); await h.flush();
@@ -1209,7 +1148,7 @@ test("chapter six missing results never blocks progression and late filter geome
     await h.flush(); h.value.replay(6); await h.flush();
     h.value.advance("next"); await h.flush();
     h.value.setFilterTarget({x: 200, y: 30, width: 100, height: 30}); h.value.filterSelected("trem"); await h.flush();
-    assert.equal(h.value.spotlight.width, 100);
+    assert.equal(h.value.spotlight, null);
     assert.equal(h.value.selectedFilter, "trem");
     h.value.advance("skip"); await h.flush();
     assert.ok(h.value.progress.skippedSteps.includes("transportFilters"));
@@ -1220,16 +1159,28 @@ test("chapter six missing results never blocks progression and late filter geome
   } finally {h.unmount();}
 });
 
-test("unsaved Radar draft returns to real controls before chapter six", async () => {
-  const h = providerHarness({seen: true});
-  try {
-    await h.flush(); h.value.replay(5, "5C"); await h.flush();
-    while (h.value.step !== "radarChapterDone") {h.value.advance("next"); await h.flush();}
-    h.value.setRadarDraftPending(true); await h.flush();
-    h.value.advance("next"); await h.flush(); assert.equal(h.value.step, "voiceSave");
-    h.value.setRadarDraftPending(false); h.value.advance("next"); await h.flush();
-    h.value.advance("next"); await h.flush(); assert.equal(h.value.step, "transportIntro");
-  } finally {h.unmount();}
+test("Radar pending draft permits next and skip through chapter six without saving", async () => {
+  for (const event of ["next", "skip"]) {
+    const h = providerHarness({seen: true, chapters: [1, 2, 3, 4]});
+    try {
+      await h.flush(); h.value.replay(5); await h.flush();
+      h.value.setRadarDraftPending(true); h.value.setRadarHost("radar"); await h.flush();
+      for (const expected of load("tutorialSteps.ts").RADAR_STEPS) {
+        assert.equal(h.value.step, expected);
+        h.value.advance(event); await h.flush();
+      }
+      assert.equal(h.value.step, "transportIntro");
+      assert.equal(h.value.radarHost, "root");
+      assert.equal(h.value.radarDraftPending, true, "navigation must not save the draft");
+      assert.ok(h.value.progress.chapters.includes(5));
+      for (const expected of ["transportIntro", "transportFilters", "transportBrt", "transportRail", "railStatus", "transportMap"]) {
+        assert.equal(h.value.step, expected); h.value.advance(event); await h.flush();
+      }
+      assert.equal(h.value.step, "journeyDone");
+      assert.ok(h.value.progress.chapters.includes(6));
+      h.value.complete(); await h.flush(); assert.equal(h.value.step, null);
+    } finally {h.unmount();}
+  }
 });
 
 
@@ -1241,5 +1192,259 @@ test("skipping an entire vehicle chapter does not earn its completion", async ()
     assert.equal(h.value.step, "vehiclesDone");
     assert.deepEqual(Array.from(h.value.progress.chapters), [1]);
     assert.deepEqual(Array.from(h.value.progress.skippedSteps), ["vehiclesIntro"]);
+  } finally {h.unmount();}
+});
+
+test("first welcome waits for permission without saving progress and replay never requests it", async () => {
+  let resolvePermission, requests = 0;
+  const h = providerHarness({seen: false}, {
+    getForegroundPermissionsAsync: () => { requests++; return new Promise(resolve => { resolvePermission = resolve; }); },
+  });
+  try {
+    await h.flush();
+    assert.equal(requests, 0, "wait for opening");
+    h.value.setReady(true);
+    await h.flush();
+    assert.equal(h.value.step, null);
+    assert.equal(h.value.progress.seen, false);
+    assert.equal(h.writes.length, 0);
+    resolvePermission({granted: false, status: "denied", canAskAgain: false});
+    await h.flush();
+    assert.equal(h.value.step, "welcome");
+    assert.equal(h.value.progress.seen, true);
+    h.value.end();
+    await h.flush();
+    h.value.replay(1);
+    await h.flush();
+    assert.equal(requests, 1);
+  } finally { h.unmount(); }
+});
+
+test("returning users skip automatic location and keep tutorial history", async () => {
+  let requests = 0;
+  const h = providerHarness({seen: true, chapters: [1]}, {
+    getForegroundPermissionsAsync: async () => { requests++; return {granted: true}; },
+  });
+  try {
+    await h.flush();
+    h.value.setReady(true);
+    await h.flush();
+    assert.equal(requests, 0);
+    assert.equal(h.value.step, null);
+    assert.deepEqual(Array.from(h.value.progress.chapters), [1]);
+  } finally { h.unmount(); }
+});
+
+function nativeRuntime() {
+  const r = runtime(), layers = [{id: 'base'}, {id: 'routes'}, {id: 'routes-dash'}];
+  r.context.linesSolidLayerId = 'routes';
+  r.context.map.getLayer = id => layers.find(layer => layer.id === id);
+  r.context.map.addLayer = (layer, before) => { layers.splice(layers.findIndex(x => x.id === before), 0, layer); };
+  r.context.map.removeLayer = id => { layers.splice(layers.findIndex(x => x.id === id), 1); };
+  function elementFor(marker) {
+    const classes = new Set(['original']);
+    const element = { style: {opacity: '1'}, classList: {add: name => classes.add(name), remove: name => classes.delete(name)},
+      getBoundingClientRect: () => {throw Error('native highlight must not measure DOM');} };
+    marker.getElement = () => element;
+    return {element, classes};
+  }
+  Object.values(r.context.vehicleMarkers).forEach(elementFor);
+  const selected = elementFor(r.context.vehicleMarkers.b);
+  r.context.window.setTutorialVehicle({...r.request, kind: 'vehicle', nativeHighlight: true});
+  return {...r, layers, selected, elementFor};
+}
+
+test('native vehicle highlight keeps routes above dim layer and sends no geometry during movement', () => {
+  const r = nativeRuntime();
+  assert.deepEqual(r.layers.map(x => x.id), ['base', 'tutorial-dim', 'routes', 'routes-dash']);
+  assert.equal(r.layers[1].paint['background-opacity'], 0.35);
+  assert.equal(r.selected.classes.has('tutorial-vehicle-focus'), true);
+  assert.equal(r.sent.length, 1);
+  assert.equal(r.sent[0].rect, null);
+  assert.equal(r.timers.size, 0);
+  assert.deepEqual([...r.listeners].sort(), ['movestart', 'styledata']);
+  for (let i = 0; i < 5; i++) {
+    r.context.tutorialUserMove({originalEvent: {}});
+    r.context.tutorialSchedule(); // Data updates may recheck identity, without publishing positions.
+    r.flush();
+  }
+  assert.equal(r.sent.length, 1);
+  r.context.tutorialVehicleClicked('road:b');
+  r.flush();
+  assert.equal(r.sent.at(-1).status, 'selected');
+  assert.equal(r.sent.at(-1).rect, null);
+  r.context.window.setTutorialVehicle(null);
+  assert.deepEqual([...r.selected.classes], ['original']);
+  assert.deepEqual(r.layers.map(x => x.id), ['base', 'routes', 'routes-dash']);
+  assert.equal(r.listeners.size, 0);
+});
+
+test('native vehicle highlight reapplies after style or marker recreation and cleans up on disappearance', () => {
+  const r = nativeRuntime();
+  r.layers.splice(1, 1);
+  r.context.tutorialDimMap();
+  assert.equal(r.layers[1].id, 'tutorial-dim');
+  const replacement = r.marker();
+  const next = r.elementFor(replacement);
+  r.context.vehicleMarkers.b = replacement;
+  r.context.tutorialSchedule(); r.flush();
+  assert.deepEqual([...r.selected.classes], ['original']);
+  assert.equal(next.classes.has('tutorial-vehicle-focus'), true);
+  assert.equal(r.sent.length, 1);
+  r.context.vehicleMarkers = {};
+  r.context.tutorialSchedule(); r.flush();
+  assert.equal(r.sent.at(-1).status, 'unavailable');
+  assert.deepEqual([...next.classes], ['original']);
+  assert.equal(r.layers.some(x => x.id === 'tutorial-dim'), false);
+  r.context.window.setTutorialVehicle(null);
+});
+
+test('provider accepts native vehicle target without rectangle and preserves real popup transition', async () => {
+  const h = providerHarness({seen: true});
+  try {
+    await h.flush();
+    h.value.setLineContext({lineId: 'line', lineName: '838', modal: 'onibus', key: 'one'});
+    h.value.replay(2); await h.flush();
+    h.value.advance('next'); await h.flush();
+    assert.equal(h.value.step, 'vehicle');
+    assert.equal(h.value.mapRequest.nativeHighlight, true);
+    const requestId = h.value.mapRequest.requestId;
+    h.value.onMapEvent({type: 'tutorial_vehicle', requestId, sequence: 1, status: 'target', vehicleId: 'road:b'});
+    await h.flush();
+    assert.equal(h.value.step, 'vehicle');
+    assert.equal(h.value.spotlight, null);
+    h.value.onMapEvent({type: 'tutorial_vehicle', requestId, sequence: 2, status: 'selected', vehicleId: 'road:b'});
+    await h.flush();
+    assert.equal(h.value.step, 'vehicleDetails');
+    assert.equal(h.value.mapRequest.nativeHighlight, true);
+    assert.equal(h.value.mapRequest.vehicleId, 'road:b');
+  } finally { h.unmount(); }
+});
+
+test('native popup continuity preserves dim layer without geometry or movement listeners', () => {
+  const r = nativeRuntime();
+  const dim = r.layers.find(x => x.id === 'tutorial-dim');
+  const content = r.elementFor({}), replacement = r.elementFor({});
+  let current = content.element, open = true;
+  const closeListeners = new Set();
+  const popup = {
+    isOpen: () => open,
+    getElement: () => ({querySelector: () => current}),
+    on: (event, fn) => {assert.equal(event, 'close'); closeListeners.add(fn);},
+    off: (event, fn) => {assert.equal(event, 'close'); closeListeners.delete(fn);},
+  };
+  r.context.vehiclePopups.b = popup;
+  let removals = 0;
+  const remove = r.context.map.removeLayer;
+  r.context.map.removeLayer = id => {removals++; remove(id);};
+  r.context.window.setTutorialVehicle({...r.request, requestId: 2, kind: 'vehicle', mode: 'details', vehicleId: 'road:b', nativeHighlight: true});
+  assert.equal(r.layers.find(x => x.id === 'tutorial-dim'), dim);
+  assert.equal(removals, 0);
+  assert.deepEqual([...r.selected.classes], ['original']);
+  assert.equal(content.classes.has('tutorial-vehicle-focus'), true);
+  assert.equal(closeListeners.size, 1);
+  assert.equal(r.timers.size, 0);
+  assert.deepEqual([...r.listeners].sort(), ['movestart', 'styledata']);
+  const count = r.sent.length;
+  for (let i = 0; i < 3; i++) {r.context.tutorialUserMove({originalEvent: {}}); r.context.tutorialSchedule(); r.flush();}
+  assert.equal(r.sent.length, count);
+  assert.equal(r.sent.at(-1).rect, null);
+  current = replacement.element;
+  r.context.tutorialSchedule(); r.flush();
+  assert.deepEqual([...content.classes], ['original']);
+  assert.equal(replacement.classes.has('tutorial-vehicle-focus'), true);
+  open = false;
+  const lateClose = [...closeListeners][0];
+  lateClose();
+  assert.equal(r.sent.at(-1).status, 'closed');
+  assert.deepEqual([...replacement.classes], ['original']);
+  assert.equal(r.layers.find(x => x.id === 'tutorial-dim'), dim);
+  r.context.window.setTutorialVehicle({...r.request, requestId: 3, kind: 'vehicle', nativeHighlight: true});
+  assert.equal(closeListeners.size, 0);
+  assert.equal(r.selected.classes.has('tutorial-vehicle-focus'), true);
+  assert.equal(removals, 0);
+  const afterBack = r.sent.length;
+  lateClose();
+  assert.equal(r.sent.length, afterBack, 'old popup closure cannot affect marker step');
+  r.context.window.setTutorialVehicle(null);
+  assert.equal(removals, 1);
+  assert.equal(r.listeners.size, 0);
+});
+
+test('native popup exit removes highlight and detaches close listener', () => {
+  const r = nativeRuntime(), content = r.elementFor({}), handlers = new Set();
+  r.context.vehiclePopups.b = {
+    isOpen: () => true, getElement: () => ({querySelector: () => content.element}),
+    on: (_, fn) => handlers.add(fn), off: (_, fn) => handlers.delete(fn),
+  };
+  r.context.window.setTutorialVehicle({...r.request, mode: 'details', vehicleId: 'road:b', kind: 'vehicle', nativeHighlight: true});
+  assert.equal(content.classes.has('tutorial-vehicle-focus'), true);
+  r.context.window.setTutorialVehicle(null);
+  assert.deepEqual([...content.classes], ['original']);
+  assert.equal(handlers.size, 0);
+  assert.equal(r.layers.some(x => x.id === 'tutorial-dim'), false);
+});
+
+test('native stop uses real marker without geometry and restores its appearance', () => {
+  const r = nativeRuntime(), request = withStops(r);
+  const selected = r.elementFor(r.context.stopMarkersByKey['s:real-stop'].marker);
+  r.context.window.setTutorialVehicle({...request, requestId: 2, nativeHighlight: true});
+  assert.equal(selected.classes.has('tutorial-vehicle-focus'), true);
+  assert.equal(r.sent.at(-1).vehicleId, 'stop:real-stop');
+  assert.equal(r.sent.at(-1).rect, null);
+  assert.equal(r.timers.size, 0);
+  assert.deepEqual([...r.listeners].sort(), ['movestart', 'styledata']);
+  const count = r.sent.length;
+  r.context.tutorialUserMove({originalEvent: {}});
+  assert.equal(r.sent.length, count);
+  r.context.window.setTutorialVehicle(null);
+  assert.deepEqual([...selected.classes], ['original']);
+  assert.equal(r.layers.some(x => x.id === 'tutorial-dim'), false);
+  const missing = nativeRuntime();
+  withStops(missing); missing.context.stopCache = [];
+  missing.context.window.setTutorialVehicle({...request, nativeHighlight: true});
+  assert.equal(missing.sent.at(-1).status, 'unavailable');
+});
+
+test('route halo uses existing source and selected line without changing original layers', () => {
+  const r = nativeRuntime();
+  r.context.linesSourceId = 'real-lines';
+  r.context.window.setTutorialVehicle({...r.request, requestId: 2, kind: 'route', nativeHighlight: true});
+  const halo = r.layers.find(x => x.id === 'tutorial-route-focus');
+  assert.equal(halo.source, 'real-lines');
+  assert.equal(JSON.stringify(halo.filter), JSON.stringify(['==', ['get', 'lineId'], 'line']));
+  assert.equal(halo.paint['line-color'], '#FFC107');
+  assert.deepEqual(r.layers.map(x => x.id), ['base', 'tutorial-dim', 'tutorial-route-focus', 'routes', 'routes-dash']);
+  r.layers.splice(r.layers.indexOf(halo), 1);
+  r.context.tutorialDimMap();
+  assert.equal(r.layers.filter(x => x.id === 'tutorial-route-focus').length, 1);
+  r.context.window.setTutorialVehicle(null);
+  assert.deepEqual(r.layers.map(x => x.id), ['base', 'routes', 'routes-dash']);
+});
+
+test('stop panel readiness no longer waits for a measured rectangle', () => {
+  const filename = path.join(__dirname, 'TutorialProvider.tsx');
+  const source = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let arrow;
+  function visit(node) {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect' && node.arguments[0]?.getText(source).includes('const deadline = setTimeout')) arrow = node.arguments[0].getText(source);
+    ts.forEachChild(node, visit);
+  }
+  visit(source); assert.ok(arrow);
+  const effect = vm.runInNewContext('(' + ts.transpileModule(arrow, {}).outputText.trim().replace(/;$/, '') + ')', {
+    step: 'stopDetails', foreground: true, setTimeout: () => {throw Error('panel must not wait for a geometry timeout');},
+  });
+  effect();
+});
+
+test('route request ignores vehicle availability and preserves chapter progression', async () => {
+  const h = providerHarness({seen: true});
+  try {
+    await h.flush(); h.value.setLineContext({lineId: 'line', lineName: '838', modal: 'onibus', key: 'route'});
+    h.value.replay(1); await h.flush(); h.value.advance('selected'); await h.flush();
+    assert.equal(h.value.step, 'route'); assert.equal(h.value.mapRequest.kind, 'route');
+    h.value.onMapEvent({type: 'tutorial_vehicle', requestId: h.value.mapRequest.requestId, status: 'unavailable'});
+    await h.flush(); assert.equal(h.value.step, 'route');
+    h.value.advance('next'); await h.flush(); assert.equal(h.value.step, 'done');
   } finally {h.unmount();}
 });
