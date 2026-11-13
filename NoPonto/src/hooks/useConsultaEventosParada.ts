@@ -23,7 +23,7 @@ export function useConsultaEventosParada(parada: ParadaRadar | null, modal: stri
   const paradaId = parada?.parada.paradaId;
   const contextoAtual = useRef({ chave, ativo: enabled && foreground });
   contextoAtual.current = { chave, ativo: enabled && foreground };
-  const atualizarRef = useRef<() => void>(() => {});
+  const atualizarRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (value) => setForeground(value === "active"));
@@ -63,14 +63,14 @@ export function useConsultaEventosParada(parada: ParadaRadar | null, modal: stri
         if (vigente()) proximo = setTimeout(carregar, INTERVALO_RADAR_MS);
       }
     };
-    atualizarRef.current = () => { void carregar(); };
+    atualizarRef.current = () => carregar();
     void carregar();
     const relogio = setInterval(() => setAgora(Date.now()), 1000);
     return () => {
       geracao.current = atual + 1;
       if (proximo) clearTimeout(proximo);
       clearInterval(relogio);
-      atualizarRef.current = () => {};
+      atualizarRef.current = () => Promise.resolve();
     };
   }, [chave, paradaId, enabled, foreground]);
 

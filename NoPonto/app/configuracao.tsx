@@ -1,7 +1,6 @@
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
-import { router, type Href } from "expo-router";
 import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
 import {
@@ -12,7 +11,6 @@ import {
   Moon,
   Palette,
   Sun,
-  Volume2,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
@@ -356,32 +354,6 @@ const Configuracao = () => {
             As preferências são salvas automaticamente.
           </Text>
         </View>
-        <Pressable
-          className="mt-4 rounded-2xl p-4 flex-row items-center"
-          style={{
-            backgroundColor: cores.fundoCard,
-            borderColor: cores.borda,
-            borderWidth: 1,
-          }}
-          onPress={() => router.push("/laboratorio-voz" as Href)}
-          accessibilityRole="button"
-          accessibilityLabel="Abrir Laboratório de Voz"
-        >
-          <View
-            className="h-11 w-11 items-center justify-center rounded-full"
-            style={{ backgroundColor: cores.fundoSecundario }}
-          >
-            <Volume2 size={20} color={cores.iconeSecundario} />
-          </View>
-          <View className="ml-3 flex-1">
-            <Text className="text-base font-semibold" style={{ color: cores.textoPrimario }}>
-              Laboratório de voz
-            </Text>
-            <Text className="text-sm" style={{ color: cores.textoSecundario }}>
-              Compare as vozes instaladas neste aparelho
-            </Text>
-          </View>
-        </Pressable>
         <IndicadoresConfiguracao />
         {testeNativoDisponivel ? (
           <View

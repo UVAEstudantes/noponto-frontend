@@ -6,7 +6,7 @@ import {terminalRadarVehicles,type TerminalPresence} from '@/src/services/termin
 import { useTema } from "@/src/hooks/useTema";
 import { Parada } from "@/src/types/transporte";
 import { Bell, BusFront, ChevronDown, ChevronRight, ChevronUp, Clock3,
-  Map, MapPin, RefreshCw, TrainFront, X } from "lucide-react-native";
+  Map, MapPin, RefreshCw, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Dimensions, Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StatusConsultaParada } from "@/src/hooks/useConsultaEventosParada";
 import { resumoConsultaParada, textoEtaOperacional } from "@/src/services/apresentacaoRadar";
 import type { VinculoParada } from '@/src/services/radarParada';
+import { identidadeModalMapa } from '@/src/constants/modaisMapa';
 
 export interface LinhaParadaInfo {
   linhaId: string;
@@ -86,7 +87,7 @@ interface Props {
   contextoIndisponivel?: boolean;
   onRecuperarContexto?: () => void;
   onMonitorarRadar?: () => void;
-  onAtualizar?: () => void;
+  onAtualizar?: () => void | Promise<void>;
   nativeProbeEnabled?: boolean;
   nativeProbeReady?: boolean;
   nativeProbeActive?: boolean;
@@ -105,6 +106,22 @@ function formatEta(segundos: number | null): string {
   const sec = total % 60;
   if (min > 0) return `${min}m ${sec < 10 ? "0" : ""}${sec}s`;
   return `${sec}s`;
+}
+
+function diagnosticarRefreshTrem(evento: string, dados: Record<string, unknown> = {}) {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) console.info('[trem-refresh]', evento, dados);
+}
+
+function erroRefreshTrem(error: unknown) {
+  const name = error instanceof Error ? error.name : 'Error';
+  const message = error instanceof Error ? error.message : String(error);
+  const errorMessage = message.replace(/\bBearer\s+\S+/gi, 'Bearer [REDACTED]')
+    .replace(/([?&](?:access_token|token|api_key|key|password)=)[^&\s]+/gi, '$1[REDACTED]')
+    .replace(/https?:\/\/[^\s]+/gi, value => {
+      try { const url = new URL(value); url.username = ''; url.password = ''; url.search = ''; url.hash = ''; return url.toString(); }
+      catch { return '[URL]'; }
+    });
+  return { errorName: name, errorMessage };
 }
 
 function formatStatus(status?: number | null): string | null {
@@ -172,7 +189,51 @@ const ParadaSheet = ({
   const { cores, temaAtual } = useTema();
   const physicalNow = agora ?? Date.now();
   const terminalVehicles = contextoIndisponivel||!['onibus','todos'].includes(physicalModal)?[]:terminalRadarVehicles(terminalPresence,parada?.paradaId,vinculos??linhas.filter(l=>l.ativa).map(l=>({linhaId:l.linhaId})),chegadas,physicalNow);
-  const passengerRows=passengerRadar(terminalVehicles,chegadas,parada?.paradaId,physicalNow);
+  const ferroviaria = physicalModal === 'trem' || chegadas.some(c => c.modal === 'trem');
+  const sentidos = [...new globalThis.Map((vinculos ?? []).map(v => [v.sentidoId, v])).values()];
+  const opcoesSentido = sentidos.map(v => ({ ...v,
+    rotulo: /santa\s*cruz/i.test(v.destino) ? 'Santa Cruz' : /central/i.test(v.destino) ? 'Central' : null,
+  })).filter(v => v.rotulo);
+  const [selecao, setSelecao] = useState<{ parada: string; sentido: string } | null>(null);
+  const sentido = selecao && selecao.parada === parada?.paradaId && sentidos.some(v => v.sentidoId === selecao.sentido)
+    ? selecao.sentido : (opcoesSentido.length ? opcoesSentido : sentidos).at(0)?.sentidoId;
+  const [refreshBusy, setRefreshBusy] = useState(false);
+  const refreshLock = React.useRef(false);
+  const [refreshMessage, setRefreshMessage] = useState('');
+  useEffect(() => { setRefreshMessage(''); }, [parada?.paradaId]);
+  const atualizar = async () => {
+    if (!ferroviaria) { onAtualizar?.(); return; }
+    if (!parada || !sentido || refreshLock.current) {
+      diagnosticarRefreshTrem('skipped', { paradaId: parada?.paradaId ?? null, sentidoId: sentido ?? null,
+        reason: refreshLock.current ? 'already_pending' : 'missing_context' });
+      return;
+    }
+    refreshLock.current = true;
+    setRefreshBusy(true);
+    let stage = 'service';
+    let serviceMessage: string | null = null;
+    try {
+      diagnosticarRefreshTrem('selected', { paradaId: parada.paradaId, sentidoId: sentido });
+      const { refreshTrens } = await import('@/src/services/trensRefresh');
+      const message = await refreshTrens(parada.paradaId, sentido);
+      serviceMessage = message;
+      diagnosticarRefreshTrem('service-result', { message, returnedFallback: message === 'Falha na atualização. Dados anteriores preservados.',
+        reason: message === 'Falha na atualização. Dados anteriores preservados.' ? 'see service result log reason' : 'service message' });
+      setRefreshMessage(message);
+      diagnosticarRefreshTrem('displayed', { paradaId: parada.paradaId, sentidoId: sentido, message, source: 'service' });
+      stage = 'event_list_refresh';
+      diagnosticarRefreshTrem('event-list-refresh', { state: onAtualizar ? 'started' : 'skipped', reason: onAtualizar ? null : 'callback_unavailable' });
+      await onAtualizar?.();
+      if (onAtualizar) diagnosticarRefreshTrem('event-list-refresh', { state: 'completed' });
+    } catch (error) {
+      const message = 'Falha na atualização. Dados anteriores preservados.';
+      diagnosticarRefreshTrem('ui-fallback', { stage, reason: stage === 'event_list_refresh' ? 'event_list_refresh_failed' : 'refresh_service_failed',
+        serviceMessage, uiMessage: message, ...erroRefreshTrem(error) });
+      setRefreshMessage(message);
+      diagnosticarRefreshTrem('displayed', { paradaId: parada.paradaId, sentidoId: sentido, message, source: 'ui-fallback' });
+    } finally { refreshLock.current = false; setRefreshBusy(false); }
+  };
+  const passengerRows=passengerRadar(terminalVehicles,ferroviaria ? chegadas.filter(c => c.sentidoId === sentido) : chegadas,parada?.paradaId,physicalNow);
   const [physicalExpandedKey,setPhysicalExpandedKey]=useState<string|null>(null);
   const [physicalInfoKey,setPhysicalInfoKey]=useState<string|null>(null);
   const [visibleResults,setVisibleResults]=useState(20);
@@ -508,15 +569,13 @@ const ParadaSheet = ({
                   flex: 1,
                 }}
               >
-                {chegadas.length > 0 && chegadas.every((c) => c.nextVehiclesMode === "Departures")
-                  ? "Próximas saídas"
-                  : chegadas.some((c) => c.tipoServico?.toLowerCase().includes("trem"))
-                    ? "Próximos trens" : "Próximos ônibus"}
+                {ferroviaria ? "Próximos trens" : chegadas.length > 0 && chegadas.every((c) => c.nextVehiclesMode === "Departures")
+                  ? "Próximas saídas" : "Próximos ônibus"}
               </Text>
-              {onAtualizar && !contextoIndisponivel && (
+              {onAtualizar && !contextoIndisponivel && (!ferroviaria || physicalModal === 'trem') && (
                 <Pressable
-                  onPress={onAtualizar}
-                  disabled={carregandoChegadas}
+                  onPress={atualizar}
+                  disabled={carregandoChegadas || refreshBusy || (ferroviaria && !sentido)}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: Boolean(carregandoChegadas), busy: Boolean(carregandoChegadas) }}
                   style={{
@@ -542,6 +601,16 @@ const ParadaSheet = ({
               )}
             </View>
 
+            {ferroviaria && opcoesSentido.length > 1 && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 6 }}>
+              {opcoesSentido.map(v => <Pressable key={v.sentidoId} accessibilityRole="button"
+                accessibilityState={{ selected: sentido === v.sentidoId }}
+                onPress={() => { setSelecao({ parada: parada!.paradaId, sentido: v.sentidoId }); setVisibleResults(20); }}
+                style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: sentido === v.sentidoId ? cores.fundoSecundario : cores.fundoCard }}>
+                <Text style={{ color: cores.textoPrimario }}>{v.rotulo}</Text>
+              </Pressable>)}
+            </View>}
+            {ferroviaria && (refreshBusy || refreshMessage) && <Text accessibilityLiveRegion="polite" style={{ color: cores.textoSecundario, fontSize: 11, lineHeight: 16, flexShrink: 1, marginBottom: 8 }}>
+              {refreshBusy ? 'Atualizando trens…' : refreshMessage}</Text>}
             {!contextoIndisponivel && (carregandoChegadas ? (
               <Text
                 style={{
@@ -629,7 +698,9 @@ const ParadaSheet = ({
 
                   return renderRadarVehicleCard({cardKey:c.id,cores,accent:c.cor,badgeColor:indicadorCor,dark:temaAtual==='escuro',sheet:true,opacity:itemOpacity,
                     onPress:()=>setChegadaExpandidaId(current=>current===c.id?null:c.id),
-                    badge:c.tipoServico?.toLowerCase().includes('trem')?<TrainFront size={19} color={indicadorCor}/>:<BusFront size={19} color={indicadorCor}/>,
+                    badge: (c.modal ?? physicalModal) === 'trem' || (c.modal ?? physicalModal) === 'metro'
+                      ? React.createElement(identidadeModalMapa(c.modal ?? physicalModal).Icon, { size: 19, color: indicadorCor })
+                      : <BusFront size={19} color={indicadorCor}/>,
                     title:c.codigo,titleColor:textoPrimario,subtitle:c.destino??undefined,
                     metadata:<><Text
                           style={{
