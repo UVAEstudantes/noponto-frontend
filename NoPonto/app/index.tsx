@@ -1,3 +1,6 @@
+import TutorialTarget from '@/src/components/tutorial/TutorialTarget';
+import { radarBlocked, linePanelStep, transportSearchStep } from '@/src/components/tutorial/tutorialSteps';
+import { useTutorial } from '@/src/components/tutorial/TutorialProvider';
 import { paradaDetalhadaRadar, eventosValidosRadar } from '@/src/services/radarParada';
 import { useFavoritos } from "@/src/hooks/useFavoritos";
 import { configurarFavoritas, linhasEfetivas, favoritasVisiveis, ehFerroviaria,
@@ -67,6 +70,7 @@ import {
   LocationAccuracy,
   LocationObject,
   requestForegroundPermissionsAsync,
+  getForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
 import React, {
@@ -92,6 +96,7 @@ const CORES_RAMAIS_TREM: Record<string, string> = {
 };
 
 const Home = () => {
+  const tutorial = useTutorial();
   const reportStartupReady = React.useContext(StartupContext);
   const telaAtiva = useIsFocused();
   const { temaAtual, estiloMapaAtual, preferenciaLateralidade, cores } =
@@ -209,15 +214,14 @@ const Home = () => {
   const nativeProbeRevisionRef = useRef(0);
   const nativeProbeReceivedAtRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    async function requestLocationPermissions() {
+  const solicitarLocalizacao = useCallback(async () => {
+    try {
       const { granted } = await requestForegroundPermissionsAsync();
-      if (granted) {
-        const loc = await getCurrentPositionAsync();
-        setLocation(loc);
-      }
-    }
-    requestLocationPermissions();
+      if (!granted) { Alert.alert('Localização desativada', 'Autorize a localização nas configurações do aparelho para centralizar o mapa.'); return; }
+      const loc = await getCurrentPositionAsync();
+      setLocation(loc);
+      mapRef.current?.fitToCoordinates([loc.coords]);
+    } catch { Alert.alert('Localização indisponível', 'Não foi possível obter sua posição. Tente novamente.'); }
   }, []);
 
   const normalizarNome = useCallback((valor: string) => {
@@ -242,7 +246,9 @@ const Home = () => {
 
   useEffect(() => {
     let subscription: any;
+    let cancelled = false;
     async function startWatching() {
+      if (!(await getForegroundPermissionsAsync()).granted || cancelled) return;
       subscription = await watchPositionAsync(
         {
           accuracy: LocationAccuracy.Highest,
@@ -251,10 +257,11 @@ const Home = () => {
         },
         (response) => setLocation(response),
       );
+      if (cancelled) subscription.remove();
     }
-    startWatching();
-    return () => subscription?.remove();
-  }, []);
+    void startWatching().catch(() => {});
+    return () => { cancelled = true; subscription?.remove(); };
+  }, [Boolean(location)]);
 
   // ─── Busca ────────────────────────────────────────────────────────────────
 
@@ -280,11 +287,11 @@ const Home = () => {
   useEffect(() => {
     const subscription = Keyboard.addListener("keyboardDidHide", () => {
       requestAnimationFrame(() => {
-        if (deveFecharBuscaAoOcultarTeclado(selecionandoBuscaRef.current)) fecharBusca();
+        if (tutorial.step !== 'search' && !transportSearchStep(tutorial.step) && deveFecharBuscaAoOcultarTeclado(selecionandoBuscaRef.current)) fecharBusca();
       });
     });
     return () => subscription.remove();
-  }, [fecharBusca]);
+  }, [fecharBusca, tutorial.step]);
 
   useEffect(() => {
     let active = true;
@@ -382,11 +389,18 @@ const Home = () => {
   const selecionarOpcao = useCallback(
     async (opcao: OpcaoBusca) => {
       const { linha, nomeExibicao } = opcao;
+      if (!linha?.id) { selecionandoBuscaRef.current = false; return; }
+      if (!linhasSelecionadas.some(l => l.linhaId === linha.id) && linhasSelecionadas.length >= MAX_LINHAS) {
+        selecionandoBuscaRef.current = false;
+        Alert.alert('Limite de linhas', 'Remova uma linha antes de selecionar outra.'); return;
+      }
       const linhaCodigo = linha.codigo || linha.nome;
       const modal = categoriaLinhaV2({
         tipoRota: linha.tipoRota ?? "",
         modal: linha.modal ?? "",
       }) as ModalApiTransporte;
+      tutorial.setLineId(linha.id);
+      if (tutorial.step === 'search') { setViewMode('normal'); setNormalModal(modal); }
       registrarSelecaoBusca(linha, modal).then(setHistoricoBusca);
 
       setLinhasSelecionadas((prev) => {
@@ -417,6 +431,10 @@ const Home = () => {
         ];
       });
 
+      // The line is accepted now; network latency must not hold the tutorial open.
+      fecharBusca();
+      tutorial.setRouteAvailable(false);
+      tutorial.advance('selected');
       try {
         const itinerario = await garantirItinerario(
           linha.id,
@@ -429,6 +447,7 @@ const Home = () => {
           (itinerario.segmentos[0]?.length ?? 0) > 1 &&
           mapRef.current?.fitToCoordinates
         ) {
+          tutorial.setRouteAvailable(true);
           const coordenadas = itinerario.segmentos[0].map(
             ([latitude, longitude]) => ({
               latitude,
@@ -441,10 +460,10 @@ const Home = () => {
         console.error("Erro ao buscar itinerário após seleção:", err);
       } finally {
         selecionandoBuscaRef.current = false;
-        fecharBusca();
+
       }
     },
-    [fecharBusca, garantirItinerario, corRamalTrem],
+    [fecharBusca, garantirItinerario, corRamalTrem, linhasSelecionadas, tutorial.advance, tutorial.step, tutorial.setRouteAvailable, tutorial.setLineId],
   );
 
   const removerLinha = useCallback(
@@ -509,10 +528,11 @@ const Home = () => {
     if (id !== "todos" && id !== "onibus" && id !== "brt" && id !== "trem" && id !== "metro") return;
     categoriaAlteradaPeloUsuario.current = true;
     setSearchCategory(id);
+    tutorial.filterSelected(id);
     if (viewMode === "normal" && id !== "todos") {
       modalAlteradoPeloUsuario.current = true; setNormalModal(id);
     }
-  }, [viewMode]);
+  }, [viewMode, tutorial.filterSelected]);
 
   const adicionarLinha = useCallback(() => {
     if (linhasSelecionadas.length >= MAX_LINHAS) {
@@ -704,6 +724,29 @@ const Home = () => {
   }, [itinerariosPorId]);
 
   // ─── Dados para o mapa ────────────────────────────────────────────────────
+
+  const tutorialPanelWasOpen = useRef(false);
+  useEffect(() => {
+    const open = linePanelStep(tutorial.step) && Boolean(tutorial.lineContext);
+    if (tutorial.step || tutorialPanelWasOpen.current) {
+      setContainerAberto(open); if (tutorial.step !== "stopDetails" && tutorial.chapter !== 5 && tutorial.step !== "linesDone") setParadaSelecionada(null);
+      if (tutorial.step !== 'search' && tutorial.chapter !== 6) fecharBusca();
+    }
+    tutorialPanelWasOpen.current = open;
+  }, [tutorial.step, tutorial.lineContext?.lineId, fecharBusca]);
+  useEffect(() => {
+    tutorial.setSearching(telaAtiva && buscaAberta);
+    return () => tutorial.setSearching(false);
+  }, [telaAtiva, buscaAberta, tutorial.setSearching]);
+  useEffect(() => {
+    if (tutorial.step === "transportMap" || tutorial.step === "journeyDone") fecharBusca();
+  }, [tutorial.step, fecharBusca]);
+  const exemploConsumido = useRef(0);
+  useEffect(() => {
+    if (!tutorial.exampleRequest || exemploConsumido.current === tutorial.exampleRequest) return;
+    exemploConsumido.current = tutorial.exampleRequest;
+    selecionarCategoriaBusca('onibus'); setBusca('838'); setBuscaAberta(true);
+  }, [tutorial.exampleRequest, selecionarCategoriaBusca]);
 
   const modalSelecionadoNome = normalModal;
 
@@ -919,6 +962,23 @@ const Home = () => {
   const falhaEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "erro");
   const semEstruturas = linhasPendentes.some((linha) => estadosItinerarios[linha.linhaId]?.estado === "indisponivel");
 
+  const managedTutorialLine = tutorial.chapter === 4 ? (viewMode === "favoritos" ? favoritasConfiguradas : linhasSelecionadasFiltradas).find(line => line.linhaId === tutorial.lineId) : null;
+  const tutorialLine = tutorial.lineId ? dadosParaMapa.find(line => line.linhaId === tutorial.lineId) : dadosParaMapa[0];
+  const tutorialContextKey = managedTutorialLine ? "manage:" + viewMode + ":" + managedTutorialLine.linhaId + ":" + managedTutorialLine.modal : tutorialLine ? `${viewMode}:${normalModal}:${tutorialLine.structureKey}` : '';
+  useEffect(() => {
+    if (tutorialLine && !tutorial.lineId) tutorial.setLineId(tutorialLine.linhaId);
+    tutorial.setLineContext(managedTutorialLine ? {lineId: managedTutorialLine.linhaId, lineName: managedTutorialLine.nomeExibicao, modal: managedTutorialLine.modal, key: tutorialContextKey, favorites: viewMode === "favoritos"} : tutorialLine ? { lineId: tutorialLine.linhaId, lineName: tutorialLine.nome, modal: tutorialLine.modal, key: tutorialContextKey } : null);
+  }, [tutorialContextKey, tutorial.lineId, tutorial.setLineId, tutorial.setLineContext]);
+
+  useEffect(() => {
+    if (tutorial.step === "stopDetails" && paradaSelecionada &&
+      !tutorialLine?.paradas.some(item => item.paradaId === paradaSelecionada.paradaId)) {
+      setParadaSelecionada(null);
+      setParadaExpandida(false);
+      tutorial.stopClosed();
+    }
+  }, [tutorial.step, tutorialLine, paradaSelecionada, tutorial.stopClosed]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -930,6 +990,8 @@ const Home = () => {
         onTerminalVehiclesChange={setTerminalPresence}
         onReady={reportStartupReady}
         ref={mapRef}
+        tutorialRequest={tutorial.mapRequest}
+        onTutorialEvent={tutorial.onMapEvent}
         location={location}
         linhasParaMostrar={dadosParaMapa}
         railVehicles={railVehiclesVisiveis}
@@ -939,27 +1001,30 @@ const Home = () => {
         onStopPress={(parada) => {
           setParadaSelecionada(parada);
           setParadaExpandida(false);
+          if (tutorialLine?.paradas.some(item => item.paradaId === parada.paradaId)) tutorial.stopSelected();
         }}
       />
 
-      <BuscaMapa value={busca} onChangeText={setBusca} onClose={fecharBusca}
-        active={buscaAberta} focusRequest={pedidoFocoBusca} onFocus={() => setBuscaAberta(true)}
+      <BuscaMapa value={busca} onChangeText={(value) => { setBusca(value); tutorial.interact(); }} onClose={fecharBusca}
+        active={buscaAberta} focusRequest={pedidoFocoBusca} onFocus={() => { setBuscaAberta(true); tutorial.interact(); }}
         modais={[{ id: "todos", nome: "Todos" }, ...modais]} modalSelecionadoId={searchCategory}
         onSelecionarModal={selecionarCategoriaBusca} onMenuAbertoChange={setMenuModalBuscaAberto}
         placeholderSuggestions={sugestoesBusca} />
       {buscaAberta && (
-        <View pointerEvents={menuModalBuscaAberto ? "none" : "auto"}
+        <TutorialTarget kind="results" enabled={!menuModalBuscaAberto && (recentesBusca.length > 0 || resultadosSemRecentes.length > 0 || carregandoBusca)} pointerEvents={menuModalBuscaAberto ? "none" : "auto"}
           style={{ position: "absolute", top: insets.top + 64, left: 12, right: 12, zIndex: 20,
           opacity: menuModalBuscaAberto ? 0 : 1,
           borderRadius: 18, overflow: "hidden", backgroundColor: cores.fundoCard,
           borderWidth: 0, shadowColor: "#000", shadowOpacity: 0.14,
           shadowRadius: 12, elevation: 8 }}>
           {(recentesBusca.length > 0 || resultadosSemRecentes.length > 0 || carregandoBusca) &&
-            <SearchSections embedded recentes={recentesBusca} resultados={resultadosSemRecentes}
+            <SearchSections embedded
+              maxHeight={(tutorial.step === 'search' || transportSearchStep(tutorial.step)) ? Math.max(100, (alturaAreaMapa ?? 600) - insets.top - (tutorial.example ? 260 : 220)) : 400}
+              recentes={recentesBusca} resultados={resultadosSemRecentes}
               carregando={carregandoBusca}
               onSelectionStart={() => { selecionandoBuscaRef.current = true; }}
               onSelect={selecionarOpcao} />}
-        </View>
+        </TutorialTarget>
       )}
       {!buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada &&
         !(viewMode === "favoritos" && favoritasConfiguradas.filter((linha) => linha.ativa).length > LIMITE_FAVORITAS_VISIVEIS) &&
@@ -992,6 +1057,7 @@ const Home = () => {
         lateralidade={preferenciaLateralidade}
         modalAtivo={viewMode === "favoritos" ? "favoritos" : modalSelecionadoNome}
         location={location}
+        onRequestLocation={solicitarLocalizacao}
         mapRef={mapRef}
         onOpenLines={() => { adicionarLinhaPendenteRef.current = false; setContainerAberto(true); }}
         disabled={Boolean(paradaSelecionada) || containerAberto || buscaAberta}
@@ -1023,7 +1089,7 @@ const Home = () => {
         limiteLinhasAtingido={linhasSelecionadas.length >= MAX_LINHAS}
       />
 
-      <RadarParada viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
+      <RadarParada bloqueadoPeloTutorial={radarBlocked(tutorial.step)} viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
         onDiagnostico={diagnosticarRadares}
         acompanhamento={acompanhamento}
         abrirRadarSolicitacao={radarOpenRequest}
@@ -1032,7 +1098,7 @@ const Home = () => {
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}
         lateralidade={preferenciaLateralidade}
-        visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && !paradaSelecionada}
+        visivel={telaAtiva && !buscaAberta && !menuModalBuscaAberto && !containerAberto && (!paradaSelecionada || tutorial.chapter === 5)}
         localizavel={(evento) => localizarVeiculoDoEvento(evento, veiculos, railVehiclesVisiveis) != null}
         onEvento={focarEventoRadar}
         onVerTodos={() => {
@@ -1041,6 +1107,7 @@ const Home = () => {
           setParadaExpandida(true);
         }} />
       <ParadaSheet
+        reduzirMovimento={Boolean(tutorial.step) && tutorial.reducedMotion}
         onDiagnostico={diagnosticarRadares}
         agora={consultaDetalhe.agora}
         vinculos={contextoFicha?.vinculos}
@@ -1048,7 +1115,7 @@ const Home = () => {
         onTerminalVehicle={focarVeiculoOrigem}
         physicalVehicles={physicalVehiclesVisible}
         physicalModal={modalRadar}
-        visivel={!!paradaSelecionada}
+        visivel={!!paradaSelecionada && tutorial.chapter !== 5}
         parada={paradaSelecionada}
         linhas={linhasNaParada}
         chegadas={chegadasParada}
@@ -1067,7 +1134,7 @@ const Home = () => {
           setParadaExpandida(false);
           radar.selecaoAutomatica();
         }}
-        onMonitorarRadar={contextoDetalhe && !radarConsultado.foraContexto ? () => {
+        onMonitorarRadar={!tutorial.step && contextoDetalhe && !radarConsultado.foraContexto ? () => {
           radarConsultado.selecionar(contextoDetalhe);
           setParadaSelecionada(null);
           setParadaExpandida(false);
@@ -1082,6 +1149,7 @@ const Home = () => {
         expandido={paradaExpandida}
         onToggleExpandir={() => setParadaExpandida((p) => !p)}
         onFechar={() => {
+          tutorial.stopClosed();
           setParadaSelecionada(null);
           setParadaExpandida(false);
         }}

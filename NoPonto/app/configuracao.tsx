@@ -1,9 +1,11 @@
+import { useTutorial } from '@/src/components/tutorial/TutorialProvider';
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
 import React from "react";
-import { Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
-import Constants from "expo-constants";
+import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
+  BookOpen,
+  ArrowRight,
   Check,
   Hand,
   Map,
@@ -16,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
 
 const Configuracao = () => {
+  const tutorial = useTutorial();
   const {
     temaAtual,
     preferenciaTema,
@@ -30,36 +33,6 @@ const Configuracao = () => {
     salvandoAbertura,
     definirAnimacaoAbertura,
   } = useTema();
-
-  const testeNativoDisponivel =
-    Platform.OS === "android" &&
-    (__DEV__ || Constants.expoConfig?.extra?.nativeNotificationProbe === true);
-
-  const mostrarTesteNativo = async (cenario: "multiple-lines" | "empty", headsUp: boolean) => {
-    const inicio = performance.now();
-    const traceId = Math.random().toString(36).slice(2, 8);
-    console.info(`[RadarNativeProbe:${traceId}] clique`);
-    try {
-      const { mostrarNotificacaoNativaTeste } = await import("@/src/services/notificacaoNativaTeste");
-      console.info(`[RadarNativeProbe:${traceId}] modulo_js_ms=${(performance.now() - inicio).toFixed(1)}`);
-      if (!await mostrarNotificacaoNativaTeste(cenario, headsUp, traceId)) {
-        Alert.alert("Notificações desativadas", "Autorize notificações para este aplicativo e tente novamente.");
-      }
-    } catch (error) {
-      console.error(`[RadarNativeProbe:${traceId}] falha ao mostrar notificação de teste`, error);
-      Alert.alert("Falha no teste", "Não foi possível exibir a notificação nativa.");
-    }
-  };
-
-  const limparTesteNativo = async () => {
-    try {
-      const { limparNotificacoesNativasTeste } = await import("@/src/services/notificacaoNativaTeste");
-      await limparNotificacoesNativasTeste();
-    } catch (error) {
-      console.error("[RadarNativeProbe] falha ao limpar notificações de teste", error);
-      Alert.alert("Falha ao limpar", "Não foi possível remover as notificações do protótipo.");
-    }
-  };
 
   const opcoesTema = [
     {
@@ -354,66 +327,39 @@ const Configuracao = () => {
             As preferências são salvas automaticamente.
           </Text>
         </View>
-        <IndicadoresConfiguracao />
-        {testeNativoDisponivel ? (
-          <View
-            className="mt-4 rounded-2xl p-4"
-            style={{ backgroundColor: cores.fundoCard, borderColor: cores.borda, borderWidth: 1 }}
-          >
-            <Text className="text-base font-semibold" style={{ color: cores.textoPrimario }}>
-              Notificações nativas · teste
-            </Text>
-            <Text className="mt-1 text-sm" style={{ color: cores.textoSecundario }}>
-              Dados fictícios identificados como teste. Expanda a notificação na bandeja.
-            </Text>
-            <View className="mt-3 flex-row flex-wrap">
-              <Pressable
-                className="mr-2 mb-2 rounded-xl px-3 py-3"
-                style={{ backgroundColor: cores.fundoPrimario }}
-                onPress={() => void mostrarTesteNativo("multiple-lines", true)}
-                accessibilityRole="button"
-                accessibilityLabel="Testar notificação nativa com várias linhas e heads-up"
-              >
-                <Text className="text-sm font-semibold" style={{ color: cores.textoInverso }}>
-                  Várias linhas · heads-up
-                </Text>
-              </Pressable>
-              <Pressable
-                className="mr-2 mb-2 rounded-xl px-3 py-3"
-                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
-                onPress={() => void mostrarTesteNativo("multiple-lines", false)}
-                accessibilityRole="button"
-                accessibilityLabel="Testar notificação nativa expandida sem heads-up"
-              >
-                <Text className="text-sm font-semibold" style={{ color: cores.textoPrimario }}>
-                  Várias linhas
-                </Text>
-              </Pressable>
-              <Pressable
-                className="mr-2 mb-2 rounded-xl px-3 py-3"
-                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
-                onPress={() => void mostrarTesteNativo("empty", false)}
-                accessibilityRole="button"
-                accessibilityLabel="Testar notificação nativa sem previsões"
-              >
-                <Text className="text-sm font-semibold" style={{ color: cores.textoPrimario }}>
-                  Sem previsões
-                </Text>
-              </Pressable>
-              <Pressable
-                className="mb-2 rounded-xl px-3 py-3"
-                style={{ backgroundColor: cores.fundoPainel, borderColor: cores.borda, borderWidth: 1 }}
-                onPress={() => void limparTesteNativo()}
-                accessibilityRole="button"
-                accessibilityLabel="Limpar notificações nativas de teste"
-              >
-                <Text className="text-sm font-semibold" style={{ color: cores.textoSecundario }}>
-                  Limpar testes
-                </Text>
-              </Pressable>
+        <View style={{ marginTop: 24, gap: 8 }}>
+          <Text accessibilityRole="header" style={{ color: cores.textoPrimario, fontSize: 21, fontWeight: "700" }}>Ajuda e tutoriais</Text>
+          <Text style={{ color: cores.textoSecundario, fontSize: 14 }}>Aprenda a aproveitar o NoPonto.</Text>
+          <View style={{ marginTop: 6, padding: 16, gap: 14, borderRadius: 20, borderWidth: 1, borderColor: cores.bordaSuave, backgroundColor: cores.fundoCard }}>
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              <View style={{ padding: 12, borderRadius: 14, backgroundColor: "#FFC10720" }}><BookOpen size={23} color={temaAtual === "escuro" ? "#FFC107" : "#916500"} /></View>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ color: cores.textoPrimario, fontSize: 17, fontWeight: "700" }}>Primeiros passos</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 14 }}>Conheça a busca, o mapa e os recursos do NoPonto.</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>Seis capítulos · no seu ritmo</Text>
+                <Text style={{color: cores.textoSecundario, fontSize: 12}}>{tutorial.progress.journeyFinished ? "Jornada concluída" : `${tutorial.progress.chapters?.length ?? 0}/6 capítulos concluídos`}</Text>
+              </View>
             </View>
+            <Pressable accessibilityRole="button" onPress={() => tutorial.replay()} style={{ minHeight: 46, padding: 12, gap: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#FFC107" }}>
+              <Text style={{ color: "#222222", fontSize: 15, fontWeight: "700" }}>{tutorial.progress.seen ? "Rever tutorial" : "Iniciar tutorial"}</Text><ArrowRight size={17} color="#222222" />
+            </Pressable>
           </View>
-        ) : null}
+        </View>
+        <View style={{ gap: 8, marginTop: 12 }}>
+          {([{ id: 1, title: 'Buscar e visualizar linhas' }, { id: 2, title: 'Veículos em tempo real' }, { id: 3, title: 'Paradas, estações e terminais' }, { id: 4, title: 'Suas linhas, do seu jeito' }, { id: 5, title: 'Radar de Espera, notificações e voz' }, { id: 6, title: 'Conhecendo outros transportes' }] as const).map(chapter => <Pressable key={chapter.id} accessibilityRole="button"
+            onPress={() => tutorial.replay(chapter.id)} style={{ minHeight: 54, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: cores.bordaSuave, backgroundColor: cores.fundoCard, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ color: cores.textoPrimario, fontSize: 14, flex: 1 }}>{chapter.title}</Text>
+            <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>{tutorial.progress.chapters?.includes(chapter.id) ? 'Concluído · rever' : 'Aprender'}</Text>
+            <ArrowRight size={16} color={cores.textoSecundario} />
+          </Pressable>)}
+          <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8}}>
+            {(['5A', '5B', '5C'] as const).map((section, index) => <Pressable key={section} accessibilityRole="button" onPress={() => tutorial.replay(5, section)} style={{minHeight: 44, padding: 10}}>
+              <Text style={{color: cores.textoSecundario}}>{['Radar', 'Notificações', 'Voz'][index]}{tutorial.progress.radarSections?.includes(section) ? ' · ✓' : ''}</Text>
+            </Pressable>)}
+          </View>
+        </View>
+        <IndicadoresConfiguracao />
+
         <View
           className="mt-4 rounded-2xl p-4 flex-row items-center"
           style={{

@@ -66,3 +66,16 @@ test('843 line expiry conflict and GPS expiry remove marker without restoring st
   assert.equal(composeUnifiedLines(lines,s,now)[0].posicoes!.length,0);
   s.vehicles[0].line.state=1; assert.equal(composeUnifiedLines(lines,s,now+610000)[0].posicoes!.length,0);
 });
+
+test('return direction without a loaded segment preserves physical GPS without inventing projection', () => {
+  for (const code of ['838','855']) {
+    const s=snapshot();s.lineCode=code;s.vehicles[0].line.serviceCode=code;
+    s.vehicles[0].operational={timestampGps:new Date(now-1000).toISOString(),padraoVersaoId:'volta',status:0,latitude:.002,longitude:.003};
+    const line={nome:code,modal:'onibus',linhaId:'line',itinerarioSegmentoMap:{volta:1},segmentos:[[[0,0],[0,.01]],undefined] as any};
+    const result=composeUnifiedSnapshots([line],[s],now)[0].posicoes![0];
+    assert.equal(result.latitude,s.vehicles[0].location.latitude);
+    assert.equal(result.longitude,s.vehicles[0].location.longitude);
+    assert.equal(result.posicaoNaRota,null);
+    assert.equal(result.backendMotionEligible,false);
+  }
+});

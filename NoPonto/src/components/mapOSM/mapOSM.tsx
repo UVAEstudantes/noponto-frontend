@@ -1,3 +1,4 @@
+import { mapTutorialRect } from '../tutorial/tutorialMapContract';
 import {
   ESTILO_MAPA_PADRAO,
   estilosMapaDisponiveis,
@@ -10,6 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { View } from "react-native";
 import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
@@ -46,6 +48,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
   (
     {
       location,
+      tutorialRequest,
+      onTutorialEvent,
       linhasParaMostrar: legacyLines,
       darkMode = false,
       showTraffic = false,
@@ -80,6 +84,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       return ()=>clearTimeout(timer);
     },[linhasParaMostrar]);
     const webViewRef = useRef<WebView>(null);
+    const nativeFrameRef = useRef<View>(null);
     const { preferencias } = useIndicadores();
     const estilosVeiculos = useMemo(() => estilosEfetivos(preferencias), [preferencias]);
     const diagnosticsRef = useRef({ fullUpdates: 0, realtimeUpdates: 0, fullChars: 0, realtimeChars: 0 });
@@ -255,6 +260,15 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
       );
     }, [mapReady, mapGeneration, location]);
 
+    const latestTutorialMeasurement = useRef<object | null>(null);
+    const activeTutorialRequest = useRef(tutorialRequest);
+    activeTutorialRequest.current = tutorialRequest;
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef, `if(window.setTutorialVehicle) window.setTutorialVehicle(${JSON.stringify(tutorialRequest ?? null)});true;`);
+      return () => injectWebViewCommand(webViewRef, 'if(window.setTutorialVehicle) window.setTutorialVehicle(null);true;');
+    }, [mapReady, mapGeneration, tutorialRequest]);
+
     // HTML final memoizado: só recria quando a âncora inicial muda.
     const mapHTML = useMemo(
       () =>
@@ -271,11 +285,12 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     const source = useMemo(() => ({ html: mapHTML }), [mapHTML]);
 
     return (
+      <View ref={nativeFrameRef} collapsable={false} style={{ flex: 1 }}>
       <WebView
         ref={webViewRef}
         originWhitelist={["*"]}
         source={source}
-        onLoadStart={() => setMapReady(false)}
+        onLoadStart={() => { latestTutorialMeasurement.current = null; setMapReady(false); if (tutorialRequest) onTutorialEvent?.({ type: 'tutorial_vehicle', requestId: tutorialRequest.requestId, status: 'unavailable' }); }}
         style={{ flex: 1, backgroundColor: darkMode ? "#1a1a1a" : "#f0f0f0" }}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -293,6 +308,17 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           }
           try {
             const payload = JSON.parse(raw);
+            if (payload?.type === 'tutorial_vehicle' && activeTutorialRequest.current?.requestId === payload.requestId) {
+              const requestId = payload.requestId;
+              const measurement = {};
+              latestTutorialMeasurement.current = measurement;
+              nativeFrameRef.current?.measureInWindow((x, y, width, height) => {
+                if (activeTutorialRequest.current?.requestId !== requestId || latestTutorialMeasurement.current !== measurement) return;
+                const rect = mapTutorialRect(payload, requestId, { x, y, width, height });
+                onTutorialEvent?.({ ...payload, rect: rect ?? undefined, viewport: undefined });
+              });
+              return;
+            }
             if (payload?.type === "stop_click" && payload.parada) {
               onStopPress?.(payload.parada);
             }
@@ -312,6 +338,7 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
           }
         }}
       />
+      </View>
     );
   },
 );

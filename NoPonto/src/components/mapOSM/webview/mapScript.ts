@@ -1,3 +1,4 @@
+import { TUTORIAL_MAP_BRIDGE } from './tutorialBridge';
 // Responsabilidade: script que roda dentro da WebView e controla MapLibre,
 // markers, animações e integração com React Native via postMessage.
 // usadas pelo host React Native e por fluxos realtime/dead reckoning.
@@ -57,6 +58,7 @@ var userLastUpdate=0;
 var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=0,railLastUiTick=0,railSourceHasFeatures=false;
 var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
 var lastMapData=null;
+${TUTORIAL_MAP_BRIDGE}
 var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
 ${codigoRenderizadorIndicadores}
 var renderIndicator=criarRenderizadorIndicadores(${JSON.stringify(familiasIndicadores).replace(/</g, '\\u003c')});
@@ -118,7 +120,7 @@ function railMarkerElement(run,identity){
   el.addEventListener('click',function(event){
     event.preventDefault();event.stopPropagation();
     var current=railRuns[identity];
-    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c)openRailPopup(current,c)}
+    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c){openRailPopup(current,c);tutorialVehicleClicked('rail:'+identity)}}
   });
   return el;
 }
@@ -992,7 +994,7 @@ function updateStopMarkers(){
     if(tf==null){tf=stopThinningFactor(zoom,s2.modal);thinFactors[s2.modal]=tf;}
     if(tf>1){
       var h=hashString(String(s2.key));
-      if(h%tf!==0)continue;
+      if(h%tf!==0&&!(tutorialRequest&&tutorialRequest.kind==='stop'&&tutorialVehicleId==='stop:'+s2.key))continue;
     }
     ensureStopMarker(s2);
   }
@@ -1205,7 +1207,7 @@ window.onload=function(){
       var feature=e.features&&e.features[0];if(!feature)return;
       var key=feature.properties&&feature.properties.railRunId;
       var run=key&&railRuns[key];
-      if(run)openRailPopup(run,feature.geometry.coordinates);
+      if(run){openRailPopup(run,feature.geometry.coordinates);tutorialVehicleClicked('rail:'+key)}
     });
     map.on('mouseenter','rail-vehicles-layer',function(){map.getCanvas().style.cursor='pointer'});
     map.on('mouseleave','rail-vehicles-layer',function(){map.getCanvas().style.cursor=''});
@@ -1347,7 +1349,11 @@ window.updateMap=function(data){
         lineCoordsDR=typeof segIdx==='number'?routeSegments[segIdx]||null:null;
       }
 
+      var tutorialData=rawId?{lineId:p.linhaId||linha.linhaId,lineName:linha.nome,modal:linha.modal,timestamp:gpsTimestamp,
+        hasDirection:!!p.sentidoNome,hasNextStop:!!p.proximaParadaNome,hasDistance:p.distanciaProximaParadaMetros!=null,
+        statusText:p.gpsWarning||p.presencaRotulo||(p.gpsAtrasado?'GPS atrasado':'Consulte a idade do GPS no painel')}:null;
       var marker=vehicleMarkers[vKey];
+      if(marker)marker._tutorial=tutorialData;
       var popup=vehiclePopups[vKey];var reusedMotionMarker=!!marker;
       if(marker&&drState[vKey]&&(!drState[vKey].alternative||gpsTimestamp>=Date.parse(drState[vKey].alternative.physicalAt))&&gpsTimestamp>drState[vKey].gpsTimestamp&&!p.backendUnified&&roadIdentityChanged(drState[vKey].identity,identity)){
         roadMovement.identityChanges++;
@@ -1373,6 +1379,8 @@ window.updateMap=function(data){
           popup.on('close',function(){resetPopupDetails(popup)});
         }
         marker.setPopup(popup);
+        marker._tutorial=tutorialData;
+        el.addEventListener('click',function(){tutorialVehicleClicked('road:'+vKey)});
         marker.addTo(map);
         vehicleMarkers[vKey]=marker;
         createdNow++;
@@ -1474,6 +1482,7 @@ window.updatePhysicalPresence=function(vehicles){
         dr.alternative=v;stopAnim(opKey);
         opMarker.setLngLat([v.longitude,v.latitude]);
         opMarker.getElement().style.opacity=age>=300?'0.55':'1';
+        opMarker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),ambiguousPhysical:true,statusText:'Última posição conhecida'};
         var opPopup=vehiclePopups[opKey];
         if(opPopup)setPopupHTMLPreservingDetails(opPopup,buildPhysicalPopup(v));
       }
@@ -1501,9 +1510,11 @@ window.updatePhysicalPresence=function(vehicles){
         marker._physicalPopup=new maplibregl.Popup({offset:18,closeButton:false}).setLngLat([current.longitude,current.latitude])
           .setHTML(buildPhysicalPopup(current)).addTo(map);
         refreshIcons();
+        tutorialVehicleClicked('physical:'+v.key);
       });
       physicalMarkers[v.key]=marker;
     }
+    marker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),statusText:physicalLocationLabels[v.location]||'Última posição conhecida'};
     marker._physicalAt=Date.parse(v.physicalAt);
     marker.setLngLat([v.longitude,v.latitude]);
     if(marker._physicalPopup&&marker._physicalPopup.isOpen())marker._physicalPopup.setLngLat([v.longitude,v.latitude]).setHTML(buildPhysicalPopup(v));

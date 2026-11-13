@@ -1,7 +1,9 @@
+import TutorialTarget from "../tutorial/TutorialTarget";
+import { useTutorial } from "../tutorial/TutorialProvider";
 import * as Speech from "expo-speech";
 import { Check, ChevronDown, Clock3, Headphones, Minus, Play, Plus, Square, Volume2, VolumeX } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Modal, Pressable, Switch, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useTema } from "@/src/hooks/useTema";
 import {
   carregarPreferenciasVozRadar,
@@ -51,7 +53,12 @@ function fraseExemplo(tipo: TipoAnuncioRadar) {
   return "A linha 838 está prevista para chegar à parada em três minutos.";
 }
 
-export default function RadarAvisosPorVoz() {
+export default function RadarAvisosPorVoz({ tutorialScrollRef }: { tutorialScrollRef?: React.RefObject<ScrollView | null> } = {}) {
+  const tutorial = useTutorial();
+  const tutorialVoice = tutorial.chapter === 5 && Boolean(tutorial.step?.startsWith("voice"));
+  const previewOwned = useRef(false);
+  const previousConfirmation = useRef(false);
+  const tutorialWasActive = useRef(false);
   const { cores } = useTema();
   const [preferencias, setPreferencias] = useState<PreferenciasVozRadar>(PREFERENCIAS_VOZ_RADAR_PADRAO);
   const [preferenciasCarregadas, setPreferenciasCarregadas] = useState(false);
@@ -108,7 +115,7 @@ export default function RadarAvisosPorVoz() {
         const normalized = normalizarPreferenciasVozRadar(saved);
         setPreferencias(normalized);
         setPreferenciasCarregadas(true);
-        filaSalvamento.current = filaSalvamento.current
+        if (tutorial.chapter !== 5) filaSalvamento.current = filaSalvamento.current
           .catch(() => {})
           .then(() => salvarPreferenciasVozRadar(normalized))
           .then((nativeSaved) => {
@@ -138,7 +145,7 @@ export default function RadarAvisosPorVoz() {
       if (state !== "active") {
         falaAtual.current += 1;
         setFalando(false);
-        void Speech.stop().catch(() => {});
+        if (previewOwned.current) { previewOwned.current = false; void Speech.stop().catch(() => {}); }
       } else {
         atualizarSilencio();
       }
@@ -147,7 +154,7 @@ export default function RadarAvisosPorVoz() {
       appState.remove();
       montado.current = false;
       falaAtual.current += 1;
-      void Speech.stop().catch(() => {});
+      if (previewOwned.current) { previewOwned.current = false; void Speech.stop().catch(() => {}); }
     };
   }, []);
 
@@ -192,11 +199,38 @@ export default function RadarAvisosPorVoz() {
       });
   };
 
+  useEffect(() => {
+    if (tutorialVoice) setExpandida(true);
+    if (tutorialWasActive.current && !tutorial.step) {
+      falaAtual.current += 1;
+      if (previewOwned.current) {
+        previewOwned.current = false;
+        setFalando(false);
+        void Speech.stop().catch(() => {});
+      }
+    }
+    tutorialWasActive.current = Boolean(tutorial.step);
+  }, [tutorialVoice, tutorial.step]);
+  useEffect(() => {
+    if (tutorial.chapter === 5 && (confirmarAltoFalante || previousConfirmation.current)) tutorial.setRadarHost(confirmarAltoFalante ? "confirmation" : "radar");
+    previousConfirmation.current = confirmarAltoFalante;
+  }, [confirmarAltoFalante]);
+
   const ouvir = async () => {
     const request = ++falaAtual.current;
     setErro(null);
     setFalando(false);
     try {
+      if (preferencias.headphonesOnly) {
+        const route = await consultarRotaSaidaVozRadar();
+        if (request !== falaAtual.current) return;
+        setRotaSaidaVoz(route);
+        if (!route || (!route.automaticHeadphone && !route.authorized) || precisaConfirmarBluetoothRadar(route)) {
+          setErro("Conecte ou confirme seus fones para ouvir o exemplo.");
+          return;
+        }
+      }
+      previewOwned.current = true;
       await Speech.stop();
       if (request !== falaAtual.current) return;
       const voice = resolucao.voice;
@@ -205,10 +239,11 @@ export default function RadarAvisosPorVoz() {
         rate: 1,
         pitch: 1,
         onStart: () => { if (request === falaAtual.current) setFalando(true); },
-        onDone: () => { if (request === falaAtual.current) setFalando(false); },
-        onStopped: () => { if (request === falaAtual.current) setFalando(false); },
+        onDone: () => { if (request === falaAtual.current) { previewOwned.current = false; setFalando(false); } },
+        onStopped: () => { if (request === falaAtual.current) { previewOwned.current = false; setFalando(false); } },
         onError: () => {
           if (request === falaAtual.current) {
+            previewOwned.current = false;
             setFalando(false);
             setErro("O motor de voz não conseguiu reproduzir o exemplo.");
           }
@@ -223,6 +258,7 @@ export default function RadarAvisosPorVoz() {
   };
 
   const parar = async () => {
+    previewOwned.current = false;
     falaAtual.current += 1;
     setFalando(false);
     try {
@@ -282,7 +318,7 @@ export default function RadarAvisosPorVoz() {
 
   return (
     <View style={{ padding: 15, borderRadius: 18, backgroundColor: cores.fundoCard, borderWidth: 1, borderColor: cores.borda, gap: 12 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <TutorialTarget kind="radar" enabled={tutorial.step === "voiceIntro" || tutorial.step === "voiceMute"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={expandida ? "Recolher avisos por voz" : "Expandir avisos por voz"}
@@ -299,7 +335,7 @@ export default function RadarAvisosPorVoz() {
           </View>
           <ChevronDown size={17} color={cores.iconeSecundario} style={{ transform: [{ rotate: expandida ? "180deg" : "0deg" }] }} />
         </Pressable>
-        <View style={{ alignItems: "center" }}>
+        <TutorialTarget kind="radar" enabled={tutorial.step === "voiceEnable"} reveal clipRef={tutorialScrollRef} style={{ alignItems: "center" }}>
           <Switch
             value={preferencias.enabled}
             disabled={!preferenciasCarregadas}
@@ -315,8 +351,8 @@ export default function RadarAvisosPorVoz() {
             }}
             accessibilityLabel="Ativar narração"
           />
-        </View>
-      </View>
+        </TutorialTarget>
+      </TutorialTarget>
 
       {expandida ? (
         <View style={{ gap: 13 }}>
@@ -345,7 +381,7 @@ export default function RadarAvisosPorVoz() {
 
           {!preferenciasCarregadas ? <ActivityIndicator color={cores.iconePrimario} /> : null}
 
-          <View style={{ gap: 7 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceChoice"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Text style={{ flex: 1, color: cores.textoPrimario, fontWeight: "700" }}>Voz do assistente</Text>
               <Text style={{ color: cores.iconePrimario, fontSize: 11, fontWeight: "600" }}>Português (BR)</Text>
@@ -367,9 +403,9 @@ export default function RadarAvisosPorVoz() {
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: resolucao.voice ? cores.sucesso : cores.iconeSecundario }} />
               <Text style={{ flex: 1, color: cores.textoSecundario, fontSize: 11 }}>{textoResolucao}</Text>
             </View>
-          </View>
+          </TutorialTarget>
 
-          <View style={{ gap: 7 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceOptions"} reveal clipRef={tutorialScrollRef} style={{ gap: 7 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
               <Clock3 size={16} color={cores.iconePrimario} />
               <View style={{ flex: 1 }}>
@@ -409,7 +445,7 @@ export default function RadarAvisosPorVoz() {
                 onValueChange={(announceArriving) => salvar({ announceArriving })}
                 accessibilityLabel="Avisar quando estiver chegando" />
             </View>
-          </View>
+          </TutorialTarget>
 
           <View style={{ gap: 8 }}>
             <Text style={{ color: cores.textoPrimario, fontWeight: "700" }}>Quais veículos anunciar</Text>
@@ -469,7 +505,7 @@ export default function RadarAvisosPorVoz() {
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voiceHeadphones"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: cores.textoPrimario, fontWeight: "700" }}>Somente com fones</Text>
               <Text style={{ color: cores.textoSecundario, fontSize: 11, marginTop: 2 }}>A prévia só toca em uma saída reconhecida ou autorizada.</Text>
@@ -486,7 +522,7 @@ export default function RadarAvisosPorVoz() {
               }}
               accessibilityLabel="Somente com fones"
             />
-          </View>
+          </TutorialTarget>
 
           {preferencias.headphonesOnly ? <View style={{ minHeight: 54, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 10,
             borderRadius: 12, backgroundColor: cores.fundoPainel }}>
@@ -517,7 +553,7 @@ export default function RadarAvisosPorVoz() {
           ) : null}
           {preferencias.headphonesOnly && erroRotaBluetooth ? <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>{erroRotaBluetooth}</Text> : null}
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TutorialTarget kind="radar" enabled={tutorial.step === "voicePreview"} reveal clipRef={tutorialScrollRef} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Ouvir exemplo de voz"
               disabled={!preferenciasCarregadas || !vozesCarregadas}
               onPress={() => void ouvir()}
@@ -534,7 +570,7 @@ export default function RadarAvisosPorVoz() {
                 <Text style={{ color: cores.textoPrimario }}>Parar</Text>
               </Pressable>
             ) : null}
-          </View>
+          </TutorialTarget>
 
           {erro ? <Text style={{ color: cores.perigo, fontSize: 11 }}>{erro}</Text> : null}
           {estadoSalvamento ? (

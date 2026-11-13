@@ -6,12 +6,15 @@ import { Pressable } from "react-native";
 export default function LocalButton({
   location,
   mapRef,
+  onRequestLocation,
 }: {
+  onRequestLocation?: () => Promise<void>;
   location: any;
   mapRef: React.RefObject<any>;
 }) {
   const { cores } = useTema();
   function locationUser() {
+    if (onRequestLocation) { void onRequestLocation(); return; }
     if (mapRef.current?.centerOnUser) {
       mapRef.current.centerOnUser();
       return;

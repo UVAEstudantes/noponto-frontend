@@ -1,3 +1,5 @@
+import { TutorialProvider, useTutorial } from '@/src/components/tutorial/TutorialProvider';
+import TutorialOverlay from '@/src/components/tutorial/TutorialOverlay';
 import NavBar from "@/src/components/NavBar";
 import { ProvedorTema } from "@/src/context/ProvedorTema";
 import { ProvedorIndicadores } from "@/src/context/ProvedorIndicadores";
@@ -24,6 +26,7 @@ const startupSession = globalThis as typeof globalThis & {
 };
 
 const ConteudoLayout = () => {
+  const tutorial = useTutorial();
   const {
     temaAtual,
     cores,
@@ -47,6 +50,8 @@ const ConteudoLayout = () => {
     NavigationBar.setStyle("dark");
     return () => NavigationBar.setStyle("auto");
   }, [opening]);
+
+  useEffect(() => { tutorial.setReady(!opening && !carregandoTema); }, [opening, carregandoTema, tutorial.setReady]);
 
   return (
     <View
@@ -81,6 +86,7 @@ const ConteudoLayout = () => {
           </>
         )}
       </StartupContext.Provider>
+      <TutorialOverlay />
       {opening &&
         (carregandoAbertura ? (
           <StartupPendingOverlay />
@@ -101,7 +107,7 @@ const _layout = () => {
       <ProvedorTema>
         <ProvedorIndicadores>
           <PaperProvider>
-            <ConteudoLayout />
+            <TutorialProvider><ConteudoLayout /></TutorialProvider>
           </PaperProvider>
         </ProvedorIndicadores>
       </ProvedorTema>

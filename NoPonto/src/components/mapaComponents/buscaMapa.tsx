@@ -1,3 +1,6 @@
+import { useTutorial } from "../tutorial/TutorialProvider";
+import { transportSearchStep } from "../tutorial/tutorialSteps";
+import TutorialTarget from '../tutorial/TutorialTarget';
 import { useTema } from "@/src/hooks/useTema";
 import { useAnimatedPlaceholder } from "@/src/hooks/useAnimatedPlaceholder";
 import type { ModalTransporteDto } from "@/src/types/transporte";
@@ -31,6 +34,8 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
   modais, modalSelecionadoId, onSelecionarModal, onMenuAbertoChange,
   placeholder = "Buscar linha, parada ou destino", placeholderSuggestions = [],
 }: BuscaMapaProps) {
+  const tutorial = useTutorial();
+  const wasTransport = useRef(false);
   const { cores, temaAtual } = useTema();
   const escuro = temaAtual === "escuro";
   const insets = useSafeAreaInsets();
@@ -45,6 +50,10 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
   // aparecer através de superfícies translúcidas no Android.
   const sombraExternaAndroid = Platform.OS === "android" && Number(Platform.Version) >= 28;
 
+  useEffect(() => {
+    if ((wasTransport.current && tutorial.chapter !== 6) || tutorial.step === "transportMap" || tutorial.step === "journeyDone") setMenuAberto(false);
+    wasTransport.current = Boolean(tutorial.step) && tutorial.chapter === 6;
+  }, [tutorial.step, tutorial.chapter]);
   useEffect(() => {
     onMenuAbertoChange?.(menuAberto);
   }, [menuAberto, onMenuAbertoChange]);
@@ -62,7 +71,7 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
       {menuAberto && <Pressable accessibilityLabel="Fechar menu de modais"
         accessibilityRole="button" onPress={() => setMenuAberto(false)}
         style={StyleSheet.absoluteFillObject} />}
-      <View style={{ position: "absolute", top: insets.top + 12, left: 12, right: 12,
+      <TutorialTarget style={{ position: "absolute", top: insets.top + 12, left: 12, right: 12,
         height: 44, flexDirection: "row", alignItems: "center", paddingLeft: 12,
         paddingRight: 6, gap: 8, borderRadius: 15, borderWidth: 1,
         borderColor: cores.bordaSuave, backgroundColor: cores.fundoInput,
@@ -84,6 +93,7 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
           accessibilityLabel="Fechar busca" hitSlop={4}>
           <X size={16} color={cores.iconeSecundario} />
         </Pressable>}
+        <TutorialTarget kind="filter" enabled={transportSearchStep(tutorial.step) && !menuAberto}>
         <Pressable onPress={() => setMenuAberto((aberto) => !aberto)}
           accessibilityRole="button" accessibilityLabel={`Filtrar por modal: ${nomeSelecionado}`}
           accessibilityState={{ expanded: menuAberto }}
@@ -96,8 +106,9 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
           <Text numberOfLines={1} style={{ color: corSeletor, fontSize: 12, fontWeight: "600" }}>{nomeSelecionado}</Text>
           <ChevronDown size={13} color={corSeletor} style={{ transform: [{ rotate: menuAberto ? "180deg" : "0deg" }] }} />
         </Pressable>
-      </View>
-      {menuAberto && <View style={{ position: "absolute", top: insets.top + 64,
+        </TutorialTarget>
+      </TutorialTarget>
+      {menuAberto && <TutorialTarget kind="filter" enabled={transportSearchStep(tutorial.step)} style={{ position: "absolute", top: insets.top + 64,
         right: 12, width: 176, padding: 7, borderRadius: 16, borderWidth: 1,
         borderColor: escuro ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.65)",
         backgroundColor: escuro ? "rgba(24,30,40,0.95)" : "rgba(255,255,255,0.88)",
@@ -129,7 +140,7 @@ export default function BuscaMapa({ value, onChangeText, onClose, onFocus, activ
             {ativo && <Check size={14} color="#FFFFFF" />}
           </Pressable>;
         })}
-      </View>}
+      </TutorialTarget>}
     </View>
   );
 }

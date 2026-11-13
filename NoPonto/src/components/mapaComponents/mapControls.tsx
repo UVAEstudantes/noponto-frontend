@@ -11,6 +11,7 @@ interface MapControlsProps {
   lateralidade: PreferenciaLateralidade;
   modalAtivo?: string | null;
   location: any;
+  onRequestLocation?: () => Promise<void>;
   mapRef: React.RefObject<any>;
   onOpenLines: () => void;
   disabled?: boolean;
@@ -18,7 +19,7 @@ interface MapControlsProps {
 }
 
 export default function MapControls({ lateralidade, modalAtivo, location, mapRef,
-  onOpenLines, disabled = false, radarBottom }: MapControlsProps) {
+  onOpenLines, onRequestLocation, disabled = false, radarBottom }: MapControlsProps) {
   const { cores } = useTema();
   const insets = useSafeAreaInsets();
   const lado = lateralidade === "canhoto" ? "left" : "right";
@@ -37,7 +38,7 @@ export default function MapControls({ lateralidade, modalAtivo, location, mapRef
         gap: 10,
         alignItems: lado === "right" ? "flex-end" : "flex-start",
         zIndex: 20, opacity: disabled ? 0 : 1 }, positionStyle]}>
-      <LocalButton location={location} mapRef={mapRef} />
+      <LocalButton location={location} mapRef={mapRef} onRequestLocation={onRequestLocation} />
       <Pressable onPress={onOpenLines} accessibilityRole="button"
         accessibilityLabel="Ver linhas no mapa" hitSlop={8}
         style={{ width: 48, height: 48, borderRadius: 999,

@@ -34,8 +34,8 @@ export function stopsForMap(occurrences:OcorrenciaParadaV2[]){
   if(!result){result=[...occurrences].sort((a,b)=>a.ordem-b.ordem).map(s=>({paradaId:s.paradaId,codigo:s.codigoParada,nome:s.nome,ordem:s.ordem,latitude:s.latitude,longitude:s.longitude,posicaoLinha:s.posicaoLinha,distanciaMetros:s.distanciaMetros}));mappedStops.set(occurrences,result);}
   return result;
 }
-export function projectPhysical(coords: [number, number][], lat: number, lon: number,window?:{min:number;max:number}) {
-  if (coords.length < 2 || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+export function projectPhysical(coords: [number, number][] | null | undefined, lat: number, lon: number,window?:{min:number;max:number}) {
+  if (!Array.isArray(coords) || coords.length < 2 || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   let data=prepared.get(coords);
   if(!data){
   if(coords.some(c=>!c||!Number.isFinite(c[0])||!Number.isFinite(c[1])))return null;

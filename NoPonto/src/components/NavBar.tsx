@@ -1,3 +1,5 @@
+import { useTutorial } from "./tutorial/TutorialProvider";
+import TutorialTarget from "./tutorial/TutorialTarget";
 import { useTema } from "@/src/hooks/useTema";
 import { router, usePathname } from "expo-router";
 import {
@@ -79,12 +81,13 @@ function TabButton({
     ),
   }));
 
+  const tutorial = useTutorial();
   const handlePress = () => {
     if (!isActive) router.navigate(tab.href);
   };
 
   return (
-    <Pressable
+    <TutorialTarget component={Pressable} kind="line" enabled={tab.href === "/linhas" && tutorial.step === "lineTab"}
       onPress={handlePress}
       accessibilityRole="tab"
       accessibilityLabel={`Ir para ${tab.label}`}
@@ -105,7 +108,7 @@ function TabButton({
       >
         {tab.label}
       </Animated.Text>
-    </Pressable>
+    </TutorialTarget>
   );
 }
 
