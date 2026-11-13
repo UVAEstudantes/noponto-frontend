@@ -1,3 +1,6 @@
+import TutorialTarget from "../tutorial/TutorialTarget";
+import TutorialOverlay from "../tutorial/TutorialOverlay";
+import { useTutorial } from "../tutorial/TutorialProvider";
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
 import { ArrowLeft, Bell, Check, Star, X } from 'lucide-react-native';
@@ -10,13 +13,20 @@ import RadarAvisosPorVoz from './radarAvisosPorVoz';
 const SEM_SENTIDOS: string[] = [];
 
 /** Configuração é um rascunho: voltar descarta; salvar aplica uma única reconfiguração. */
-export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, onSolicitacaoConcluida }: {
+export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, onSolicitacaoConcluida, onVisualOpenChange }: {
+  onVisualOpenChange?: (open: boolean) => void;
   controle: ControleRadarEspera; solicitacaoAbrir?: number;
   onSolicitacaoConcluida?: (request: number) => void;
 }) {
+  const tutorial = useTutorial();
+  const tutorialRadar = Boolean(tutorial.step) && tutorial.chapter === 5;
+  const wasTutorial = useRef(false);
+  const owned = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const [aberta, setAberta] = useState(false);
+  useEffect(() => { onVisualOpenChange?.(aberta); return () => onVisualOpenChange?.(false); }, [aberta, onVisualOpenChange]);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const [prioritarias, setPrioritarias] = useState<string[]>([]);
   const [sentidos, setSentidos] = useState<string[]>([]);
@@ -127,6 +137,29 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
     setJanela(dados.janela); setContexto(dados.chave); setAberta(true);
     onSolicitacaoConcluida?.(solicitacaoAbrir);
   }, [solicitacaoAbrir, onSolicitacaoConcluida]);
+  const rascunhoAlterado = JSON.stringify(selecionadas) !== JSON.stringify(c.selecionadas) || JSON.stringify(prioritarias) !== JSON.stringify(c.preferencias.prioritarias) || JSON.stringify(sentidos) !== JSON.stringify(sentidosAtuais) || janela !== c.preferencias.janelaMinutos;
+  useEffect(() => {
+    tutorial.setRadarDraftPending(aberta && rascunhoAlterado);
+    return () => tutorial.setRadarDraftPending(false);
+  }, [aberta, rascunhoAlterado, tutorial.setRadarDraftPending]);
+  useEffect(() => {
+    if (tutorialRadar && !wasTutorial.current && aberta) tutorial.setRadarHost("radar");
+    const continuingJourney = wasTutorial.current && !tutorialRadar && Boolean(tutorial.step);
+    wasTutorial.current = tutorialRadar;
+    // Continuing the guide closes its surface without applying the local draft.
+    if (continuingJourney) setAberta(false);
+    if (tutorialRadar && tutorial.step !== "radarIntro" && tutorial.step !== "radarStop" && tutorial.step !== "radarChapterDone" && !aberta) {
+      owned.current = true; abrir();
+    }
+    if (tutorialRadar && ["radarIntro", "radarStop", "radarChapterDone"].includes(tutorial.step ?? "") && owned.current && !rascunhoAlterado) setAberta(false);
+    if (!tutorialRadar && owned.current) {
+      owned.current = false;
+      if (!rascunhoAlterado) setAberta(false);
+    }
+  }, [tutorialRadar, tutorial.step]);
+  useEffect(() => {
+    if (tutorialRadar && !aberta && tutorial.radarHost === "radar") tutorial.setRadarHost("root");
+  }, [aberta, tutorialRadar, tutorial.radarHost]);
   const salvar = () => {
     if (!podeSalvar) return;
     const configuracao = editavel && selecionadas.length > 0
@@ -165,7 +198,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
         <Text style={{ color: cores.textoPrimario, fontSize: 11, fontWeight: '700' }}>Configurar alertas</Text>
       </View>
     </Pressable>
-    {aberta && <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setAberta(false)}>
+    {aberta && <Modal visible animationType={tutorialRadar ? "none" : "slide"} onShow={() => { if (tutorialRadar) { tutorial.setRadarHost("radar"); tutorial.invalidateTargets(); } }} presentationStyle="fullScreen" onRequestClose={() => setAberta(false)}>
       <StatusBar barStyle={temaAtual === 'escuro' ? 'light-content' : 'dark-content'} />
       <View style={{ flex: 1, backgroundColor: cores.fundoApp, paddingTop: insets.top }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: 1, borderColor: cores.borda }}>
@@ -179,10 +212,11 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
           <Text accessibilityLiveRegion="polite" style={{ ...secundario,
             color: ativa ? cores.sucesso : expirada ? cores.perigo : cores.textoSecundario }}>{estado}</Text>
         </View>
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
+        {tutorialRadar && <TutorialOverlay host="radar" docked />}
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
           {!contextoValido && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
           {c.outraParada && <Text style={secundario}>Monitorando {c.paradaNome}. Volte à parada acompanhada para editar. Para trocar o alvo, use o seletor de parada do Radar.</Text>}
-          <View style={card}>
+          <TutorialTarget kind="radar" enabled={["radarLines", "notificationLines"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["radarLines", "notificationLines"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Linhas no Radar</Text>
             <Text style={secundario}>Selecione as linhas para acompanhar. Marque a estrela para destacar uma linha como prioritária.</Text>
             {c.modoRemoto && <Text style={secundario}>Limite do experimento: 20 linhas por sessão.</Text>}
@@ -229,7 +263,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
                 </Pressable>
               </View>;
             })}
-          </View>
+          </TutorialTarget>
           {!!c.sentidosDisponiveis?.length && <View style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Sentidos</Text>
             <Text style={secundario}>Escolha os destinos que o Radar deve acompanhar nesta estação.</Text>
@@ -247,7 +281,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
               })}
             </View>
           </View>}
-          <View style={card}>
+          <TutorialTarget kind="radar" enabled={["notificationIntro", "notificationTiming"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["notificationIntro", "notificationTiming"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
             <Text style={{ ...texto, fontWeight: '700' }}>Avisar com antecedência</Text>
             <Text style={secundario}>Mostrar veículos previstos dentro deste intervalo.</Text>
             <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -264,8 +298,9 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
               <Pressable accessibilityRole="button" accessibilityLabel="Aumentar antecedência" disabled={maisDesabilitado}
                 onPress={() => setJanela(janela + 1)} style={botaoMinuto(maisDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>+</Text></Pressable>
             </View>
-          </View>
-          <RadarAvisosPorVoz />
+          </TutorialTarget>
+          <RadarAvisosPorVoz tutorialScrollRef={scrollRef} />
+          <TutorialTarget kind="radar" enabled={tutorial.step === "notificationBackground"} reveal clipRef={scrollRef}>
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
             ? estadoRemoto === 'ativo'
               ? `Acompanhamento remoto ativo.${c.expiraEm ? ` Sessão até ${new Date(c.expiraEm).toLocaleTimeString()}.` : ''} Não renova automaticamente.`
@@ -275,6 +310,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
                 : estadoRemoto === 'indisponivel' ? 'Radar remoto indisponível. Confira a conexão e tente novamente.'
                 : 'Acompanhamento remoto desativado.'
             : 'Funciona com o aplicativo aberto e a consulta ativa. Ao sair, as previsões são removidas.'}</Text>
+          </TutorialTarget>
           {!ativa && !c.podeSolicitarAtivacao && <Text style={secundario}>{remoto
             ? 'Aguarde os contextos da parada acompanhada carregarem para reativar.'
             : 'Aguarde uma consulta válida desta parada para ativar.'}</Text>}
@@ -295,6 +331,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
               <X size={16} color={cores.textoSecundario} />
             </Pressable>
           </View>}
+          <TutorialTarget kind="radar" enabled={tutorial.step === "radarStart" || tutorial.step === "voiceSave"}>
           <Pressable accessibilityRole="button" accessibilityLabel={rotuloAcao}
             accessibilityState={{ disabled: !podeSalvar, busy: mostrarProgressoAcao }}
             disabled={!podeSalvar} onPress={salvar}
@@ -309,6 +346,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
             style={{ ...toque, opacity: c.solicitando ? 0.5 : 1 }}>
             <Text style={{ color: cores.perigo }}>{c.operacaoRemota === 'encerrar' ? 'Encerrando…' : 'Encerrar acompanhamento'}</Text>
           </Pressable>}
+          </TutorialTarget>
         </View>
       </View>
     </Modal>}

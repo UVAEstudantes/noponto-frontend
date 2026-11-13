@@ -74,3 +74,9 @@ test('prepared stops retain ambiguity off-route gaps and invalid supplied distan
  const far=routeStopProjections(loop,[{...stop,latitude:.005}])[0];assert.ok(far.point!.gap>60);
  assert.equal(routeStopProjections([[0,0]],[stop])[0].point,null);assert.deepEqual(routeStopProjections(loop,[]),[]);
 });
+
+test('physical projection rejects absent geometry during 838 and 855 return-direction hydration', () => {
+  for (const coords of [undefined, null, [], [[0,0]], [[0,0], undefined]]) {
+    assert.equal(projectPhysical(coords as any, -22.9, -43.5), null);
+  }
+});

@@ -1,3 +1,6 @@
+import TutorialTarget from "../tutorial/TutorialTarget";
+import TutorialOverlay from "../tutorial/TutorialOverlay";
+import { useTutorial } from "../tutorial/TutorialProvider";
 import {passengerRadar} from '@/src/services/radarPassenger';
 import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
 import React, { useEffect, useReducer, useRef, useState } from "react";
@@ -24,6 +27,7 @@ import RadarEsperaSection from './radarEsperaSection';
 import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
+  bloqueadoPeloTutorial?: boolean;
   /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
   onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
@@ -40,9 +44,15 @@ interface Props {
   onControlsBottomChange: (bottom: number | null) => void;
 }
 
-export default function RadarParada({ radar, linhas, modal, lateralidade, visivel, abrirRadarSolicitacao,
+export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linhas, modal, lateralidade, visivel, abrirRadarSolicitacao,
   onAberturaRadarConcluida, terminalPresence=[], acompanhamento,
   onVerTodos, onEvento, localizavel, viewportHeight, onControlsBottomChange,onTerminalVehicle }: Props) {
+  const tutorial = useTutorial();
+  const invalidateTutorialTargets = tutorial.invalidateTargets;
+  const tutorialRadar = Boolean(tutorial.step) && tutorial.chapter === 5;
+  const [configAberta, setConfigAberta] = useState(false);
+  const tutorialOwned = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
   const { cores, temaAtual } = useTema();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -57,16 +67,35 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
   useEffect(() => {
-    if (!visivel || seletor) return;
+    if (!visivel || bloqueadoPeloTutorial || tutorialRadar || seletor) return;
     enviarAcaoPainel({ tipo: "observar", contexto: radar.contextoConsulta,
       amostra: `${radar.atualizadoEm}:${temEventos}`, concluida: radar.consultaConcluida,
       temEventos });
-  }, [visivel, seletor, radar.contextoConsulta, radar.atualizadoEm, radar.consultaConcluida, temEventos]);
+  }, [visivel, bloqueadoPeloTutorial, tutorialRadar, seletor, radar.contextoConsulta, radar.atualizadoEm, radar.consultaConcluida, temEventos]);
   useEffect(() => {
-    if (!visivel || abrirRadarSolicitacao <= ultimaSolicitacaoAbrir.current) return;
+    if (!visivel || bloqueadoPeloTutorial || abrirRadarSolicitacao <= ultimaSolicitacaoAbrir.current) return;
     ultimaSolicitacaoAbrir.current = abrirRadarSolicitacao;
     enviarAcaoPainel({ tipo: "abrir" });
-  }, [visivel, abrirRadarSolicitacao]);
+  }, [visivel, bloqueadoPeloTutorial, abrirRadarSolicitacao]);
+  useEffect(() => {
+    if (!bloqueadoPeloTutorial) return;
+    enviarAcaoPainel({ tipo: 'recolher' }); setSeletor(false);
+    ultimaSolicitacaoAbrir.current = abrirRadarSolicitacao;
+    if (abrirRadarSolicitacao) onAberturaRadarConcluida(abrirRadarSolicitacao);
+  }, [bloqueadoPeloTutorial, abrirRadarSolicitacao, onAberturaRadarConcluida]);
+  useEffect(() => {
+    if (tutorialRadar) {
+      if (recolhido) { tutorialOwned.current = true; enviarAcaoPainel({tipo: "abrir"}); }
+    } else if (tutorialOwned.current && !configAberta) {
+      tutorialOwned.current = false; setSeletor(false); enviarAcaoPainel({tipo: "recolher"});
+    }
+  }, [tutorialRadar, configAberta]);
+  useEffect(() => {
+    if (tutorialRadar && !seletor && tutorial.radarHost === "stopPicker") tutorial.setRadarHost("root");
+  }, [seletor, tutorialRadar, tutorial.radarHost]);
+  useEffect(() => {
+    if (tutorial.step && tutorial.step !== "radarStop") setSeletor(false);
+  }, [tutorial.step]);
   const progress = useSharedValue(0);
   const lado = lateralidade === "canhoto" ? "left" : "right";
   const { Icon, cor } = identidadeModalMapa(modal);
@@ -74,17 +103,21 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const escuro = temaAtual === "escuro";
   const bottom = Math.max(insets.bottom + 70, 88);
   // Busca existente: safe area + 12 + 44. Reserva também os controles (48 + 10 + 48).
-  const alturaDisponivel = Math.max(0, (viewportHeight ?? height) - (insets.top + 56 + 16) - 106 - 12 - bottom - 2);
+  const alturaDisponivel = Math.max(0, Math.min(
+    (viewportHeight ?? height) - (insets.top + 56 + 16) - 106 - 12 - bottom - 2,
+    tutorialRadar ? (viewportHeight ?? height) - bottom - insets.top - Math.min(260, height * 0.32) - 24 : Infinity,
+  ));
   useEffect(() => {
-    onControlsBottomChange(visivel && !recolhido && alturaPainel > 0
+    onControlsBottomChange(visivel && !bloqueadoPeloTutorial && !recolhido && alturaPainel > 0
       ? bottom + Math.min(alturaPainel, alturaDisponivel) + 2 + 12 : null);
-  }, [visivel, recolhido, alturaPainel, alturaDisponivel, bottom, onControlsBottomChange]);
+  }, [visivel, bloqueadoPeloTutorial, recolhido, alturaPainel, alturaDisponivel, bottom, onControlsBottomChange]);
   useEffect(() => {
     if (!recolhido) setConteudoMontado(true);
-    progress.value = withTiming(recolhido ? 1 : 0, { duration: 260 }, (finished) => {
+    progress.value = withTiming(recolhido ? 1 : 0, { duration: tutorialRadar && tutorial.reducedMotion ? 0 : 260 }, (finished) => {
       if (finished && recolhido) runOnJS(setConteudoMontado)(false);
+      if (finished && tutorialRadar) runOnJS(invalidateTutorialTargets)();
     });
-  }, [recolhido, progress]);
+  }, [recolhido, progress, tutorialRadar, tutorial.reducedMotion, invalidateTutorialTargets]);
   useEffect(() => { if (!visivel) setSeletor(false); }, [visivel]);
   const painelStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: progress.value * width * (ladoAba === "right" ? 1 : -1) }],
@@ -92,7 +125,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   }));
   const abaStyle = useAnimatedStyle(() => ({ opacity: progress.value,
     transform: [{ translateX: (1 - progress.value) * 65 * (ladoAba === "right" ? 1 : -1) }] }));
-  if (!visivel) return null;
+  if ((!visivel && !configAberta) || bloqueadoPeloTutorial) return null;
   const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const quantidade = radar.foraContexto ? 0 : new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []).size;
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
@@ -111,13 +144,13 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
   const corConsulta = radar.statusConsulta === "erro" ? cores.perigo
     : radar.statusConsulta === "sucesso" ? cores.sucesso : cores.textoSecundario;
   return <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 22 }]}>
-    {(!recolhido || conteudoMontado) && <Animated.View pointerEvents={recolhido ? "none" : "auto"}
+    {(!recolhido || conteudoMontado) && <Animated.View pointerEvents={recolhido || !visivel ? "none" : "auto"}
       accessibilityElementsHidden={recolhido} importantForAccessibility={recolhido ? "no-hide-descendants" : "auto"}
       style={[{ position: "absolute", left: Math.max(14, insets.left + 8), right: Math.max(14, insets.right + 8),
         bottom, borderRadius: 26, backgroundColor: "transparent",
         borderWidth: 1, borderColor: cores.bordaSuave, shadowColor: cores.sombra,
         shadowOpacity: temaAtual === "escuro" ? 0.3 : 0.1, shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 }, elevation: 5 }, painelStyle]}>
+        shadowOffset: { width: 0, height: 4 }, elevation: 5 }, painelStyle, !visivel && {opacity: 0}]}>
       <View onLayout={(event) => {
         const medida = Math.ceil(event.nativeEvent.layout.height);
         setAlturaPainel((anterior) => anterior === medida ? anterior : medida);
@@ -127,7 +160,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, {
           backgroundColor: hexParaRgba(cores.fundoPainel, Platform.OS === "ios" ? 0.78 : 0.95),
         }]} />
-        <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+        <ScrollView ref={scrollRef} style={{ flexGrow: 0, flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 }}>
         <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: corConsulta }} />
@@ -149,6 +182,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center",
         justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "root"} reveal clipRef={scrollRef}>
         <Pressable onPress={() => { enviarAcaoPainel({ tipo: "abrir" }); setSeletor(true); void radar.carregarMetadados(); }}
           accessibilityRole="button" accessibilityLabel="Trocar parada monitorada"
           style={{ minHeight: 44, maxWidth: "100%", borderRadius: 22, paddingHorizontal: 10,
@@ -158,6 +192,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
           <Text style={{ flexShrink: 1, fontSize: 12, fontWeight: "600", color: cores.textoPrimario }}>Trocar parada</Text>
           <ChevronRight size={15} color={cores.textoSecundario} />
         </Pressable>
+        </TutorialTarget>
         <Pressable onPress={onVerTodos} disabled={!radar.parada || radar.foraContexto}
           accessibilityRole="button" accessibilityLabel="Ver todos os eventos da parada"
           accessibilityState={{ disabled: !radar.parada || radar.foraContexto }}
@@ -207,18 +242,18 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
       {radar.foraContexto && <Pressable onPress={radar.selecaoAutomatica} accessibilityRole="button">
         <Text style={{ color: cores.iconePrimario, fontSize: 12, fontWeight: "600" }}>Voltar à seleção automática</Text>
       </Pressable>}
-      {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection controle={acompanhamento}
+      {Platform.OS === 'android' && acompanhamento && <RadarEsperaSection onVisualOpenChange={setConfigAberta} controle={acompanhamento}
         solicitacaoAbrir={abrirRadarSolicitacao} onSolicitacaoConcluida={onAberturaRadarConcluida} />}
         </ScrollView>
       </View>
     </Animated.View>}
-    <Animated.View pointerEvents={recolhido ? "auto" : "none"} accessibilityElementsHidden={!recolhido}
+    <Animated.View pointerEvents={recolhido && visivel ? "auto" : "none"} accessibilityElementsHidden={!recolhido}
       importantForAccessibility={!recolhido ? "no-hide-descendants" : "auto"}
       style={[{ position: "absolute", [ladoAba]: Math.max(0, insets[ladoAba]), bottom: bottom + 30,
         backgroundColor: cores.fundoPainel, borderColor: cores.bordaSuave, borderWidth: 1,
         borderTopLeftRadius: ladoAba === "right" ? 32 : 0, borderBottomLeftRadius: ladoAba === "right" ? 32 : 0,
         borderTopRightRadius: ladoAba === "left" ? 32 : 0, borderBottomRightRadius: ladoAba === "left" ? 32 : 0,
-        shadowColor: cores.sombra, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }, abaStyle]}>
+        shadowColor: cores.sombra, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }, abaStyle, !visivel && {opacity: 0}]}>
       <Pressable onPress={() => enviarAcaoPainel({ tipo: "abrir" })} accessibilityRole="button" accessibilityLabel="Abrir painel de próximos veículos"
         style={{ height: 64, width: 60, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}>
         <Reabrir size={20} color={cores.textoPrimario} />
@@ -226,17 +261,18 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
           <Text style={{ color: cor, fontSize: 11, fontWeight: "700" }}>{quantidade}</Text></View>
       </Pressable>
     </Animated.View>
-    <Modal visible={seletor && visivel} transparent animationType="fade" onRequestClose={() => setSeletor(false)}>
-      <View style={{ flex: 1, justifyContent: "flex-end", paddingHorizontal: 16,
+    <Modal visible={seletor && visivel} transparent animationType={tutorialRadar ? "none" : "fade"} onShow={() => { if (tutorialRadar) { tutorial.setRadarHost("stopPicker"); tutorial.invalidateTargets(); } }} onRequestClose={() => setSeletor(false)}>
+      <View style={{ flex: 1, justifyContent: tutorialRadar ? "flex-start" : "flex-end", paddingTop: tutorialRadar ? insets.top + 8 : 0, paddingHorizontal: 16,
         paddingBottom: Math.max(insets.bottom + 16, 24), backgroundColor: cores.overlay }}>
         <Pressable onPress={() => setSeletor(false)} accessibilityLabel="Fechar seletor de paradas" style={StyleSheet.absoluteFillObject} />
-        <View style={{ maxHeight: height * 0.6, borderRadius: 22, padding: 14,
+        {tutorialRadar && <TutorialOverlay host="stopPicker" docked />}
+        <TutorialTarget kind="radar" enabled={tutorial.step === "radarStop" && tutorial.radarHost === "stopPicker"} style={{ maxHeight: height * 0.6, flexShrink: 1, borderRadius: 22, padding: 14,
           borderWidth: 1, borderColor: cores.borda, backgroundColor: cores.fundoPainel }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: cores.textoPrimario }}>Monitorar parada</Text>
             <Pressable onPress={() => setSeletor(false)} accessibilityLabel="Fechar seletor de paradas" accessibilityRole="button" hitSlop={8}><X size={20} color={cores.iconeSecundario} /></Pressable>
           </View>
-          <Pressable onPress={() => { radar.selecaoAutomatica(); setSeletor(false); }} accessibilityRole="button"
+          <Pressable onPress={() => { radar.selecaoAutomatica(); setSeletor(false); if (tutorial.step === "radarStop" && radar.parada) tutorial.advance("next"); }} accessibilityRole="button"
             style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12 }}>
             <MapPin size={18} color={cores.iconePrimario} />
             <Text style={{ flex: 1, color: cores.textoPrimario, fontWeight: "600" }}>Seleção automática</Text>
@@ -244,7 +280,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
           </Pressable>
           <ScrollView keyboardShouldPersistTaps="handled">
             {radar.candidatos.map((item) => <Pressable key={item.parada.paradaId} accessibilityRole="button"
-              onPress={() => { radar.selecionar(item); setSeletor(false); }}
+              onPress={() => { radar.selecionar(item); setSeletor(false); if (tutorial.step === "radarStop") tutorial.advance("next"); }}
               style={{ paddingVertical: 12, borderTopWidth: 1, borderColor: cores.bordaSuave }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Text style={{ flex: 1, color: cores.textoPrimario, fontWeight: "600" }}>{radar.metadados[item.parada.paradaId]?.nome ?? item.parada.nome}</Text>
@@ -257,7 +293,7 @@ export default function RadarParada({ radar, linhas, modal, lateralidade, visive
             </Pressable>)}
             {!radar.candidatos.length && <Text style={{ color: cores.textoSecundario, paddingVertical: 12 }}>Nenhuma parada elegível próxima.</Text>}
           </ScrollView>
-        </View>
+        </TutorialTarget>
       </View>
     </Modal>
   </View>;

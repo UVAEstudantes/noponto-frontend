@@ -1,3 +1,5 @@
+import { useTutorial } from "../tutorial/TutorialProvider";
+import TutorialTarget from "../tutorial/TutorialTarget";
 import {passengerRadar} from '@/src/services/radarPassenger';
 import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
 import {renderTerminalPresenceSection} from './terminalPresenceSection';
@@ -68,6 +70,7 @@ export interface ChegadaParadaInfo {
 }
 
 interface Props {
+  reduzirMovimento?: boolean;
   /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
   onDiagnostico?: () => void;
   agora?: number;
@@ -159,6 +162,7 @@ function misturar(hex: string, fundo: string, alpha: number) {
 }
 
 const ParadaSheet = ({
+  reduzirMovimento = false,
   agora,
   vinculos,
   terminalPresence = [],
@@ -186,6 +190,9 @@ const ParadaSheet = ({
   onToggleExpandir,
   onFechar,
 }: Props) => {
+  const tutorial = useTutorial();
+  const tutorialActive = Boolean(tutorial.step);
+  const invalidateTutorialTargets = tutorial.invalidateTargets;
   const { cores, temaAtual } = useTema();
   const physicalNow = agora ?? Date.now();
   const terminalVehicles = contextoIndisponivel||!['onibus','todos'].includes(physicalModal)?[]:terminalRadarVehicles(terminalPresence,parada?.paradaId,vinculos??linhas.filter(l=>l.ativa).map(l=>({linhaId:l.linhaId})),chegadas,physicalNow);
@@ -259,29 +266,32 @@ const ParadaSheet = ({
     if (visivel) {
       setConteudoMontado(true);
       height.value = withTiming(expandido ? EXPANDED_H : COLLAPSED_H, {
-        duration: 240,
+        duration: reduzirMovimento ? 0 : 240,
         easing: Easing.out(Easing.cubic),
       });
       translateY.value = withTiming(0, {
-        duration: 200,
+        duration: reduzirMovimento ? 0 : 200,
         easing: Easing.out(Easing.cubic),
-      });
+      }, finished => { if (finished && tutorialActive) runOnJS(invalidateTutorialTargets)(); });
       overlayOpacity.value = withTiming(expandido ? 1 : 0.5, {
-        duration: 180,
+        duration: reduzirMovimento ? 0 : 180,
       });
-      detailsOpacity.value = withTiming(expandido ? 1 : 0, { duration: 180 });
+      detailsOpacity.value = withTiming(expandido ? 1 : 0, { duration: reduzirMovimento ? 0 : 180 });
     } else {
       translateY.value = withTiming(screenH, {
-        duration: 200,
+        duration: reduzirMovimento ? 0 : 200,
         easing: Easing.out(Easing.cubic),
       }, (finished) => {
         if (finished) runOnJS(setConteudoMontado)(false);
       });
-      overlayOpacity.value = withTiming(0, { duration: 160 });
-      detailsOpacity.value = withTiming(0, { duration: 120 });
+      overlayOpacity.value = withTiming(0, { duration: reduzirMovimento ? 0 : 160 });
+      detailsOpacity.value = withTiming(0, { duration: reduzirMovimento ? 0 : 120 });
     }
   }, [
     visivel,
+    reduzirMovimento,
+    tutorialActive,
+    invalidateTutorialTargets,
     expandido,
     screenH,
     COLLAPSED_H,
@@ -321,7 +331,7 @@ const ParadaSheet = ({
       const nextExpanded = height.value >= mid;
       const target = nextExpanded ? MAX_H : MIN_H;
       height.value = withTiming(target, {
-        duration: 220,
+        duration: reduzirMovimento ? 0 : 220,
         easing: Easing.out(Easing.cubic),
       });
       if (nextExpanded !== expandido) {
@@ -353,7 +363,7 @@ const ParadaSheet = ({
         <Pressable style={{ flex: 1 }} onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar detalhes da parada" hitSlop={6} />
       </Animated.View>
 
-      <Animated.View
+      <TutorialTarget component={Animated.View} kind="stopPanel" enabled={visivel}
         pointerEvents={visivel ? "auto" : "none"}
         style={[
           {
@@ -832,7 +842,7 @@ const ParadaSheet = ({
             </ScrollView>
           </Animated.View>
         )}
-      </Animated.View>
+      </TutorialTarget>
     </>
   );
 };

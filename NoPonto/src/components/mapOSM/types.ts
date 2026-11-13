@@ -1,3 +1,4 @@
+import type { TutorialMapRequest, TutorialMapEvent } from '../tutorial/tutorialMapContract';
 import { EstiloMapaId } from "@/src/constants/estilosMapa";
 import { Parada } from "@/src/types/transporte";
 import type { RailVehicleForMap } from "@/src/services/railRealtime";
@@ -101,6 +102,8 @@ export interface LinhaParaMostrar {
 }
 
 export interface MapaOSMProps {
+  tutorialRequest?: TutorialMapRequest | null;
+  onTutorialEvent?: (event: TutorialMapEvent) => void;
   onTerminalVehiclesChange?: (vehicles:TerminalPresence[])=>void;
   onReady?: () => void;
   location: any;

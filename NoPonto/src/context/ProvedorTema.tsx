@@ -87,7 +87,7 @@ export function ProvedorTema({ children }: PropsWithChildren) {
   }, []);
   const esquemaSistema = useEsquemaSistema();
   const [preferenciaTema, setPreferenciaTema] =
-    useState<PreferenciaTema>("sistema");
+    useState<PreferenciaTema>("claro");
   const [estiloMapaAtual, setEstiloMapaAtual] =
     useState<EstiloMapaId>(ESTILO_MAPA_PADRAO);
   const [preferenciaLateralidade, setPreferenciaLateralidade] =

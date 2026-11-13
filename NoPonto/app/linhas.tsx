@@ -1,3 +1,4 @@
+import { useTutorial } from "@/src/components/tutorial/TutorialProvider";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { ROAD_PRESENCE_ENABLED } from '@/src/services/roadPresence';
 import EstadoFavoritos from "@/src/components/estadoFavoritos";
@@ -33,6 +34,7 @@ import {
   LocationAccuracy,
   LocationObject,
   requestForegroundPermissionsAsync,
+  getForegroundPermissionsAsync,
   watchPositionAsync,
 } from "expo-location";
 import {
@@ -486,17 +488,21 @@ const Linhas = () => {
   const favoritos = useFavoritos();
   const { itinerariosPorId, estadosItinerarios, garantirItinerario, getVeiculosPorCodigo } =
     useMobilidadeRio({ enabled: isFocused });
+  const tutorial = useTutorial();
+  const tutorialActiveAtMount = React.useRef(Boolean(tutorial.step));
   const [location, setLocation] = useState<LocationObject | null>(null);
+  const [locationGranted, setLocationGranted] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { granted } = await requestForegroundPermissionsAsync();
+      const { granted } = await (tutorialActiveAtMount.current ? getForegroundPermissionsAsync() : requestForegroundPermissionsAsync());
+      setLocationGranted(granted);
       if (granted) setLocation(await getCurrentPositionAsync());
     })();
   }, []);
 
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || !locationGranted) return;
     let sub: any;
     (async () => {
       sub = await watchPositionAsync(
@@ -509,7 +515,7 @@ const Linhas = () => {
       );
     })();
     return () => sub?.remove();
-  }, [isFocused]);
+  }, [isFocused, locationGranted]);
 
   // ─── Modal de transporte ──────────────────────────────────────────────────
 

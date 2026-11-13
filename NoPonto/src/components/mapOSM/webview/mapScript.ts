@@ -1,3 +1,4 @@
+import { TUTORIAL_MAP_BRIDGE } from './tutorialBridge';
 // Responsabilidade: script que roda dentro da WebView e controla MapLibre,
 // markers, animações e integração com React Native via postMessage.
 // usadas pelo host React Native e por fluxos realtime/dead reckoning.
@@ -57,6 +58,7 @@ var userLastUpdate=0;
 var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=0,railLastUiTick=0,railSourceHasFeatures=false;
 var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
 var lastMapData=null;
+${TUTORIAL_MAP_BRIDGE}
 var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
 ${codigoRenderizadorIndicadores}
 var renderIndicator=criarRenderizadorIndicadores(${JSON.stringify(familiasIndicadores).replace(/</g, '\\u003c')});
@@ -118,7 +120,7 @@ function railMarkerElement(run,identity){
   el.addEventListener('click',function(event){
     event.preventDefault();event.stopPropagation();
     var current=railRuns[identity];
-    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c)openRailPopup(current,c)}
+    if(current){var d=railDistanceNow(current,Date.now()),c=railCoordinateAtDistance(current._geometry,d);if(c){openRailPopup(current,c);tutorialVehicleClicked('rail:'+identity)}}
   });
   return el;
 }
@@ -225,7 +227,7 @@ function updateRailVehicles(now){
     var run=railRuns[key],distance=railDistanceNow(run,now),coord=railCoordinateAtDistance(run._geometry,distance);
     if(!coord)return;
     var marker=railMarkers[key];
-    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker}
+    if(!marker){marker=new maplibregl.Marker({element:railMarkerElement(run,key),anchor:'center'}).setLngLat(coord).addTo(map);railMarkers[key]=marker;if(tutorialNativeHighlight())tutorialSchedule()}
     else{marker.setLngLat(coord);applyRailMarkerVisual(marker.getElement(),run)}
     applyRailHeading(marker,key,run,distance);
     if(activeRailPopupIdentity===key)openRailPopup(run,coord);
@@ -237,7 +239,7 @@ function updateRailVehicles(now){
       isEstimated:true,isClamped:Boolean(run.isClamped),stale:now>Date.parse(run.freshUntilUtc)
     }});
   });
-  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key]}});
+  Object.keys(railMarkers).forEach(function(key){if(!railRuns[key]){railMarkers[key].remove();delete railMarkers[key];delete railHeadings[key];if(tutorialNativeHighlight())tutorialSchedule()}});
   if(now-railLastUiTick>=1000){
     document.querySelectorAll('[data-rail-evidence]').forEach(function(el){el.textContent='Atualizado '+railElapsed(el.getAttribute('data-rail-evidence'))});
     document.querySelectorAll('[data-rail-departure]').forEach(function(el){var at=Date.parse(el.getAttribute('data-rail-departure')),s=Math.max(0,Math.ceil((at-now)/1000));el.textContent=s===0?'Saindo agora':'Saída em '+Math.max(1,Math.ceil(s/60))+' min'});
@@ -443,7 +445,7 @@ function startDR(){
         dr.marker.getElement().style.opacity=now>=dr.backendValidUntil?'0':gpsMarkerOpacity(dr.gpsTimestamp);
         if(backendAge>gpsPolicy.publicMs||now>=dr.backendValidUntil){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
-          delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];return;
+          delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
         }
         if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
       }
@@ -719,7 +721,7 @@ function updateTimeAgo(){
   }
   Object.keys(physicalMarkers).forEach(function(key){
     var marker=physicalMarkers[key];if(!Number.isFinite(marker._physicalAt))return;
-    if(Date.now()-marker._physicalAt>gpsPolicy.publicMs){if(marker._physicalPopup)marker._physicalPopup.remove();marker.remove();delete physicalMarkers[key];}
+    if(Date.now()-marker._physicalAt>gpsPolicy.publicMs){if(marker._physicalPopup)marker._physicalPopup.remove();marker.remove();delete physicalMarkers[key];if(tutorialNativeHighlight())tutorialSchedule();}
     else marker.getElement().style.opacity=gpsMarkerOpacity(marker._physicalAt);
   });
 }
@@ -982,6 +984,7 @@ function updateStopMarkers(){
     });
     marker.addTo(map);
     stopMarkersByKey[key]={marker:marker,el:el,isCluster:false};
+    if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
     visible[key]=true;
   }
 
@@ -992,7 +995,7 @@ function updateStopMarkers(){
     if(tf==null){tf=stopThinningFactor(zoom,s2.modal);thinFactors[s2.modal]=tf;}
     if(tf>1){
       var h=hashString(String(s2.key));
-      if(h%tf!==0)continue;
+      if(h%tf!==0&&!(tutorialRequest&&tutorialRequest.kind==='stop'&&tutorialVehicleId==='stop:'+s2.key))continue;
     }
     ensureStopMarker(s2);
   }
@@ -1001,6 +1004,7 @@ function updateStopMarkers(){
     if(!visible[k]){
       stopMarkersByKey[k].marker.remove();
       delete stopMarkersByKey[k];
+      if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
     }
   });
 }
@@ -1009,6 +1013,7 @@ function clearStops(){
   Object.keys(stopMarkersByKey).forEach(function(k){
     stopMarkersByKey[k].marker.remove();
     delete stopMarkersByKey[k];
+      if(tutorialNativeHighlight()&&tutorialRequest.kind==='stop')tutorialSchedule();
   });
 }
 
@@ -1205,7 +1210,7 @@ window.onload=function(){
       var feature=e.features&&e.features[0];if(!feature)return;
       var key=feature.properties&&feature.properties.railRunId;
       var run=key&&railRuns[key];
-      if(run)openRailPopup(run,feature.geometry.coordinates);
+      if(run){openRailPopup(run,feature.geometry.coordinates);tutorialVehicleClicked('rail:'+key)}
     });
     map.on('mouseenter','rail-vehicles-layer',function(){map.getCanvas().style.cursor='pointer'});
     map.on('mouseleave','rail-vehicles-layer',function(){map.getCanvas().style.cursor=''});
@@ -1308,7 +1313,7 @@ window.updateMap=function(data){
       if(structuralUpdate)lineFeatures.push({
         type:'Feature',
         geometry:{type:'LineString',coordinates:coords},
-        properties:{color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
+        properties:{lineId:linha.linhaId,color:color,dash:(linha.modal||'').toLowerCase()==='trem'?1:(idx===1?1:0),width:(linha.modal||'').toLowerCase()==='trem'?4.8:(idx===1?3:4)}
       });
     });
 
@@ -1347,7 +1352,11 @@ window.updateMap=function(data){
         lineCoordsDR=typeof segIdx==='number'?routeSegments[segIdx]||null:null;
       }
 
+      var tutorialData=rawId?{lineId:p.linhaId||linha.linhaId,lineName:linha.nome,modal:linha.modal,timestamp:gpsTimestamp,
+        hasDirection:!!p.sentidoNome,hasNextStop:!!p.proximaParadaNome,hasDistance:p.distanciaProximaParadaMetros!=null,
+        statusText:p.gpsWarning||p.presencaRotulo||(p.gpsAtrasado?'GPS atrasado':'Consulte a idade do GPS no painel')}:null;
       var marker=vehicleMarkers[vKey];
+      if(marker)marker._tutorial=tutorialData;
       var popup=vehiclePopups[vKey];var reusedMotionMarker=!!marker;
       if(marker&&drState[vKey]&&(!drState[vKey].alternative||gpsTimestamp>=Date.parse(drState[vKey].alternative.physicalAt))&&gpsTimestamp>drState[vKey].gpsTimestamp&&!p.backendUnified&&roadIdentityChanged(drState[vKey].identity,identity)){
         roadMovement.identityChanges++;
@@ -1373,6 +1382,8 @@ window.updateMap=function(data){
           popup.on('close',function(){resetPopupDetails(popup)});
         }
         marker.setPopup(popup);
+        marker._tutorial=tutorialData;
+        el.addEventListener('click',function(){tutorialVehicleClicked('road:'+vKey)});
         marker.addTo(map);
         vehicleMarkers[vKey]=marker;
         createdNow++;
@@ -1416,6 +1427,7 @@ window.updateMap=function(data){
 
   refreshIcons();
   if(window.updatePhysicalPresence)window.updatePhysicalPresence(lastPhysicalPresence);
+  if(tutorialNativeHighlight())tutorialSchedule();
   if(!structuralUpdate){
     realtimeMetric.updates++;realtimeMetric.snapshot=snapshotNow;
     realtimeMetric.created+=createdNow;realtimeMetric.updated+=updatedNow;realtimeMetric.removed+=removedNow;
@@ -1474,6 +1486,7 @@ window.updatePhysicalPresence=function(vehicles){
         dr.alternative=v;stopAnim(opKey);
         opMarker.setLngLat([v.longitude,v.latitude]);
         opMarker.getElement().style.opacity=age>=300?'0.55':'1';
+        opMarker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),ambiguousPhysical:true,statusText:'Última posição conhecida'};
         var opPopup=vehiclePopups[opKey];
         if(opPopup)setPopupHTMLPreservingDetails(opPopup,buildPhysicalPopup(v));
       }
@@ -1501,9 +1514,12 @@ window.updatePhysicalPresence=function(vehicles){
         marker._physicalPopup=new maplibregl.Popup({offset:18,closeButton:false}).setLngLat([current.longitude,current.latitude])
           .setHTML(buildPhysicalPopup(current)).addTo(map);
         refreshIcons();
+        tutorialVehicleClicked('physical:'+v.key);
       });
       physicalMarkers[v.key]=marker;
     }
+    if(tutorialNativeHighlight())tutorialSchedule();
+    marker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),statusText:physicalLocationLabels[v.location]||'Última posição conhecida'};
     marker._physicalAt=Date.parse(v.physicalAt);
     marker.setLngLat([v.longitude,v.latitude]);
     if(marker._physicalPopup&&marker._physicalPopup.isOpen())marker._physicalPopup.setLngLat([v.longitude,v.latitude]).setHTML(buildPhysicalPopup(v));
@@ -1516,6 +1532,7 @@ window.updatePhysicalPresence=function(vehicles){
     if(!visible[key]){
       if(physicalMarkers[key]._physicalPopup)physicalMarkers[key]._physicalPopup.remove();
       physicalMarkers[key].remove();delete physicalMarkers[key];
+      if(tutorialNativeHighlight())tutorialSchedule();
     }
   });
 };
