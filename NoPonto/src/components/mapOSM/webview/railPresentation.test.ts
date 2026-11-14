@@ -13,7 +13,7 @@ const script = buildMapWebViewScript({
 
 test("rail marker uses shared presentation and stable identity", () => {
   assert.match(script, /railMarkerElement/);
-  assert.match(script, /busIcon\(visual\.color,0,'trem'\)/);
+  assert.match(script, /busIcon\(visual\.color,null,'trem'\)/);
   assert.match(script, /applyVehiclePresentation\(el,visual\.color,'trem'\)/);
   assert.doesNotMatch(script, /className='rail-vehicle-marker/);
   assert.match(script, /run\.idVisual\|\|run\.railVehicleId\|\|run\.railRunId/);

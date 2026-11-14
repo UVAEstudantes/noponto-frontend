@@ -1,3 +1,4 @@
+import { USER_LOCATION_FILTER_JS } from './userLocation';
 import { TUTORIAL_MAP_BRIDGE } from './tutorialBridge';
 // Responsabilidade: script que roda dentro da WebView e controla MapLibre,
 // markers, animações e integração com React Native via postMessage.
@@ -55,6 +56,8 @@ var autoFollow=true,internalMove=false;
 var mapReady=false;
 var drInterval=null;
 var userLastUpdate=0;
+var filterUserLocation=${USER_LOCATION_FILTER_JS};
+var userAnimationFrame=null;
 var railRuns={},railMarkers={},railHeadings={},railAnimation=null,railLastFrame=0,railLastUiTick=0,railSourceHasFeatures=false;
 var activeRailPopup=null,activeRailPopupIdentity=null,activeRailPopupSignature=null;
 var lastMapData=null;
@@ -62,6 +65,11 @@ ${TUTORIAL_MAP_BRIDGE}
 var realtimeMetric={updates:0,snapshot:0,created:0,updated:0,removed:0};
 ${codigoRenderizadorIndicadores}
 var renderIndicator=criarRenderizadorIndicadores(${JSON.stringify(familiasIndicadores).replace(/</g, '\\u003c')});
+var showVehicleDirections=true;
+window.updateVehicleDirections=function(show){
+  showVehicleDirections=show!==false;
+  document.body.classList.toggle('hide-vehicle-directions',!showVehicleDirections);
+};
 var indicatorStyles={onibus:'padrao',brt:'padrao',trem:'padrao'};
 function applyVehiclePresentation(el,color,modal){
   modal=String(modal||'onibus').toLowerCase();
@@ -75,6 +83,13 @@ function applyVehiclePresentation(el,color,modal){
   if(!inner){inner=document.createElement('div');inner.className='bus-inner';el.appendChild(inner)}
   var image=inner.querySelector('.vehicle-art');
   if(!image){image=document.createElement('img');image.className='vehicle-art';image.alt='';image.draggable=false;inner.appendChild(image)}
+  var direction=inner.querySelector('.vehicle-direction');
+  if(!direction){direction=document.createElement('div');direction.className='vehicle-direction';inner.appendChild(direction)}
+  // Compensate artwork orientation before placing the triangle 7px ahead.
+  var angle=visual.orientacao*Math.PI/180;
+  var front=Math.abs(Math.sin(angle))*visual.largura/2+Math.max(Math.cos(angle)*visual.ancoraY,-Math.cos(angle)*(visual.altura-visual.ancoraY));
+  direction.style.top=(20-front-14)+'px';
+  direction.style.borderBottomColor=color;
   image.src=visual.uri;
   image.style.width=visual.largura+'px';image.style.height=visual.altura+'px';
   image.style.left=(20-visual.largura/2)+'px';image.style.top=(20-visual.ancoraY)+'px';
@@ -114,7 +129,7 @@ function applyRailMarkerVisual(el,run){
 }
 function railMarkerElement(run,identity){
   // Mantem o elemento externo e os eventos durante trocas de apresentacao.
-  var visual=railVisual(run),el=busIcon(visual.color,0,'trem');
+  var visual=railVisual(run),el=busIcon(visual.color,null,'trem');
   el.setAttribute('data-rail-id',identity);
   applyRailMarkerVisual(el,run);
   el.addEventListener('click',function(event){
@@ -566,7 +581,7 @@ function busIcon(color,heading,modal){
   var isBrt=(modal||'').toLowerCase()==='brt';
   el.className='bus-marker'+(isTrain?' train-marker':'')+(isBrt?' brt-marker':'');
   applyVehiclePresentation(el,color,modal);
-  setHeading({getElement:function(){return el}},heading||0);
+  setHeading({getElement:function(){return el}},heading);
   return el;
 }
 
@@ -661,8 +676,9 @@ function userIcon(){
 }
 
 function setHeading(marker,heading){
-  if(typeof heading!=='number')return;
+  if(typeof heading!=='number'||!isFinite(heading))return;
   var el=marker.getElement();if(!el)return;
+  el.setAttribute('data-direction-known','true');
   var inner=el.querySelector('.bus-inner');
   var bearing=(map&&map.getBearing)?map.getBearing():0;
   var adjusted=heading-bearing;
@@ -1097,31 +1113,21 @@ function setLineOpacity(dark){
 
 function updateUser(data){
   if(!data||!data.userLocation||!userMarker||!map)return;
-  var lat=parseNum(data.userLocation[0]),lng=parseNum(data.userLocation[1]);
-  if(lat===null||lng===null)return;
-  var pos={lat:lat,lng:lng};
-  var cur=userMarker.getLngLat();
-  var distM=distanceMeters({lat:cur.lat,lng:cur.lng},pos);
-  var accuracy=parseNum(data.accuracy);
-  var now=Date.now();
-  var dt=userLastUpdate?now-userLastUpdate:0;
-  userLastUpdate=now;
-  var followMs=450;
-  if(distM>1500){
-    stopAnim('user');
-    userMarker.setLngLat([pos.lng,pos.lat]);
-  }else{
-    var minMs=250,maxMs=1200;
-    var animMs=300+distM*8;
-    if(dt>0)animMs=Math.max(animMs,dt*0.7);
-    if(accuracy!==null){
-      if(accuracy>40)animMs*=1.25;
-      else if(accuracy<15)animMs*=0.85;
-    }
-    animMs=Math.max(minMs,Math.min(maxMs,Math.round(animMs)));
-    animateTo('user',userMarker,pos,animMs);
-    followMs=Math.min(700,animMs);
+  var pos=filterUserLocation(data);
+  if(!pos)return;
+  if(userAnimationFrame!==null)cancelAnimationFrame(userAnimationFrame);
+  var start=userMarker.getLngLat(),t0=performance.now();
+  var duration=pos.snap?0:500;
+  function step(ts){
+    var p=duration?Math.min(1,Math.max(0,(ts-t0)/duration)):1;
+    var eased=p*p*(3-2*p);
+    var lng=start.lng+(pos.lng-start.lng)*eased,lat=start.lat+(pos.lat-start.lat)*eased;
+    userMarker.setLngLat([lng,lat]);
+    // Camera and dot share one clock; gestures can stop follow without stopping GPS.
+    if(autoFollow)runInternal(function(){map.jumpTo({center:[lng,lat]})},'user-follow');
+    userAnimationFrame=p<1?requestAnimationFrame(step):null;
   }
+  userAnimationFrame=requestAnimationFrame(step);
 
   var arrow=document.querySelector('.user-arrow');
   if(arrow){
@@ -1134,7 +1140,7 @@ function updateUser(data){
     else arrow.style.display='none';
   }
 
-  if(autoFollow)runInternal(function(){map.easeTo({center:[pos.lng,pos.lat],duration:followMs})},'user-follow');
+
 }
 
 function focusOnVehicle(payload){
@@ -1218,8 +1224,9 @@ window.onload=function(){
     setMapStyle('${estiloMapaPadrao}');
     setDark(false);
 
-    map.on('movestart',function(){if(!internalMove)autoFollow=false});
-    map.on('zoomstart',function(){if(!internalMove)autoFollow=false});
+    map.on('dragstart',function(){autoFollow=false});
+    map.on('movestart',function(e){if(e.originalEvent||!internalMove)autoFollow=false});
+    map.on('zoomstart',function(e){if(e.originalEvent||!internalMove)autoFollow=false});
     map.on('moveend',function(){internalMove=false;updateStopMarkers()});
     map.on('zoomend',function(){internalMove=false;updateStopMarkers()});
     map.on('rotate',function(){refreshVehicleHeadings()});
@@ -1366,7 +1373,7 @@ window.updateMap=function(data){
 
       if(!marker){
         var posInicial=dest;
-        var el=busIcon(color,heading||0,linha.modal);
+        var el=busIcon(color,heading,linha.modal);
         if(p.presencaEstado){el.style.opacity=p.backendUnified?gpsMarkerOpacity(Number(p.timestamp)):(p.gpsAtrasado?'0.55':'1');el.title=passengerStatusLabel(p.presencaRotulo||'');}
         marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
         popup=new maplibregl.Popup({offset:18,closeButton:false});
@@ -1497,7 +1504,7 @@ window.updatePhysicalPresence=function(vehicles){
     visible[v.key]=true;
     var marker=physicalMarkers[v.key];
     if(!marker){
-      var el=busIcon(physicalLineColor(v),0,v.modal);
+      var el=busIcon(physicalLineColor(v),null,v.modal);
       el.setAttribute('data-presence-kind','physical-vehicle');
       marker=new maplibregl.Marker({element:el,anchor:'center'})
         .setLngLat([v.longitude,v.latitude]).addTo(map);

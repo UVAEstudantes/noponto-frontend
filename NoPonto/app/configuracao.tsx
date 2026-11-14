@@ -1,10 +1,14 @@
+import { GatewayFooter } from '../src/components/GatewayStatus';
 import { useTutorial } from '@/src/components/tutorial/TutorialProvider';
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
 import { useTema } from "@/src/hooks/useTema";
-import React from "react";
+import React, { useState } from "react";
 import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
   BookOpen,
+  Bell,
+  ChevronDown,
+  ChevronUp,
   ArrowRight,
   Check,
   Hand,
@@ -12,13 +16,16 @@ import {
   Monitor,
   Moon,
   Palette,
+  Radar,
   Sun,
+  Volume2,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
 
 const Configuracao = () => {
   const tutorial = useTutorial();
+  const [tutorialAberto, setTutorialAberto] = useState(false);
   const {
     temaAtual,
     preferenciaTema,
@@ -66,7 +73,7 @@ const Configuracao = () => {
         contentContainerStyle={{
           paddingHorizontal: 20,
           paddingTop: 12,
-          paddingBottom: 120,
+          paddingBottom: 75,
         }}
         showsVerticalScrollIndicator={false}
       >
@@ -330,34 +337,45 @@ const Configuracao = () => {
         <View style={{ marginTop: 24, gap: 8 }}>
           <Text accessibilityRole="header" style={{ color: cores.textoPrimario, fontSize: 21, fontWeight: "700" }}>Ajuda e tutoriais</Text>
           <Text style={{ color: cores.textoSecundario, fontSize: 14 }}>Aprenda a aproveitar o NoPonto.</Text>
-          <View style={{ marginTop: 6, padding: 16, gap: 14, borderRadius: 20, borderWidth: 1, borderColor: cores.bordaSuave, backgroundColor: cores.fundoCard }}>
+          <Pressable accessibilityRole="button"
+            accessibilityLabel="Primeiros passos, etapas do tutorial"
+            accessibilityState={{ expanded: tutorialAberto }}
+            onPress={() => setTutorialAberto(!tutorialAberto)}
+            style={{ marginTop: 6, padding: 16, gap: 14, borderRadius: 20, borderWidth: 1, borderColor: cores.bordaSuave, backgroundColor: cores.fundoCard }}>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
               <View style={{ padding: 12, borderRadius: 14, backgroundColor: "#FFC10720" }}><BookOpen size={23} color={temaAtual === "escuro" ? "#FFC107" : "#916500"} /></View>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={{ color: cores.textoPrimario, fontSize: 17, fontWeight: "700" }}>Primeiros passos</Text>
                 <Text style={{ color: cores.textoSecundario, fontSize: 14 }}>Conheça a busca, o mapa e os recursos do NoPonto.</Text>
                 <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>Seis capítulos · no seu ritmo</Text>
-                <Text style={{color: cores.textoSecundario, fontSize: 12}}>{tutorial.progress.journeyFinished ? "Jornada concluída" : `${tutorial.progress.chapters?.length ?? 0}/6 capítulos concluídos`}</Text>
               </View>
+              {tutorialAberto ? <ChevronUp size={18} color={cores.iconeSecundario} /> : <ChevronDown size={18} color={cores.iconeSecundario} />}
             </View>
-            <Pressable accessibilityRole="button" onPress={() => tutorial.replay()} style={{ minHeight: 46, padding: 12, gap: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#FFC107" }}>
-              <Text style={{ color: "#222222", fontSize: 15, fontWeight: "700" }}>{tutorial.progress.seen ? "Rever tutorial" : "Iniciar tutorial"}</Text><ArrowRight size={17} color="#222222" />
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => tutorial.replay()} style={{ minHeight: 46, padding: 12, gap: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#FFC107" }}>
+              <Text style={{ color: "#222222", fontSize: 15, fontWeight: "700" }}>Assistir tutorial completo</Text><ArrowRight size={17} color="#222222" />
             </Pressable>
-          </View>
         </View>
-        <View style={{ gap: 8, marginTop: 12 }}>
+        {tutorialAberto && <View style={{ gap: 8, marginTop: 12 }}>
           {([{ id: 1, title: 'Buscar e visualizar linhas' }, { id: 2, title: 'Veículos em tempo real' }, { id: 3, title: 'Paradas, estações e terminais' }, { id: 4, title: 'Suas linhas, do seu jeito' }, { id: 5, title: 'Radar de Espera, notificações e voz' }, { id: 6, title: 'Conhecendo outros transportes' }] as const).map(chapter => <Pressable key={chapter.id} accessibilityRole="button"
             onPress={() => tutorial.replay(chapter.id)} style={{ minHeight: 54, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: cores.bordaSuave, backgroundColor: cores.fundoCard, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={{ color: cores.textoPrimario, fontSize: 14, flex: 1 }}>{chapter.title}</Text>
-            <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>{tutorial.progress.chapters?.includes(chapter.id) ? 'Concluído · rever' : 'Aprender'}</Text>
+
             <ArrowRight size={16} color={cores.textoSecundario} />
           </Pressable>)}
-          <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8}}>
-            {(['5A', '5B', '5C'] as const).map((section, index) => <Pressable key={section} accessibilityRole="button" onPress={() => tutorial.replay(5, section)} style={{minHeight: 44, padding: 10}}>
-              <Text style={{color: cores.textoSecundario}}>{['Radar', 'Notificações', 'Voz'][index]}{tutorial.progress.radarSections?.includes(section) ? ' · ✓' : ''}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+            {([
+              { id: '5A', title: 'Radar', Icon: Radar },
+              { id: '5B', title: 'Notificações', Icon: Bell },
+              { id: '5C', title: 'Voz', Icon: Volume2 },
+            ] as const).map(({ id, title, Icon }) => <Pressable key={id}
+              accessibilityRole="button" accessibilityLabel={`Tutorial: ${title}`}
+              onPress={() => tutorial.replay(5, id)}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: cores.fundoSecundario }}>
+              <Icon size={18} color={cores.iconeSecundario} />
             </Pressable>)}
           </View>
-        </View>
+        </View>}
         <IndicadoresConfiguracao />
 
         <View
@@ -409,6 +427,7 @@ const Configuracao = () => {
           />
         </View>
 
+      <GatewayFooter />
       </ScrollView>
     </SafeAreaView>
   );

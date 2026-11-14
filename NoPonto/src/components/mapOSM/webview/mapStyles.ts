@@ -31,6 +31,10 @@ export const MAP_WEBVIEW_STYLES = `
     .bus-marker{background:transparent;border:none}
     .bus-marker{width:40px;height:40px}
     .bus-inner{position:relative;width:40px;height:40px;transform:rotate(var(--h,0deg));transform-origin:20px 20px;transition:transform .2s ease-out}
+    .vehicle-direction{position:absolute;left:14px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid #fff;transform:translateY(-6px);filter:drop-shadow(0 0 1px rgba(0,0,0,.75));pointer-events:none;display:none}
+    .vehicle-direction:after{content:'';position:absolute;left:-4px;top:3px;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid var(--direction-color)}
+    [data-direction-known="true"] .vehicle-direction{display:block}
+    body.hide-vehicle-directions .vehicle-direction{display:none}
     .vehicle-art{position:absolute;display:block;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
 
     .stop-marker{background:transparent;border:none;opacity:var(--stop-opacity,.75)}

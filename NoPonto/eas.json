@@ -7,7 +7,9 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "gradleCommand": ":app:assembleDevelopmentDebug" },
+      "android": {
+        "gradleCommand": ":app:assembleDevelopmentDebug"
+      },
       "env": {
         "APP_VARIANT": "development"
       }
@@ -23,10 +25,11 @@
       "env": {
         "APP_VARIANT": "radar",
         "EXPO_PUBLIC_RADAR_REMOTE_ENABLED": "true",
-        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
-        "EXPO_PUBLIC_API_BASE_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
-        "EXPO_PUBLIC_GPS_HUB_URL": "wss://ununionized-suzanne-nonliterary.ngrok-free.dev/hub/gps",
-        "EXPO_PUBLIC_GPS_HUB_ROUTE": "/hub/gps"
+        "EXPO_PUBLIC_GPS_HUB_ROUTE": "/hub/gps",
+        "EXPO_PUBLIC_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_API_FALLBACK_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
+        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_GPS_HUB_URL": "wss://noponto-api.shares.zrok.io/hub/gps"
       }
     },
     "nativeprobe": {
@@ -42,7 +45,11 @@
         "gradleCommand": ":app:assembleProductionRelease"
       },
       "env": {
-        "APP_VARIANT": "production"
+        "APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_API_FALLBACK_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
+        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_GPS_HUB_URL": "wss://noponto-api.shares.zrok.io/hub/gps"
       }
     },
     "production": {
@@ -52,7 +59,11 @@
         "gradleCommand": ":app:bundleProductionRelease"
       },
       "env": {
-        "APP_VARIANT": "production"
+        "APP_VARIANT": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_API_FALLBACK_URL": "https://ununionized-suzanne-nonliterary.ngrok-free.dev",
+        "EXPO_PUBLIC_RADAR_API_BASE_URL": "https://noponto-api.shares.zrok.io",
+        "EXPO_PUBLIC_GPS_HUB_URL": "wss://noponto-api.shares.zrok.io/hub/gps"
       }
     }
   },

@@ -1,5 +1,6 @@
+import { gateway, gatewayBase } from './gateway';
 import { useEffect, useMemo, useState } from 'react';
-import { config } from '@/src/config/env';
+
 import { createUnifiedCapabilityReader, selectUnifiedCodes, type UnifiedCapabilities } from './unifiedNetwork';
 import { observePhysicalPresence } from './gpsHub';
 import { acceptUnified, type UnifiedSnapshot } from './unifiedLocationContract';
@@ -11,7 +12,7 @@ export const UNIFIED_NETWORK_ENABLED = process.env.EXPO_PUBLIC_UNIFIED_NETWORK_E
 const readCapabilities = createUnifiedCapabilityReader(async () => {
   const cancel = new AbortController(); const timer = setTimeout(() => cancel.abort(), 5_000);
   try {
-    const response = await fetch(config.API_BASE_URL.replace(/\/$/, '') + '/veiculos/localizacao-unificada/v1/capabilities', { signal: cancel.signal });
+    const response = await gateway.request(gatewayBase().replace(/\/$/, '') + '/veiculos/localizacao-unificada/v1/capabilities', { signal: cancel.signal });
     return response.ok ? await response.json() : null;
   } finally { clearTimeout(timer); }
 });

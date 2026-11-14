@@ -1,3 +1,4 @@
+import { useUserLocationWatch } from '@/src/hooks/useUserLocationWatch';
 import TutorialTarget from '@/src/components/tutorial/TutorialTarget';
 import { radarBlocked, linePanelStep, transportSearchStep } from '@/src/components/tutorial/tutorialSteps';
 import { useTutorial } from '@/src/components/tutorial/TutorialProvider';
@@ -67,11 +68,9 @@ import { gerarCorAleatoria } from "@/src/utils/cores";
 import { assinaturaEstruturalParadas } from "@/src/services/mapStructure";
 import {
   getCurrentPositionAsync,
-  LocationAccuracy,
   LocationObject,
   requestForegroundPermissionsAsync,
   getForegroundPermissionsAsync,
-  watchPositionAsync,
 } from "expo-location";
 import React, {
   useCallback,
@@ -253,24 +252,7 @@ const Home = () => {
     [normalizarNome],
   );
 
-  useEffect(() => {
-    let subscription: any;
-    let cancelled = false;
-    async function startWatching() {
-      if (!(await getForegroundPermissionsAsync()).granted || cancelled) return;
-      subscription = await watchPositionAsync(
-        {
-          accuracy: LocationAccuracy.Highest,
-          timeInterval: 2000,
-          distanceInterval: 5,
-        },
-        (response) => setLocation(response),
-      );
-      if (cancelled) subscription.remove();
-    }
-    void startWatching().catch(() => {});
-    return () => { cancelled = true; subscription?.remove(); };
-  }, [Boolean(location)]);
+  useUserLocationWatch(telaAtiva && Boolean(location), setLocation);
 
   // ─── Busca ────────────────────────────────────────────────────────────────
 

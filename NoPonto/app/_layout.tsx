@@ -1,3 +1,4 @@
+import { GatewayMonitor } from '../src/components/GatewayStatus';
 import { TutorialProvider, useTutorial } from '@/src/components/tutorial/TutorialProvider';
 import TutorialOverlay from '@/src/components/tutorial/TutorialOverlay';
 import NavBar from "@/src/components/NavBar";
@@ -87,6 +88,7 @@ const ConteudoLayout = () => {
         )}
       </StartupContext.Provider>
       <TutorialOverlay />
+      <GatewayMonitor ready={!opening && !carregandoTema} />
       {opening &&
         (carregandoAbertura ? (
           <StartupPendingOverlay />

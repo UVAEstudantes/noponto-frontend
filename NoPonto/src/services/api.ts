@@ -1,6 +1,4 @@
-import { config } from "@/src/config/env";
-
-const API_URL = config.API_BASE_URL;
+import { gateway } from './gateway';
 
 interface RequestOptions {
   headers?: Record<string, string>;
@@ -43,7 +41,7 @@ function buildUrl(
   endpoint: string,
   params?: Record<string, string | number | boolean>,
 ): string {
-  const url = new URL(endpoint, API_URL);
+  const url = new URL(endpoint, gateway.base());
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       url.searchParams.append(key, String(value));
@@ -59,7 +57,7 @@ export const api = {
   ): Promise<ApiResponse<T>> => {
     try {
       const url = buildUrl(endpoint, options?.params);
-      const response = await fetch(url, {
+      const response = await gateway.request(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -87,13 +85,14 @@ export const api = {
   ): Promise<ApiResponse<T>> => {
     try {
       const url = buildUrl(endpoint, options?.params);
-      const response = await fetch(url, {
+      const response = await gateway.request(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...options?.headers,
         },
         body: data ? JSON.stringify(data) : undefined,
+        signal: options?.signal,
       });
       return handleResponse<T>(response);
     } catch (error) {
@@ -115,13 +114,14 @@ export const api = {
   ): Promise<ApiResponse<T>> => {
     try {
       const url = buildUrl(endpoint, options?.params);
-      const response = await fetch(url, {
+      const response = await gateway.request(url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...options?.headers,
         },
         body: data ? JSON.stringify(data) : undefined,
+        signal: options?.signal,
       });
       return handleResponse<T>(response);
     } catch (error) {
@@ -142,7 +142,7 @@ export const api = {
   ): Promise<ApiResponse<T>> => {
     try {
       const url = buildUrl(endpoint, options?.params);
-      const response = await fetch(url, {
+      const response = await gateway.request(url, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
