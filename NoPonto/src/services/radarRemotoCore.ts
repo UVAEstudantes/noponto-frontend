@@ -64,8 +64,12 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
       throw e;
     }
   }
+  let pendingReconciliation: Promise<unknown> | undefined;
   function serial<T>(operacao: OperacaoRemota, fn: () => Promise<T>): Promise<T | undefined> {
+    if (operacao === 'reconciliar' && pendingReconciliation === queue)
+      return queue as Promise<T | undefined>;
     const work = queue.catch(() => {}).then(async () => {
+      if (operacao === 'reconciliar' && pendingReconciliation === work) pendingReconciliation = undefined;
       emit({ solicitando: true, mensagem: null, operacao });
       diagnosticarRadar(`fila.${operacao}`, 'inicio');
       try { return await fn(); }
@@ -83,7 +87,12 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
           : 'Radar remoto indisponível. Confira a conexão e tente novamente. O modo local permanece suspenso.' });
       } finally { emit({ solicitando: false, operacao: null }); diagnosticarRadar(`fila.${operacao}`, 'fim'); }
     });
-    queue = work; return work;
+    queue = work;
+    if (operacao === 'reconciliar') {
+      pendingReconciliation = work;
+      void work.finally(() => { if (pendingReconciliation === work) pendingReconciliation = undefined; });
+    }
+    return work;
   }
   function accept(session: SessaoRemota | null) {
     const active = session?.estado === 'ativa' && Date.parse(session.expiraEm) > port.now();

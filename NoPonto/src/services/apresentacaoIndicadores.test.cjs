@@ -425,7 +425,8 @@ test("vehicle direction preserves cardinal headings, color and seven pixel artwo
       assert.equal(el.getAttribute('data-direction-known'), 'true');
       assert.equal(el.querySelector('.bus-inner').style['--h'], (heading - 35) + 'deg');
       const triangle = el.querySelector('.vehicle-direction');
-      assert.equal(triangle.style.borderBottomColor, '#2468AC');
+      assert.equal(triangle.style['--direction-color'], '#2468AC');
+      assert.equal(triangle.style.borderBottomColor, undefined, 'white outer CSS border remains intact');
       const art = renderizarIndicador(style, modal, '#2468AC');
       const front = art.orientacao === 180 ? art.altura - art.ancoraY : art.ancoraY;
       assert.ok(Math.abs(20 - front - (parseFloat(triangle.style.top) + 7) - 7) < 1e-8);
@@ -474,16 +475,13 @@ test("direction toggle and map rotation preserve marker identity, zoom size and 
   const css = fs.readFileSync(path.join(__dirname, '../components/mapOSM/webview/mapStyles.ts'), 'utf8');
   assert.match(css, /body\.hide-vehicle-directions \.vehicle-direction\{display:none\}/);
   const triangleCss = css.match(/\.vehicle-direction\{([^}]+)\}/)[1];
-  assert.match(triangleCss, /border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid #fff/);
+  assert.match(triangleCss, /width:14px;height:13px/);
+  assert.match(triangleCss, /color:var\(--direction-color\)/);
   assert.match(triangleCss, /transform:translateY\(-6px\)/);
-  assert.match(css, /left:-4px;top:3px[^}]*border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid var\(--direction-color\)/);
-  const outerHeight = Number(triangleCss.match(/border-bottom:(\d+)px solid #fff/)[1]);
-  const innerHeight = Number(css.match(/border-bottom:(\d+)px solid var\(--direction-color\)/)[1]);
-  const innerTop = Number(css.match(/left:-4px;top:(\d+)px/)[1]);
-  const cssOffset = Number(triangleCss.match(/translateY\((-\d+)px\)/)[1]);
-  assert.equal(-14 + cssOffset + outerHeight, -7, 'triangle base stays 7px ahead of vehicle art');
-  assert.equal(outerHeight - innerTop - innerHeight, 3, 'white base border remains 3px');
-  assert.match(css, /border-bottom:7px solid var\(--direction-color\)/);
+  assert.match(triangle.innerHTML, /viewBox="0 0 14 13"/);
+  assert.match(triangle.innerHTML, /fill="currentColor" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/);
+  assert.equal(-14 - 6 + 13, -7, 'triangle base keeps original artwork gap');
+
 });
 
 test("direction preference defaults on, persists off and hydrates across provider restart", async () => {

@@ -194,3 +194,98 @@ Validação final adicional: ESLint somente dos três arquivos de código/teste 
 Frontend e módulo Android existente agora consomem `operationalStatus` e os metadados ferroviários opcionais do contrato native-v1. A interface distingue Scheduled/Estimated/Live e não anuncia trens programados como chegada em tempo real; o TTS aplica frases ferroviárias próprias e preserva as frases de ônibus/BRT. A notificação mantém os layouts V5.1, mostra linha/destino quando disponíveis e não agrupa viagens ferroviárias distintas. O native-v1 antigo continua aceito sem os campos opcionais, com estado conservador.
 
 Testes direcionados de apresentação/contrato e TypeScript aprovados. Kotlin não compilado e APK não testado nesta etapa; validar no Xiaomi após publicar o backend ferroviário correspondente e compilar o app. Nenhuma alteração no backend nesta etapa, sem Docker, build Android, prebuild, EAS, deploy, commit ou push.
+
+
+## 2026-11-14 — Sprint integrada de otimizações beta
+
+Implementadas alterações localizadas: catálogo de modais compartilhado/expirável, reconciliações Radar pendentes deduplicadas sem juntar mutações, foco/AppState no mapa unificado, posição inicial sem marcador padrão, confirmação de remoção, transição do tutorial, estrela independente, borda branca real, painel de linhas por parada, cache persistente limitado de itinerários versionados, heads-up compacto e Rotinas demonstrativas. Backend acrescenta /paradas/consulta e /paradas/busca preservando rotas antigas, filtros opcionais e gzip JSON seletivo. Nenhuma migração/infra/túnel/deploy/push/commit.
+
+Branches feat/otimizacoes-beta a partir das bases remotas atualizadas. Arquivos locais backend preservados em .git/preservado-otimizacoes-beta com autorização; histórico conciliado por acréscimo. Backend22testes aprovados; frontend49testes direcionados aprovados, mais regressões específicas tutorial10/10, localização6/6 e Radar15/15. TypeScript e lint focado aprovados nas execuções concluídas. Suites amplas de UI bloqueadas por mocks GatewayStatus/tutorialMapContract desatualizados. Sem validação física Android ou screenshot; novos filtros ainda precisam de testes SQL específicos e compressão de medição local. Detalhes, contratos, limitações e roteiro no RELATORIO_SPRINT_OTIMIZACOES_BETA.md do backend. Sem dados sensíveis.
+
+Validação final consolidada:51/51testes frontend aprovados,0falhas/ignorados; TypeScript final e git diff --check aprovados. Backend22/22aprovados.
+
+
+## 2026-11-14 — Refinamento visual, UX e estabilização da sprint beta
+
+Continuação nas branches feat/otimizacoes-beta existentes. Confirmacao.tsx reutilizável (tema, variantes/ícone, processamento, bloqueio de duplo toque e Android Back) substitui Alert nas remoções de linha. Causa do espaço vazio: LinhaCard animava opacidade/escala antes de abrir a confirmação; removidos a animação prematura e o banner intermediário. Solicitação mantém card original; apenas confirmação muta seleção. Favoritos dourado, seleção visual exclusiva e seletor responsivo sem rolagem.
+
+Rotinas redesenhada com apresentação compacta, aviso discreto, explicação Planeje/Salve/Acompanhe/Receba avisos e estados locais preservados. Linhas da parada passa a botão circular no cabeçalho e Modal independente com scroll, loading/vazio/erro, cancelamento e catálogo compartilhado de modais. Seta usa SVG com stroke branco1.4px e cantos arredondados, sem mudar bearing. Heads-up limita badge a uma linha e largura88dp, ellipsize e texto essencial; expandido preservado. Sem homologação física.
+
+Fixtures de tutorial/carregamento inicial atualizadas para GatewayFooter, configuração recolhível, wrapper View, AppState/foco e regra vigente de ETA: ETA passado sozinho não comprova passagem; consulta vencida é descartada. Testes adicionais cobrem confirmação/cancelamento/última linha/repetição, filtros, foco e tradução Npgsql sem conexão. Backend mantém contratos aprovados; expressão de filtros extraída para teste e configuração de compressão compartilhada com teste HTTP loopback. Sem buffering adicional ou limiar de compressão: gzip pequeno continua possível. Testes e limites finais registrados no RELATORIO_REFINAMENTO_OTIMIZACOES_BETA.md do backend.
+
+Sem novas branches/clones/worktrees/commits/push/merge/PR/deploy, serviços reais, migrations, builds Android ou alterações ngrok/zrok. Trabalho anterior preservado. Sem Metro/preview nas portas locais usuais; revisão visual física continua pendente.
+
+Validação desta rodada:113testesfrontend aprovados+2responsivos aprovados;25backend aprovados+rechecagem de compressão1/1comq=0/JSONpequeno aprovada. TypeScript sem erros. ESLint focado não concluiu e os processos próprios foram encerrados após minutos sem diagnóstico. XML heads-up aprovado no self-check; sem validação visual/física. Detalhes no relatório de refinamento.
+
+
+## 2026-11-14 — Correção de regressão visual e acabamento final de componentes
+
+Comparado seletor com HEAD: geometria antes em objeto/largura numérica passou a depender de callback de estilo e percentuais. Corrigido com estilos estáticos, flex1 e rótulo sob ícone, com fallback de fonte/largura; favoritos permanece independente e exclusivo. Botão das linhas e ação destrutiva também passam a estilo em objeto, fundos visíveis/ripple. Modal de paradas agrupa linhas/sentidos, contador real, separadores leves e espaço inferior rolável. Rotinas recebe percurso visual, superfícies leves, ícones secundários e dias4+3; interações locais preservadas. Confirmação mantém lógica, com botão vermelho sólido, Cancelar neutro e disposição responsiva.
+
+10testes focados aprovados;TypeScript e diff aprovados. Sem preview/Metro ativo nas portas verificadas; validação visual Android pendente, não homologada por testes de estrutura. Sem backend/endpoints/SignalR/Radar/cache/localização/heads-up, build Android, commits/push/deploy ou novas branches. Alterações anteriores preservadas. Detalhes e checklist em REFINAMENTO_VISUAL_FINAL.md.
+
+
+## 2026-11-14 — Seletor compacto animado e prévia assistida de Rotinas
+
+Seletor redesenhado: superfície normal48dp (antes72dp), segmentos44dp, ativo com ícone/texto e expansão, inativos só ícones. Reanimated anima largura/posição em180ms e opacidade em120ms, usando ReduceMotion.System. Favoritos neutraliza indicador; estilos Pressable continuam objetos. Fallback de fonte ampliada usa2colunas e, acima de1.8,1coluna. Botões de linhas/sino/fechar alinhados em40dp; ícone de lista e painel com linhas mais compactas, fade desativado quando movimento reduzido.
+
+Rotinas ganha prévia esquemática de5etapas ilustrativas,6estados exploráveis, aviso de problema e alternativa demonstrativa. Cards com Configurar e Ver prévia; formulário dividido em identificação/trajeto/recorrência/assistência, inversão de locais,3grupos de preferências futuras, seletor local de horas0..23/minutos0..59 e rodapé Salvar fora do scroll com KeyboardAvoidingView. Sem date/time picker instalado, sem dependência adicionada. Explicação ampliada para planejamento/preparação/trechos/problemas/alternativas/voz. Feedback local de salvamento e animações discretas com movimento reduzido. Rotinas continua sem serviços reais. Confirmacao aprovado não foi alterado.
+
+16testes focados aprovados,TypeScript sem erros,diff aprovado. Testes incluem3/4modais,320/360/400dp e fontes ampliadas, seleção neutra/Favoritos, horário inválido/cancelamento,criação/edição/exclusão/ativação,inversão,estados/alternativa e regressões da confirmação. Sem preview ativo nas portas verificadas; animações,teclado e empilhamento de modais precisam de inspeção Android. Arquivo solto semelhante a “melhora mapa” não encontrado nesta inspeção,nada incorporado ou removido. Branch mantida,sem commits/push/deploy/buildAndroid/Metro/back-end/SignalR/Radar/GPS. Detalhes acrescentados em REFINAMENTO_VISUAL_FINAL.md.
+
+
+## 2026-11-14 — UX de Rotinas, Perfil local e correção comprovada de Worklets
+
+ADB autorizado e app instalado/Metro8084 existentes usados sem reinício/build/limpeza. Log reproduziu non-worklet t9; bundle do próprio Dev Client ligou t9 ao indicador de SelectModalLinhas extraído pelo React Compiler sem metadados de worklet. Seletor passou a Animated do React Native (180ms, superfície48dp/toque44dp), amarelo ativo e Favoritos exclusivo. Ciclo físico observado sem novos erros. Comentário JSX fora de Text corrigido. Nenhuma configuração de compilador alterada.
+
+Botão de linhas da parada menta/Route, header compacto, sentidos agrupados, ID vinculado à abertura, abort/ignorar obsoletas e catch de erro. Oito linhas reais e último item verificados no aparelho. Rotinas extraídas para src/features/rotinas, fluxo em um único overlay, trajeto conectado, hora personalizada por incrementos, prévia expansível/estados/alternativa e explicação. Sem serviços reais de Rotinas.
+
+Criado Perfil em src/features/perfil: nome opcional, iniciais/paleta, AsyncStorage somente nome/cor, tratamento de falha e confirmação concorrente. Favoritos reais via coleção existente; indicadores/ranking/atividade/conquistas/retrospectiva/comunidade separados e ilustrativos. Navbar Perfil/Rotinas/Mapa/Linhas/Mais com Mapa central e rota /favoritos preservada. Componentes comuns em InterfaceDemo; diagnóstico físico corrigiu rodapé encoberto pelo teclado Android. Confirmacao aprovado preservado.
+
+50 testes focados aprovados, TypeScript e diff --check aprovados. Fixture de favoritosEtapaB corrigida (Disconnected/gateway isolado), sem alterar GPS/SignalR. ESLint limitado a40s não concluiu; Metro preservado. Inspeção física nas telas principais claro/escuro, edição de Perfil cancelada sem gravar texto de teste, teclado e painel8linhas; tema claro restaurado. Persistência após reinício físico, fontes ampliadas/320/360dp/iOS e matriz completa seguem manuais. Relatório e comandos acrescentados a REFINAMENTO_VISUAL_FINAL.md.
+
+Branch feat/otimizacoes-beta e mudanças anteriores preservadas. Sem commits/push/merge/deploy/buildAndroid/clones/worktrees/back-end/contratos/túneis ou serviços reais de Perfil/Rotinas. Metro8084 continua ligado.
+
+
+## 2026-11-14 — Acabamento pontual da navbar e rodapé de Configurações
+
+Preservada a navbar de cinco abas e curva existente. Círculo central50dp baixado16dp (top-22 para-6), curva ajustada, ícone centralizado e rótulo visual Mapa removido; label acessível e navegação mantidas. Altura58dp compartilhada em src/constants/navegacao.ts. Configurações reservava75dp fixos e ignorava o inset inferior; agora usa58+inset.bottom+12dp no ScrollView, sem SafeArea inferior duplicada.
+
+Arquivos desta rodada: src/components/NavBar.tsx, app/configuracao.tsx, src/constants/navegacao.ts, src/components/NavBar.test.cjs e este histórico. Três testes focados aprovados (cinco rotas/larguras, botão sem texto/posição e padding para diferentes insets), TypeScript sem erros, diff --check aprovado. Inspeção ADB no app instalado/Metro8084: cinco abas no tema claro, botão central funcional, rodapé integral em claro/escuro e barra de gestos livre. Tema claro restaurado. Fonte ampliada e outros tamanhos físicos não alterados/testados; regras de reserva usam dimensões reais e conteúdo continua rolável. Sem mudanças nas outras funcionalidades, commits/push/deploy/build ou reinício/encerramento do Metro. Branch feat/otimizacoes-beta e diffs anteriores preservados.
+
+
+## 2026-11-14 — Folga da curva e animações localizadas dos ícones da navbar
+
+Alteração restrita a src/components/NavBar.tsx, novo src/components/NavBarIcon.tsx, src/components/NavBar.test.cjs e este histórico. Recorte SVG passa a arco de raio32dp em torno do círculo de raio25dp: folga geométrica7dp, simétrica, sem máscara ou alteração do top-6 aprovado. Ombros contínuos, sombra mais contida. Cinco rotas, labels laterais, ausência de rótulo Mapa, Safe Area e navegação preservados. Indicador inferior reserva espaço também quando inativo, evitando salto dos labels.
+
+Ícones laterais mantêm contorno neutro inativo e recebem desenhos preenchidos em amarelo com detalhes vazados quando ativos. Animated do React Native/native driver anima opacidade e elevação2.5dp em180ms; sem worklets/dependências novas. Pin central grafite com detalhe amarelo,26dp; somente o ícone sobe3.5dp e retorna em200ms por seleção/toque, com cancelamento/limpeza e sem repetição por render. Preferência de movimento reduzido reutilizada do hook existente, sem modificá-lo.
+
+Validação: node scripts/test-radar.cjs src/components/NavBar.test.cjs —6/6 aprovados; node node_modules/typescript/bin/tsc --noEmit —exit0; git diff --check aprovado. Evidência focada: “curva mantém folga simétrica de7dp sem mover o círculo em320/360/400dp”; “ícones laterais: preenchimento com detalhes, transição180ms e elevação2.5dp reversível”; “pin sobe3.5dp e volta uma vez; novo toque repete, render comum não repete e movimento reduzido fica imóvel”. Testes anteriores de cinco rotas/larguras, pin sem texto/posição e reserva inferior de Configurações continuam aprovados.
+
+ADB/Metro8084 existentes reutilizados: capturas reais das cinco abas em claro/escuro confirmam separação, contraste, preenchimento e barra de gestos livre. Gravação curta4s da navbar conferida em quadros: transição lateral e pin com subida/retorno sem deslocamento permanente do círculo. Primeiro formato de gravação não suportado pelo encoder; MP4540x1200 funcionou sem mudar resolução/configuração do aparelho. Logcat ao vivo e filtrado durante novo ciclo de oito toques: nenhuma ocorrência de Worklets ou erro JavaScript. Tema claro restaurado. Artefatos temporários e vídeo no aparelho removidos, sem dados pessoais no histórico.
+
+Larguras320/360/400dp verificadas por testes de geometria; inspeção física somente no aparelho conectado, cerca393dp. Fonte ampliada e movimento reduzido não foram alterados no celular; movimento reduzido coberto em teste. Sem build/reinstalação, alterações de telas internas/backend, commits/push/merge/deploy ou reinício/encerramento do Metro. Branch feat/otimizacoes-beta e alterações locais anteriores preservadas.
+
+
+## 2026-11-14 — MapPinned original e ícones ativos sem contorno externo
+
+Consulta de git show HEAD:NoPonto/src/components/NavBar.tsx confirmou MapPinned do Lucide como desenho original do Mapa (histórico2d8d5ef). NavBarIcon.tsx voltou a renderizar esse ícone fornecido pela configuração de abas, em grafite#302600,26dp, dentro do mesmo Animated.View. Curva, círculo, posicionamento e animações aprovadas não foram modificados.
+
+SVGs ativos de Perfil/Rotinas/Linhas/Mais agora usam fill#FFC107 e stroke none, sem contorno escuro/claro adicional. Preservados os recortes de janelas/engrenagem e os centros das rodas, representadas por círculos amarelos com vazados internos em vez de stroke. Ícones inativos e crossfade/elevação180ms permanecem iguais. Mudança de implementação somente em src/components/NavBarIcon.tsx; testes ajustados em src/components/NavBar.test.cjs e este histórico atualizado.
+
+Regressão comprovada antes da implementação: testes novos falharam ao detectar stroke#926500 e ausência de MapPinned. Depois: node scripts/test-radar.cjs src/components/NavBar.test.cjs —6/6 aprovados; node node_modules/typescript/bin/tsc --noEmit —exit0; git diff --check aprovado. Asserções cobrem desenho MapPinned/cor/tamanho26, ausência de stroke nos quatro SVGs ativos, contorno2 neutro sem preenchimento dos inativos, animações/novo toque/ausência de repetição por render/movimento reduzido, cinco rotas e geometria anterior.
+
+Inspeção real ADB das cinco abas em claro e escuro: ícones sólidos reconhecíveis, detalhes preservados e MapPinned centralizado. Tema claro restaurado; Metro8084 mantido ativo. Sem builds/reinstalação, alterações em telas internas/backend/infraestrutura, commits/push/deploy. Branch feat/otimizacoes-beta e alterações anteriores preservadas. Fonte ampliada, outras dimensões físicas e movimento reduzido no aparelho não foram alterados/testados nesta rodada.
+
+
+## 2026-11-14 — Indicador superior animado e ícones alinhados na navbar
+
+Mudanças restritas a src/components/NavBar.tsx, src/components/NavBarIcon.tsx, src/components/NavBar.test.cjs e este histórico. Curva, posição/tamanho do círculo50dp, cinco rotas e Safe Area preservados. Indicador inferior removido; novo indicador superior24x3dp, top1dp, desliza200ms com Animated/native driver e easing sem bounce. Duas janelas com overflow hidden compartilham a mesma coordenada animada e terminam nos ombros existentes da curva (centro±49dp). O indicador desaparece ao cruzar o recorte e permanece oculto quando Mapa está selecionado. Nenhuma camada sobrepõe o traço ao botão central. Mudança de largura reposiciona imediatamente; movimento reduzido dispensa a animação.
+
+MapPinned original mantido em26dp. Só quando ativo, recebe preenchimento grafite sobre o caminho original do pin e detalhe interno amarelo; base do mapa continua em contorno. Fade180ms e subida/retorno do pin em200ms mantidos. Ícones laterais conservam caixa22dp e contorno neutro inativo; geometrias sólidas normalizadas aos limites dos desenhos em contorno, sem borda externa ou mudança animada de escala. Removida a elevação permanente2.5dp dos laterais, que contrariava o novo requisito de alinhamento; fade180ms preservado e labels não mudam de posição pela seleção.
+
+Validação: node scripts/test-radar.cjs src/components/NavBar.test.cjs —7/7 aprovados; node node_modules/typescript/bin/tsc --noEmit —exit0; git diff --check aprovado. Evidências principais: “Indicador superior desliza200ms, recorta o Mapa e respeita movimento reduzido” (320/360/400dp, clipping central, valor compartilhado, ausência de indicador inferior/repetição por render e estado reduzido); “Ícones laterais mantêm caixa e alinhamento, com fade180ms” (caixa22, sem transform no container, neutros e sólidos sem contorno); “pin sobe3.5dp e volta uma vez; novo toque repete, render comum não repete e movimento reduzido fica imóvel” (MapPinned26, detalhe interno, preenchimento somente ativo e animação). Testes anteriores de curva, posição do círculo e navegação continuam aprovados.
+
+ADB/Metro8084 existentes reutilizados sem build/reinício. Capturas estáveis das cinco abas nos temas claro/escuro e gravação curta5s confirmam indicador superior, ocultação ao atravessar o centro, ícones alinhados, pin preenchido ativo, retorno ao repouso e barra de gestos livre. Capturas transitórias não usadas como homologação. Apareceu um aviso de conexão durante a inspeção: log de20:11:47 identificou falha do transporte WebSockets ao conectar, sem referência à navbar; não houve ajuste em SignalR/rede/backend. Repetidas as capturas encobertas pelo aviso. Novo ciclo rápido de sete toques com logcat ao vivo não registrou erros JavaScript nem Worklets. Tema claro restaurado. Artefatos locais temporários e vídeo temporário do aparelho removidos.
+
+Limites: inspeção física somente no aparelho conectado;320/360/400dp cobertos estruturalmente, sem alterar fonte/densidade/configurações do celular. Movimento reduzido coberto em testes, não ativado fisicamente. Branch feat/otimizacoes-beta e todos os diffs anteriores preservados. Sem outras telas/backend/infraestrutura, commits/push/merge/deploy ou encerramento do Metro.

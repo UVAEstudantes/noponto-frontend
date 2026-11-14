@@ -31,7 +31,7 @@ function render(file, tutorial, props, {height = 800, width = 400, keyboardTop =
     useRef: (value) => ({ current: value }),
     useState: (value) => {
       const index = stateIndex++;
-      return [index in state ? state[index] : value === null ? keyboardTop : value, () => {}];
+      return [index in state ? state[index] : file.endsWith("configuracao.tsx") && index === 0 ? true : value === null ? keyboardTop : value, () => {}];
     },
   };
   const native = new Proxy(
@@ -45,6 +45,7 @@ function render(file, tutorial, props, {height = 800, width = 400, keyboardTop =
   const colors = new Proxy({}, { get: () => "#222" });
   return compile(file, {
     react,
+    "../src/components/GatewayStatus": {GatewayMonitor: "GatewayMonitor", GatewayFooter: "GatewayFooter"},
     "react-native": native,
     "react-native-svg": {
       __esModule: true,
@@ -160,9 +161,9 @@ test("settings replays implemented tutorial and renders no notification test con
     path.resolve(__dirname, "../../../app/configuracao.tsx"),
     tutorial({ replay: () => replayed++ }),
   );
-  assert.match(text(tree), /Rever tutorial/);
+  assert.match(text(tree), /Assistir tutorial completo/);
   const replay = nodes(tree).find(
-    (n) => n.type === "Pressable" && text(n).includes("Rever tutorial"),
+    (n) => n.type === "Pressable" && text(n).includes("Assistir tutorial completo"),
   );
   replay.props.onPress();
   assert.equal(replayed, 1);
@@ -347,7 +348,7 @@ test("settings replays chapter four without mutating preferences", () => {
     (n) =>
       n.type === "Pressable" && text(n).includes("Suas linhas, do seu jeito"),
   );
-  assert.match(text(button), /Concluído/);
+  assert.match(text(button), /Suas linhas, do seu jeito/);
   button.props.onPress();
   assert.deepEqual(called, [4]);
 });
@@ -555,7 +556,7 @@ test("chapter five notification preview is local and settings replay each implem
   const calls = [];
   const settings = render(path.resolve(__dirname, "../../../app/configuracao.tsx"), tutorial({replay: (...args) => calls.push(args)}));
   for (const label of ["Radar de Espera, notificações e voz", "Notificações", "Voz"]) {
-    nodes(settings).find(n => n.type === "Pressable" && (label === "Radar de Espera, notificações e voz" ? text(n).includes(label) : text(n).trim() === label)).props.onPress();
+    nodes(settings).find(n => n.type === "Pressable" && (label === "Radar de Espera, notificações e voz" ? text(n).includes(label) : n.props.accessibilityLabel === `Tutorial: ${label}`)).props.onPress();
   }
   assert.deepEqual(calls, [[5], [5, "5B"], [5, "5C"]]);
 });

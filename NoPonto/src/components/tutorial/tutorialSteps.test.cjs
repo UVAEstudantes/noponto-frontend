@@ -154,3 +154,25 @@ test("full journey persistence keeps six chapters, skipped steps and manual repl
   assert.equal(m.exports.radarBlocked("voicePreview"), false);
   assert.equal(m.exports.radarBlocked(null), false);
 });
+
+test("remover linha durante explicação avança sem reiniciar busca nem apagar progresso", () => {
+  const vm = require("node:vm");
+  const filename = path.join(__dirname, "TutorialProvider.tsx");
+  const source = ts.createSourceFile(filename, fs.readFileSync(filename, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let effect;
+  function visit(node) {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect" && node.arguments[0]?.getText(source).includes("linePanelStep(step) && !lineContext")) effect = node.arguments[0].getText(source);
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  assert.ok(effect);
+  const calls = [];
+  const execute = step => vm.runInNewContext("(" + ts.transpileModule(effect, {}).outputText.trim().replace(/;$/, "") + ")()", {
+    step, lineContext: null, linePanelStep: step => step === "lineRemove", setStep: value => calls.push(value), setResumeVehicles: value => calls.push(value),
+  });
+  execute("lineRemove");
+  assert.deepEqual(calls, ["lineTab"]);
+  calls.length = 0;
+  execute(null);
+  assert.deepEqual(calls, []);
+});

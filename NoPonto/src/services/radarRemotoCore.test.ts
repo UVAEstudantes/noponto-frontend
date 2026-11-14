@@ -201,3 +201,14 @@ test('remoto nao confirma challenge vencido ou malformado e informa allowlist', 
   assert.equal(f.calls.filter(c => c.route.endsWith('/confirmar')).length, 0);
   f.error = 403; await f.client.ativar(config); assert.match(f.client.estado.mensagem!, /owner/);
 });
+
+test('reconciliações simultâneas compartilham leitura mas mutações criam nova fronteira', async () => {
+  const f = fixture(); await f.client.ativar(config); await f.client.confirmar(f.proof());
+  f.calls.length = 0;
+  await Promise.all([f.client.reconciliar(), f.client.reconciliar(), f.client.reconciliar()]);
+  assert.equal(f.calls.filter(c => c.route === '/radar/sessao' && c.method === 'GET').length, 1);
+  f.calls.length = 0;
+  await Promise.all([f.client.reconciliar(), f.client.atualizar(config), f.client.reconciliar()]);
+  assert.equal(f.calls.filter(c => c.route === '/radar/sessao' && c.method === 'GET').length, 3);
+  assert.equal(f.calls.filter(c => c.method === 'PUT').length, 1);
+});
