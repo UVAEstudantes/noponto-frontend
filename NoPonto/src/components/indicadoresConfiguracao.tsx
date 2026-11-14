@@ -61,6 +61,14 @@ export default function IndicadoresConfiguracao() {
           <ChevronDown size={20} color={cores.iconeSecundario} />
         )}
       </Pressable>
+      <View className="flex-row items-center mt-3">
+        <Text className="flex-1 text-sm pr-3" style={{ color: cores.textoPrimario }}>Mostrar direção dos veículos</Text>
+        <Switch value={preferencias.mostrarDirecao} disabled={carregando}
+          accessibilityLabel="Mostrar direção dos veículos"
+          onValueChange={(mostrarDirecao) => atualizar({ mostrarDirecao })}
+          trackColor={{ false: cores.bordaSuave, true: cores.fundoPrimarioSuave }}
+          thumbColor={preferencias.mostrarDirecao ? cores.fundoPrimario : cores.borda} />
+      </View>
       {aberto && (
         <View className="mt-1">
           <View className="flex-row items-center mb-3">

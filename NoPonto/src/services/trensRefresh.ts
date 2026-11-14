@@ -1,8 +1,9 @@
+import { gateway, gatewayBase } from './gateway';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { config } from '@/src/config/env';
+
 
 let pendente = false;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -98,7 +99,7 @@ export async function refreshTrens(paradaId: string, sentidoId: string) {
 
     phase = 'installation_id';
     const id = await obterInstalacaoId();
-    const url = new URL(`/paradas/${paradaId}/trens/refresh`, config.API_BASE_URL).toString();
+    const url = new URL(`/paradas/${paradaId}/trens/refresh`, gatewayBase()).toString();
     const method = 'POST';
     diagnosticar('selected', { paradaId, sentidoId });
     diagnosticar('request', { method, url: urlSemSegredos(url), ...estadoUuid(id) });
@@ -108,7 +109,7 @@ export async function refreshTrens(paradaId: string, sentidoId: string) {
     const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      const request = fetch(url, {
+      const request = gateway.request(url, {
       method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sentidoId, instalacaoId: id }), signal: controller.signal,
       });

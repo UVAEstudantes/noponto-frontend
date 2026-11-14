@@ -18,6 +18,15 @@ module.exports = ({ config }) => {
       ? process.env.NOPONTO_PRODUCTION_GOOGLE_SERVICES_FILE || './android/app/src/production/google-services.json'
       : process.env.NOPONTO_DEV_GOOGLE_SERVICES_FILE;
   let radarOrigin;
+  const radarApiOrigins = [process.env.EXPO_PUBLIC_RADAR_API_BASE_URL, process.env.EXPO_PUBLIC_API_FALLBACK_URL]
+    .filter(Boolean).map(value => {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/' || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+        if (value !== process.env.EXPO_PUBLIC_API_FALLBACK_URL) return null;
+        throw new Error('Gateways do Radar devem ser origens HTTPS sem credenciais.');
+      }
+      return url.origin;
+    }).filter(Boolean);
   const firebasePackage = nativeprobe ? NATIVE_PROBE_PACKAGE
     : productionRadar ? config.android?.package : DEV_PACKAGE;
   let firebaseConfigured = false;
@@ -84,6 +93,7 @@ module.exports = ({ config }) => {
     } : {}),
     extra: {
       ...config.extra,
+      radarApiOrigins,
       radarRemoteEnabled: remoteEnabled,
       ...(radar ? {
         radarStandalone: true,

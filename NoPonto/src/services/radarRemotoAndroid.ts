@@ -1,3 +1,4 @@
+import { gateway, gatewayBase } from './gateway';
 
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -59,7 +60,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
     // Só Dev e Native Probe com Firebase correspondente podem usar este cliente.
     // APK standalone aceita somente a origem HTTPS declarada pelo seu build.
     diagnosticarRadar('http.configuracao', 'inicio');
-    const url = await etapaRadar('http.url', async () => new URL(baseUrl));
+    const url = await etapaRadar('http.url', async () => new URL(gatewayBase(baseUrl)));
     const packageId = Constants.expoConfig?.android?.package;
     const packageAllowed = packageId === 'com.guilhermedesales.nononto.dev'
       || (nativeV1 && packageId === 'com.guilhermedesales.nononto')
@@ -72,7 +73,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
       Platform.OS !== 'android' ||
       !packageAllowed ||
       url.username !== '' || url.password !== '' ||
-      (standalone && (url.protocol !== 'https:' || url.origin !== configuredOrigin)) ||
+      (standalone && (url.protocol !== 'https:' || !([configuredOrigin, ...(Constants.expoConfig?.extra?.radarApiOrigins ?? [])] as string[]).includes(url.origin))) ||
       (
         url.protocol !== 'https:' &&
         !(
@@ -100,7 +101,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
         : path.endsWith('/confirmacoes') ? 'push.solicitar'
         : path.endsWith('/confirmar') ? 'push.confirmar'
         : path.endsWith('/push') ? 'push.status' : 'instalacao';
-      const response = await etapaRadar(`http.${method}.${rota}`, () => fetch(
+      const response = await etapaRadar(`http.${method}.${rota}`, () => gateway.request(
         new URL(path, url).toString(),
         {
           // Cabeçalhos iguais em GET/POST/PUT/DELETE; ngrok recebe o header

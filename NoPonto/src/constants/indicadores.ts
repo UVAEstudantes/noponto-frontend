@@ -56,11 +56,13 @@ export const estilosIndicadores = Object.entries(familiasIndicadores).map(
   }),
 );
 export type PreferenciasIndicadores = {
+  mostrarDirecao: boolean;
   global: boolean;
   estiloGlobal: EstiloIndicador;
   individuais: Record<ModalIndicador, EstiloIndicador>;
 };
 export const indicadoresPadrao: PreferenciasIndicadores = {
+  mostrarDirecao: true,
   global: true,
   estiloGlobal: "padrao",
   individuais: { onibus: "padrao", brt: "padrao", trem: "padrao" },
@@ -76,6 +78,7 @@ export function validarPreferenciasIndicadores(
     return "padrao";
   };
   return {
+    mostrarDirecao: typeof dados?.mostrarDirecao === "boolean" ? dados.mostrarDirecao : true,
     global: typeof dados?.global === "boolean" ? dados.global : true,
     estiloGlobal: estilo(dados?.estiloGlobal),
     individuais: Object.fromEntries(

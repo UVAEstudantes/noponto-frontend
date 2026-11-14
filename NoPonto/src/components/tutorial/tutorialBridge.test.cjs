@@ -290,6 +290,7 @@ test("full map script embeds bridge without changing its javascript syntax", () 
   const exports = {};
   const mocks = {
     "./tutorialBridge": { TUTORIAL_MAP_BRIDGE },
+    "./userLocation": require("../mapOSM/webview/userLocation.ts"),
     "../../../services/physicalPresenceContract": {
       physicalLocationLabels: {},
     },

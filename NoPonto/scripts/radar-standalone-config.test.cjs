@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const keys = ['APP_VARIANT', 'EXPO_PUBLIC_RADAR_REMOTE_ENABLED', 'EXPO_PUBLIC_RADAR_API_BASE_URL',
-  'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_GPS_HUB_URL', 'NOPONTO_DEV_GOOGLE_SERVICES_FILE',
+  'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_API_FALLBACK_URL', 'EXPO_PUBLIC_GPS_HUB_URL', 'NOPONTO_DEV_GOOGLE_SERVICES_FILE',
   'NOPONTO_PRODUCTION_GOOGLE_SERVICES_FILE', 'EAS_BUILD'];
 
 function withEnv(env, action) {
@@ -67,7 +67,8 @@ test('config local sem perfil prepara o app Dev para expo run:android', () => {
 });
 
 test('EAS producao preserva identificador e configuracao original', () => {
-  assert.deepEqual(profiles.production.env, { APP_VARIANT: 'production' });
+  assert.equal(profiles.production.env.APP_VARIANT, 'production');
+  assert.ok(profiles.production.env.EXPO_PUBLIC_API_FALLBACK_URL);
   withEnv({ EAS_BUILD: 'true' }, () => {
     const output = config();
     assert.equal(output.name, base.name);
@@ -81,7 +82,8 @@ test('EAS producao preserva identificador e configuracao original', () => {
 test('EAS preview gera APK standalone com o applicationId de produção', () => {
   assert.equal(profiles.preview.distribution, 'internal');
   assert.equal(profiles.preview.android.buildType, 'apk');
-  assert.deepEqual(profiles.preview.env, { APP_VARIANT: 'production' });
+  assert.equal(profiles.preview.env.APP_VARIANT, 'production');
+  assert.ok(profiles.preview.env.EXPO_PUBLIC_API_FALLBACK_URL);
   withEnv({ ...profiles.preview.env, EAS_BUILD: 'true' }, () => {
     const output = config();
     assert.equal(output.name, 'No Ponto');
@@ -169,4 +171,13 @@ test('script productionRelease valida config Expo antes do Gradle e preserva URL
   }
   assert.ok(fs.readFileSync(path.join(__dirname, 'android-local-build-common.ps1'), 'utf8')
     .includes('node_modules/expo/bin/cli'), 'preflight executes Expo CLI as a child process inheriting the process environment');
+});
+
+test('production bundle declares two HTTPS gateway origins for standalone Radar', () => {
+  withEnv({ ...profiles.production.env, EAS_BUILD: 'true' }, () => {
+    const output = config();
+    assert.deepEqual(output.extra.radarApiOrigins, [profiles.production.env.EXPO_PUBLIC_RADAR_API_BASE_URL, profiles.production.env.EXPO_PUBLIC_API_FALLBACK_URL]);
+    assert.notEqual(output.extra.radarApiOrigins[0], output.extra.radarApiOrigins[1]);
+    assert.equal(new URL(profiles.production.env.EXPO_PUBLIC_GPS_HUB_URL).hostname, new URL(output.extra.radarApiOrigins[0]).hostname);
+  });
 });

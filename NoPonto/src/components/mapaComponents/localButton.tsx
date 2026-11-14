@@ -1,6 +1,6 @@
 import { LocateFixed } from "lucide-react-native";
 import { useTema } from "@/src/hooks/useTema";
-import React from "react";
+import React, { useRef } from "react";
 import { Pressable } from "react-native";
 
 export default function LocalButton({
@@ -13,8 +13,20 @@ export default function LocalButton({
   mapRef: React.RefObject<any>;
 }) {
   const { cores } = useTema();
+  const pendingLocation = useRef<Promise<void> | null>(null);
   function locationUser() {
-    if (onRequestLocation) { void onRequestLocation(); return; }
+    if (location?.coords && mapRef.current?.centerOnUser) {
+      mapRef.current.centerOnUser();
+      return;
+    }
+    if (onRequestLocation) {
+      if (!pendingLocation.current) {
+        const pending = Promise.resolve().then(onRequestLocation);
+        pendingLocation.current = pending;
+        void pending.finally(() => { if (pendingLocation.current === pending) pendingLocation.current = null; }).catch(() => {});
+      }
+      return;
+    }
     if (mapRef.current?.centerOnUser) {
       mapRef.current.centerOnUser();
       return;

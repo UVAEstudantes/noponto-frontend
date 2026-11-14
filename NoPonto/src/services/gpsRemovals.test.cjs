@@ -70,10 +70,13 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
   }});
   const api = {get:async () => ({ok:true, data:{posicoes:[]}})};
   const structures = new Map();
+  let gatewayActive = 0, gatewayFailures = 0; const gatewayListeners = new Set();
+  const gatewayMock = { snapshot: () => ({active: gatewayActive, status: 'online'}), subscribe: fn => { gatewayListeners.add(fn); return () => gatewayListeners.delete(fn); }, hubConnected() {}, hubFailure() { gatewayFailures++; } };
   const mocks = {
+    './gateway': { gateway: gatewayMock, gatewayHubUrl: () => gatewayActive ? 'https://reserve.test/hub/gps' : 'https://primary.test/hub/gps' },
     ...(unified?{'@/src/services/unifiedLocation':{useUnifiedLocation:()=>({snapshots:unified,now:clock.now})}}:{}),
     '@/src/config/env':{config:{GPS_HUB_URL:'fixture'}},
-    '@microsoft/signalr':{HubConnectionBuilder, HubConnectionState:{Connected:'Connected',Connecting:'Connecting'}},
+    '@microsoft/signalr':{HubConnectionBuilder, HubConnectionState:{Connected:'Connected',Connecting:'Connecting',Disconnected:'Disconnected',Disconnecting:'Disconnecting',Reconnecting:'Reconnecting'}},
     'react-native':{AppState:appState,Platform:{OS:'android'}},
     '@/src/services/estruturaV2':{obterTerminaisOficiaisV2:async()=>[],listarPadroesV2:async () => [], listarSentidosV2:async () => [], obterItinerarioPadraoVersaoV2:async id => structures.get(id) ?? null},
     '@/src/context/ProvedorIndicadores':{useIndicadores:() => ({preferencias:{global:true,estiloGlobal:'padrao',individuais:{onibus:'padrao',brt:'padrao',trem:'padrao'}}})},
@@ -124,6 +127,8 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
     return {render(props) {currentReact = runtime.react; return runtime.render(() => component(props, ref));}};
   }
   return {load, service, hub, handlers, callbacks, calls, clock, intervals, appState, hook, api, raw, structures, bridge, diagnostics,
+    gatewayFailures: () => gatewayFailures,
+    switchGateway() { gatewayActive = 1; gatewayListeners.forEach(fn => fn()); },
     emit(name, payload) {assert.equal(typeof handlers[name], 'function', name + ' handler must be registered'); handlers[name](payload);},
     async flush() {await new Promise(setImmediate); await new Promise(setImmediate);},
     dispose() {runtimes.forEach(r => r.dispose());},
@@ -1634,3 +1639,25 @@ test('empty rail feed schedules no frames and clears the last train only once',(
 });
 
 test('public popup replaces provisional origin wording without promoting or mutating terminal evidence',()=>{const f=fixture({presence:false});try{const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);const p={id:'bus',timestamp:f.clock.now,backendUnified:true,presencaRotulo:'Na região da origem',vehicleState:'Na região da origem'};const html=web.context.buildPopup({nome:'838'},p,p.id,0);assert.match(html,/Localização aproximada/);assert.doesNotMatch(html,/Na região da origem|No terminal/);assert.equal(p.presencaRotulo,'Na região da origem');}finally{f.dispose();}});
+
+test('gateway switch preserves listeners and restores owned lines without duplicate subscriptions', async () => {
+  const f = fixture(); let updates = 0;
+  f.service.iniciarGpsHub(() => updates++);
+  const owner = Symbol('gateway-test');
+  await f.service.atualizarInscricoesGps(owner, ['006', '010']);
+  f.calls.length = 0;
+  f.switchGateway(); await f.flush();
+  assert.equal(f.hub.baseUrl, 'https://reserve.test/hub/gps');
+  assert.equal(f.hub.state, 'Connected');
+  assert.deepEqual(f.calls.filter(x => x[0] === 'InscreverseLinha').map(x => x[1]).sort(), ['006', '010']);
+  f.emit('PosicaoAtualizada', [f.raw()]); assert.equal(updates, 1);
+  f.dispose();
+});
+test('intentional GPS stop without owners does not report gateway failure', async () => {
+  const f = fixture(); const owner = Symbol('intentional-stop');
+  f.service.iniciarGpsHub(() => {});
+  await f.service.atualizarInscricoesGps(owner, ['006']);
+  await f.service.atualizarInscricoesGps(owner, []); await f.flush();
+  assert.equal(f.hub.state, 'Disconnected'); assert.equal(f.gatewayFailures(), 0);
+  f.dispose();
+});

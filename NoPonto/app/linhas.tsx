@@ -1,3 +1,4 @@
+import { useUserLocationWatch } from '@/src/hooks/useUserLocationWatch';
 import { useTutorial } from "@/src/components/tutorial/TutorialProvider";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { ROAD_PRESENCE_ENABLED } from '@/src/services/roadPresence';
@@ -31,11 +32,9 @@ import {
 } from "@/src/types/transporte";
 import {
   getCurrentPositionAsync,
-  LocationAccuracy,
   LocationObject,
   requestForegroundPermissionsAsync,
   getForegroundPermissionsAsync,
-  watchPositionAsync,
 } from "expo-location";
 import {
   AlertTriangle,
@@ -501,21 +500,7 @@ const Linhas = () => {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!isFocused || !locationGranted) return;
-    let sub: any;
-    (async () => {
-      sub = await watchPositionAsync(
-        {
-          accuracy: LocationAccuracy.Highest,
-          timeInterval: 2000,
-          distanceInterval: 5,
-        },
-        (r) => setLocation(r),
-      );
-    })();
-    return () => sub?.remove();
-  }, [isFocused, locationGranted]);
+  useUserLocationWatch(isFocused && locationGranted, setLocation);
 
   // ─── Modal de transporte ──────────────────────────────────────────────────
 

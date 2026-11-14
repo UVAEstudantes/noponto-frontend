@@ -166,6 +166,12 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     const [mapReady, setMapReady] = React.useState(false);
     const [mapGeneration, setMapGeneration] = React.useState(0);
 
+    useEffect(() => {
+      if (!mapReady) return;
+      injectWebViewCommand(webViewRef,
+        `if(window.updateVehicleDirections) window.updateVehicleDirections(${preferencias.mostrarDirecao !== false});`);
+    }, [mapReady, mapGeneration, preferencias.mostrarDirecao]);
+
     const lastIndicatorMessage=useRef('');
     useEffect(() => {
       if (!mapReady) return;
@@ -184,6 +190,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
         userLocation: location?.coords
           ? [location.coords.latitude, location.coords.longitude]
           : null,
+        timestamp: location?.timestamp ?? null,
+        speed: location?.coords?.speed ?? null,
         heading: location?.coords?.heading ?? null,
         accuracy: location?.coords?.accuracy ?? null,
         // Hydrating geometry/theme must not send a transient empty GPS snapshot.
@@ -250,6 +258,8 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
 
       const data = {
         userLocation: [location.coords.latitude, location.coords.longitude],
+        timestamp: location.timestamp,
+        speed: location.coords.speed ?? null,
         heading: location.coords.heading ?? null,
         accuracy: location.coords.accuracy ?? null,
       };

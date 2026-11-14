@@ -413,3 +413,91 @@ test("preferences hydrate and persist ordered writes on a dedicated key across p
   await settle();
   assert.deepEqual(h2.render().preferencias, value.preferencias);
 });
+
+
+test("vehicle direction preserves cardinal headings, color and seven pixel artwork gap", () => {
+  const c = runtime();
+  for (const {id: style} of estilosIndicadores) for (const {id: modal} of modaisIndicadores) {
+    c.window.updateIndicatorStyles({onibus: style, brt: style, trem: style});
+    for (const heading of [0, 90, 180, 270]) {
+      c.map = {getBearing: () => 35};
+      const el = c.busIcon('#2468AC', heading, modal);
+      assert.equal(el.getAttribute('data-direction-known'), 'true');
+      assert.equal(el.querySelector('.bus-inner').style['--h'], (heading - 35) + 'deg');
+      const triangle = el.querySelector('.vehicle-direction');
+      assert.equal(triangle.style.borderBottomColor, '#2468AC');
+      const art = renderizarIndicador(style, modal, '#2468AC');
+      const front = art.orientacao === 180 ? art.altura - art.ancoraY : art.ancoraY;
+      assert.ok(Math.abs(20 - front - (parseFloat(triangle.style.top) + 7) - 7) < 1e-8);
+      assert.equal(el.querySelector('.bus-inner').children.length, 2, 'one image and one triangle');
+    }
+  }
+});
+
+test("unknown heading stays hidden and stopped vehicles retain last valid direction", () => {
+  const c = runtime();
+  const el = c.busIcon('#2468AC', null, 'onibus'), marker = {getElement: () => el};
+  assert.equal(el.getAttribute('data-direction-known'), null);
+  for (const unknown of [null, undefined, NaN, Infinity]) c.setHeading(marker, unknown);
+  assert.equal(el.getAttribute('data-direction-known'), null);
+  c.setHeading(marker, 0);
+  for (const unknown of [null, undefined, NaN]) c.setHeading(marker, unknown);
+  assert.equal(el.getAttribute('data-direction-known'), 'true');
+  assert.equal(el.querySelector('.bus-inner').style['--h'], '0deg');
+  const physical = c.busIcon('#2468AC', null, 'brt');
+  assert.equal(physical.getAttribute('data-direction-known'), null);
+  const rail = c.railMarkerElement({operationalStatus: 'Live'}, 'r');
+  assert.equal(rail.getAttribute('data-direction-known'), null);
+});
+
+test("direction toggle and map rotation preserve marker identity, zoom size and subscriptions", () => {
+  const c = runtime(), classes = new Set();
+  c.document.body = {classList: {toggle: (name, on) => on ? classes.add(name) : classes.delete(name)}};
+  let bearing = 0;
+  c.map = {getBearing: () => bearing};
+  const el = c.busIcon('#2468AC', 90, 'brt');
+  const marker = {getElement: () => el};
+  c.vehicleMarkers.v = marker; c.vehicleHeadings.v = 90;
+  const triangle = el.querySelector('.vehicle-direction'), top = triangle.style.top;
+  for (const show of [false, true, false, true]) {
+    c.window.updateVehicleDirections(show);
+    assert.equal(classes.has('hide-vehicle-directions'), !show);
+    assert.strictEqual(c.vehicleMarkers.v, marker);
+    assert.strictEqual(el.querySelector('.vehicle-direction'), triangle);
+  }
+  for (bearing of [0, 90, 180, 270]) {
+    c.refreshVehicleHeadings();
+    const adjusted = parseFloat(el.querySelector('.bus-inner').style['--h']);
+    assert.equal(((adjusted + bearing) % 360 + 360) % 360, 90);
+    assert.equal(triangle.style.top, top, 'fixed pixel placement across zoom-independent heading updates');
+  }
+  const css = fs.readFileSync(path.join(__dirname, '../components/mapOSM/webview/mapStyles.ts'), 'utf8');
+  assert.match(css, /body\.hide-vehicle-directions \.vehicle-direction\{display:none\}/);
+  const triangleCss = css.match(/\.vehicle-direction\{([^}]+)\}/)[1];
+  assert.match(triangleCss, /border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:13px solid #fff/);
+  assert.match(triangleCss, /transform:translateY\(-6px\)/);
+  assert.match(css, /left:-4px;top:3px[^}]*border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid var\(--direction-color\)/);
+  const outerHeight = Number(triangleCss.match(/border-bottom:(\d+)px solid #fff/)[1]);
+  const innerHeight = Number(css.match(/border-bottom:(\d+)px solid var\(--direction-color\)/)[1]);
+  const innerTop = Number(css.match(/left:-4px;top:(\d+)px/)[1]);
+  const cssOffset = Number(triangleCss.match(/translateY\((-\d+)px\)/)[1]);
+  assert.equal(-14 + cssOffset + outerHeight, -7, 'triangle base stays 7px ahead of vehicle art');
+  assert.equal(outerHeight - innerTop - innerHeight, 3, 'white base border remains 3px');
+  assert.match(css, /border-bottom:7px solid var\(--direction-color\)/);
+});
+
+test("direction preference defaults on, persists off and hydrates across provider restart", async () => {
+  assert.equal(validarPreferenciasIndicadores({...indicadoresPadrao, mostrarDirecao: undefined}).mostrarDirecao, true);
+  let saved;
+  const storage = {getItem: async () => saved ?? null, setItem: async (_, value) => {saved = value;}};
+  const h = providerHarness(storage);
+  assert.equal(h.render().preferencias.mostrarDirecao, true);
+  h.effects[0](); await settle();
+  h.render().atualizar({mostrarDirecao: false}); await settle();
+  assert.equal(JSON.parse(saved).mostrarDirecao, false);
+  const restored = providerHarness(storage);
+  restored.render(); restored.effects[0](); await settle();
+  assert.equal(restored.render().preferencias.mostrarDirecao, false);
+  restored.render().atualizar({mostrarDirecao: true}); await settle();
+  assert.equal(JSON.parse(saved).mostrarDirecao, true);
+});

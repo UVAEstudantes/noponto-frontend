@@ -1,5 +1,6 @@
 import { AppState, Platform } from "react-native";
-import { config } from "@/src/config/env";
+
+import { gateway, gatewayHubUrl } from './gateway';
 import {
   adaptarPosicaoRodoviariaV2,
   PosicaoRodoviariaV2Dto,
@@ -9,9 +10,8 @@ import * as signalR from "@microsoft/signalr";
 import { codigoLinhaEsvaziada, gpsSnapshotGuard } from "./gpsSnapshotGuard";
 import { traceRoadBatch, traceRoadLineEmpty, traceRoadRaw } from './roadPresenceDiagnostics';
 
-const HUB_URL = config.GPS_HUB_URL
-  .replace(/^wss:/i, "https:")
-  .replace(/^ws:/i, "http:");
+let gatewayChanging = false;
+let gatewayIndex = gateway.snapshot().active;
 
 let connection: signalR.HubConnection | null = null;
 const donosInscricoes = new Map<symbol, Set<string>>();
@@ -24,23 +24,32 @@ const physicalOwners = new Map<symbol, Set<string>>();
 const physicalSubscribed = new Set<string>();
 let physicalSynchronization: Promise<void> = Promise.resolve();
 let suspenso = Platform.OS === 'android' && AppState.currentState === 'background';
-let paradaPendente: Promise<void> = Promise.resolve();
+// Starting, stopping and changing transport must share the same lifecycle queue.
+let operacaoConexao: Promise<void> = Promise.resolve();
+let paradaIntencional = false;
 const donoDireto = Symbol('gps-direct');
 const linhasDiretas = new Set<string>();
 const temDemanda = () => !suspenso && [...donosInscricoes.values(), ...physicalOwners.values()].some(ids => ids.size > 0);
 
-function pararConexao(): Promise<void> {
-  geracaoConexao++; inscritas.clear(); physicalSubscribed.clear();
-  gpsSnapshotGuard.invalidarLeituras();
-  paradaPendente = paradaPendente.catch(() => undefined).then(async () => {
-    if (connection && connection.state !== signalR.HubConnectionState.Disconnected) await connection.stop();
+function pararConexao(forcar = true): Promise<void> {
+  if (forcar) gpsSnapshotGuard.invalidarLeituras();
+  operacaoConexao = operacaoConexao.catch(() => undefined).then(async () => {
+    if (!forcar && temDemanda()) return;
+    if (!forcar) gpsSnapshotGuard.invalidarLeituras();
+    geracaoConexao++; inscritas.clear(); physicalSubscribed.clear();
+    if (!connection || connection.state === signalR.HubConnectionState.Disconnected) return;
+    paradaIntencional = true;
+    try { await connection.stop(); }
+    finally { paradaIntencional = false; }
   }).catch(error => console.warn('Falha ao suspender GPS', error));
-  return paradaPendente;
+  return operacaoConexao;
 }
 
 function liberarSeOciosa(): void {
-  void Promise.allSettled([sincronizacao, physicalSynchronization]).then(() => {
-    if (!temDemanda()) return pararConexao();
+  const gps = sincronizacao, physical = physicalSynchronization;
+  void Promise.allSettled([gps, physical]).then(() => {
+    if (gps !== sincronizacao || physical !== physicalSynchronization) return;
+    if (!temDemanda()) return pararConexao(false);
   });
 }
 
@@ -156,7 +165,7 @@ export function iniciarGpsHub(
   if (connection) return connection;
 
   connection = new signalR.HubConnectionBuilder()
-    .withUrl(HUB_URL)
+    .withUrl(gatewayHubUrl(), { headers: { 'ngrok-skip-browser-warning': '1' } })
     .withAutomaticReconnect()
     .build();
 
@@ -194,7 +203,7 @@ export function iniciarGpsHub(
 
   connection.onreconnecting(() => { physicalListeners.forEach((fn) => fn({ resetPhysicalPresence: true })); gpsSnapshotGuard.invalidarLeituras(); console.log("🔄 reconectando SignalR..."); });
   connection.onreconnected(() => { gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); void reconciliarInscricoesGps(); void reconcilePhysicalPresence(); console.log("✅ reconectado"); });
-  connection.onclose(() => { physicalListeners.forEach((fn) => fn({ resetPhysicalPresence: true })); gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("❌ conexão encerrada"); });
+  connection.onclose(() => { if (!paradaIntencional && !gatewayChanging && temDemanda()) void gateway.hubFailure(); physicalListeners.forEach((fn) => fn({ resetPhysicalPresence: true })); gpsSnapshotGuard.invalidarLeituras(); geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("❌ conexão encerrada"); });
 
   return connection;
 }
@@ -208,25 +217,25 @@ export function removerGpsHubListener(
   if (__DEV__) console.log("[GpsHub] listener removido", obterDiagnosticoGpsHub());
 }
 
-export async function conectarGpsHub(): Promise<void> {
-  await paradaPendente;
-  if (!connection || !temDemanda()) return;
-
-  if (conexaoPendente) { await conexaoPendente; return; }
-
-  if (
-    connection.state === signalR.HubConnectionState.Connected ||
-    connection.state === signalR.HubConnectionState.Connecting
-  ) {
-    return;
-  }
-
-  conexaoPendente ??= connection.start().then(() => {
-    gpsSnapshotGuard.invalidarLeituras();
-    geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("✅ SignalR conectado");
-  }).catch((err) => { console.error("Erro ao conectar SignalR", err); })
-    .finally(() => { conexaoPendente = null; });
-  await conexaoPendente;
+export function conectarGpsHub(): Promise<void> {
+  if (conexaoPendente && operacaoConexao === conexaoPendente) return conexaoPendente;
+  const pending = operacaoConexao.catch(() => undefined).then(async () => {
+    // Automatic reconnect owns Reconnecting; only start a fully stopped connection.
+    if (!connection || !temDemanda() || gatewayChanging || connection.state !== signalR.HubConnectionState.Disconnected) return;
+    try {
+      await connection.start();
+      if (!suspenso && !gatewayChanging && temDemanda()) gateway.hubConnected();
+      gpsSnapshotGuard.invalidarLeituras();
+      geracaoConexao++; inscritas.clear(); physicalSubscribed.clear(); console.log("✅ SignalR conectado");
+    } catch (err) {
+      if (!gatewayChanging && temDemanda()) void gateway.hubFailure();
+      console.error("Erro ao conectar SignalR", err);
+    }
+  });
+  const finalized = pending.finally(() => { if (conexaoPendente === finalized) conexaoPendente = null; });
+  conexaoPendente = finalized;
+  operacaoConexao = finalized;
+  return finalized;
 }
 
 async function aguardarConexao(timeoutMs: number = 4000): Promise<boolean> {
@@ -256,3 +265,19 @@ export async function cancelarLinha(codigoLinha: string): Promise<void> {
   linhasDiretas.delete(codigoLinha);
   await atualizarInscricoesGps(donoDireto, [...linhasDiretas]);
 }
+
+gateway.subscribe(() => {
+  if (gatewayIndex === gateway.snapshot().active) {
+    if (!gatewayChanging && gateway.snapshot().status === 'online' && temDemanda() && connection?.state === signalR.HubConnectionState.Disconnected) {
+      void Promise.all([reconciliarInscricoesGps(), reconcilePhysicalPresence()]).catch(() => {});
+    }
+    return;
+  }
+  gatewayIndex = gateway.snapshot().active;
+  gatewayChanging = true;
+  void pararConexao().then(async () => {
+    if (connection) connection.baseUrl = gatewayHubUrl();
+    gatewayChanging = false;
+    if (temDemanda()) await Promise.all([reconciliarInscricoesGps(), reconcilePhysicalPresence()]);
+  }).catch(() => { gatewayChanging = false; console.warn('[Gateway] GPS aguardando recuperação'); });
+});
