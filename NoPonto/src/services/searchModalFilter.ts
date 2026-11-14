@@ -3,10 +3,13 @@ import type { ModalTransporteDto } from "../types/transporte";
 
 // Compartilha carregamentos concorrentes e guarda somente catálogos válidos.
 export function criarFiltroModalBusca(carregar: () => Promise<ModalTransporteDto[]>) {
+  let expira = 0;
   let catalogo: Promise<ModalTransporteDto[]> | undefined;
   return async (categoria: CategoriaTransporteV2): Promise<{ modalId: string }> => {
+    if (expira && Date.now() >= expira) { catalogo = undefined; expira = 0; }
     catalogo ??= carregar().then((modais) => {
       if (!modais.length) throw new Error("Não foi possível carregar o catálogo de modais.");
+      expira = Date.now() + 300000;
       return modais;
     }).catch((error) => {
       catalogo = undefined;

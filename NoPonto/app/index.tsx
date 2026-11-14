@@ -67,6 +67,7 @@ import { carregarHistoricoBusca, filtrarHistoricoBusca, historicoParaOpcao,
 import { gerarCorAleatoria } from "@/src/utils/cores";
 import { assinaturaEstruturalParadas } from "@/src/services/mapStructure";
 import {
+  getLastKnownPositionAsync,
   getCurrentPositionAsync,
   LocationObject,
   requestForegroundPermissionsAsync,
@@ -199,8 +200,20 @@ const Home = () => {
     if (!initialMapReady || !tutorial.initialLocation || initialLocationApplied.current) return;
     initialLocationApplied.current = true;
     setLocation(tutorial.initialLocation);
-    mapRef.current?.fitToCoordinates([tutorial.initialLocation.coords]);
+
   }, [initialMapReady, tutorial.initialLocation]);
+  useEffect(() => {
+    if (tutorial.initialLocationPending) return;
+    let live = true;
+    void (async () => {
+      if (!(await getForegroundPermissionsAsync()).granted) return;
+      const anterior = await getLastKnownPositionAsync({ maxAge: 60000, requiredAccuracy: 100 }).catch(() => null);
+      if (live && anterior) setLocation(anterior);
+      const atual = await getCurrentPositionAsync();
+      if (live) setLocation(atual);
+    })().catch(() => {});
+    return () => { live = false; };
+  }, [tutorial.initialLocationPending]);
   const [paradaSelecionada, setParadaSelecionada] = useState<Parada | null>(
     null,
   );

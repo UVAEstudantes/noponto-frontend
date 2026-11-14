@@ -1,3 +1,4 @@
+import { ALTURA_NAVBAR } from "@/src/constants/navegacao";
 import { GatewayFooter } from '../src/components/GatewayStatus';
 import { useTutorial } from '@/src/components/tutorial/TutorialProvider';
 import { estilosMapaDisponiveis } from "@/src/constants/estilosMapa";
@@ -20,11 +21,12 @@ import {
   Sun,
   Volume2,
 } from "lucide-react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import IndicadoresConfiguracao from "@/src/components/indicadoresConfiguracao";
 
 const Configuracao = () => {
   const tutorial = useTutorial();
+  const insets = useSafeAreaInsets();
   const [tutorialAberto, setTutorialAberto] = useState(false);
   const {
     temaAtual,
@@ -73,7 +75,7 @@ const Configuracao = () => {
         contentContainerStyle={{
           paddingHorizontal: 20,
           paddingTop: 12,
-          paddingBottom: 75,
+          paddingBottom: ALTURA_NAVBAR + insets.bottom + 12,
         }}
         showsVerticalScrollIndicator={false}
       >

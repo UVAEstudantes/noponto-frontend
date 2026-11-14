@@ -19,6 +19,7 @@ import {
   VeiculoTempoReal,
 } from "@/src/types/transporte";
 import { api } from "./api";
+import { criarCatalogoCompartilhado } from "./catalogoCompartilhado";
 import { categoriaLinhaV2 } from "@/src/types/estruturaV2";
 import { listarLinhasV2, type FiltrosLinhasV2 } from "./estruturaV2";
 import { adaptarPosicaoRodoviariaV2 } from "./veiculosMapa";
@@ -38,11 +39,11 @@ const FORMATADOR_NUMERICO = new Intl.Collator("pt-BR", {
 
 // ─── /modais ───────────────────────────────────────────────────────────────
 
-export async function buscarModais(): Promise<ModalTransporteDto[]> {
+export const buscarModais = criarCatalogoCompartilhado(async (): Promise<ModalTransporteDto[]> => {
   const response = await api.get<ModalTransporteDto[]>("/modais");
   if (!response.ok || !response.data) return [];
   return response.data;
-}
+});
 
 // ─── /linhas ───────────────────────────────────────────────────────────────
 

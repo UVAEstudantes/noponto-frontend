@@ -78,6 +78,7 @@ const ConteudoLayout = () => {
               }}
             >
               <Tabs.Screen name="index" />
+              <Tabs.Screen name="perfil" />
               <Tabs.Screen name="favoritos" />
               <Tabs.Screen name="linhas" />
               <Tabs.Screen name="configuracao" />

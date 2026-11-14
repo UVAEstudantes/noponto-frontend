@@ -1,3 +1,4 @@
+import { itinerarioPersistido } from "./itinerarioPersistido";
 import { api } from "@/src/services/api";
 import type {
   ItinerarioPadraoVersaoV2, LinhaV2, PadraoOperacionalV2, SentidoV2,
@@ -72,12 +73,18 @@ export async function listarPadroesV2(sentidoId: string) {
 }
 
 export function obterItinerarioPadraoVersaoV2(padraoVersaoId: string) {
-  return itinerariosPorVersao.get(padraoVersaoId, () =>
-    api
-      .get<ItinerarioPadraoVersaoV2>(`/padroes-versoes/${padraoVersaoId}/itinerario`)
-      .then((response) => response.ok && response.data ? response.data : null)
-      .catch(() => null),
-  );
+  return itinerariosPorVersao.get(padraoVersaoId, async () => {
+    const carregar = () => api.get<ItinerarioPadraoVersaoV2>(`/padroes-versoes/${padraoVersaoId}/itinerario`)
+      .then(response => response.ok && response.data ? response.data : null).catch(() => null);
+    try {
+      const { default: storage } = await import("@react-native-async-storage/async-storage");
+      return await itinerarioPersistido(storage, padraoVersaoId, carregar,
+        (value): value is ItinerarioPadraoVersaoV2 => !!value && typeof value === "object"
+          && (value as ItinerarioPadraoVersaoV2).padraoVersaoId === padraoVersaoId
+          && Array.isArray((value as ItinerarioPadraoVersaoV2).ocorrencias)
+          && Array.isArray((value as ItinerarioPadraoVersaoV2).geometria?.coordenadas));
+    } catch { return carregar(); }
+  });
 }
 
 export function limparCacheEstruturalV2ParaTestes() { itinerariosPorVersao.clear();terminaisPorLinha.clear(); }

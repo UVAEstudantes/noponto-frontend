@@ -1,334 +1,216 @@
+import { ALTURA_NAVBAR } from "@/src/constants/navegacao";
 import { useTutorial } from "./tutorial/TutorialProvider";
 import TutorialTarget from "./tutorial/TutorialTarget";
 import { useTema } from "@/src/hooks/useTema";
 import { router, usePathname } from "expo-router";
 import {
   Bus,
-  LucideIcon,
   MapPinned,
   Settings,
   Repeat2,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Extrapolation,
-  interpolate,
-  useAnimatedProps,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import React, { useEffect, useRef, useState } from "react";
+import { useMovimentoReduzido } from "@/src/components/demo/InterfaceDemo";
+import NavBarIcon from "./NavBarIcon";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
-type TabRoute = "/favoritos" | "/linhas" | "/" | "/configuracao";
+type TabRoute = "/perfil" | "/favoritos" | "/" | "/linhas" | "/configuracao";
 type TabItem = { href: TabRoute; label: string; Icon: LucideIcon };
-
 const tabs: TabItem[] = [
+  { href: "/perfil", label: "Perfil", Icon: UserRound },
   { href: "/favoritos", label: "Rotinas", Icon: Repeat2 },
-  { href: "/linhas", label: "Linhas", Icon: Bus },
   { href: "/", label: "Mapa", Icon: MapPinned },
+  { href: "/linhas", label: "Linhas", Icon: Bus },
   { href: "/configuracao", label: "Mais", Icon: Settings },
 ];
-const SPRING_CONFIG = { damping: 18, stiffness: 200, mass: 0.85 };
-const BUMP_CONFIG = { damping: 22, stiffness: 320, mass: 0.6 };
-
 function routeMatches(href: TabRoute, pathname: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/"
+    ? pathname === "/"
+    : pathname === href || pathname.startsWith(`${href}/`);
 }
-
-function TabButton({
-  tab,
-  isActive,
-  tabWidth,
-  bumpProgress,
-  cores,
-}: {
-  tab: TabItem;
-  isActive: boolean;
-  tabWidth: number;
-  bumpProgress: ReturnType<typeof useSharedValue<number>>;
-  cores: any;
-}) {
-  const iconStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      bumpProgress.value,
-      [0, 0.4, 1],
-      [1, 0.1, 0],
-      Extrapolation.CLAMP,
-    ),
-    transform: [
-      {
-        translateY: interpolate(
-          bumpProgress.value,
-          [0, 1],
-          [0, -6],
-          Extrapolation.CLAMP,
-        ),
-      },
-    ],
-  }));
-
-  const labelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      bumpProgress.value,
-      [0, 0.5, 1],
-      [0.55, 0.1, 0],
-      Extrapolation.CLAMP,
-    ),
-  }));
-
-  const tutorial = useTutorial();
-  const handlePress = () => {
-    if (!isActive) router.navigate(tab.href);
-  };
-
-  return (
-    <TutorialTarget component={Pressable} kind="line" enabled={tab.href === "/linhas" && tutorial.step === "lineTab"}
-      onPress={handlePress}
-      accessibilityRole="tab"
-      accessibilityLabel={`Ir para ${tab.label}`}
-      accessibilityState={{ selected: isActive }}
-      style={{
-        width: tabWidth,
-        height: "100%",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 3,
-      }}
-    >
-      <Animated.View style={iconStyle}>
-        <tab.Icon color={cores.iconeSecundario} size={20} strokeWidth={2.1} />
-      </Animated.View>
-      <Animated.Text
-        style={[labelStyle, { fontSize: 10, color: cores.textoSecundario }]}
-      >
-        {tab.label}
-      </Animated.Text>
-    </TutorialTarget>
-  );
-}
-
-function SphereIcon({ tab }: { tab: TabItem }) {
-  return <tab.Icon color="#FFFFFF" size={22} strokeWidth={2.4} />;
-}
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-function NavShape({
+export function NavBarIndicator({
   width,
-  height,
-  notchCX,
-  notchR,
-  br,
-  fill,
-  cores,
+  activeIndex,
 }: {
   width: number;
-  height: number;
-  notchCX: ReturnType<typeof useSharedValue<number>>;
-  notchR: number;
-  br: number;
-  fill: string;
-  cores: string;
+  activeIndex: number;
 }) {
-  const extra = notchR * 0.55;
-  const svgH = height + extra;
-
-  const animatedProps = useAnimatedProps(() => {
-    const cx = notchCX.value;
-    const r = notchR;
-
-    const arcSpread = r * 2.2;
-    const arcDepth = r * 1.5;
-
-    const x1 = cx - arcSpread;
-    const x2 = cx + arcSpread;
-
-    // quanto as "orelhas" ficam arredondadas
-    const shoulder = arcSpread * 0.5;
-
-    const d = [
-      `M ${br} ${extra}`,
-      `L ${x1} ${extra}`,
-      // entrada suave: linha desce enquanto avança horizontalmente
-      `C ${x1 + shoulder} ${extra}, ${cx - arcSpread * 0.6} ${extra + arcDepth}, ${cx} ${extra + arcDepth}`,
-      // saída suave: sobe de volta
-      `C ${cx + arcSpread * 0.6} ${extra + arcDepth}, ${x2 - shoulder} ${extra}, ${x2} ${extra}`,
-      `L ${width - br} ${extra}`,
-      `Q ${width} ${extra} ${width} ${extra + br}`,
-      `L ${width} ${svgH - br}`,
-      `Q ${width} ${svgH} ${width - br} ${svgH}`,
-      `L ${br} ${svgH}`,
-      `Q 0 ${svgH} 0 ${svgH - br}`,
-      `L 0 ${extra + br}`,
-      `Q 0 ${extra} ${br} ${extra}`,
-      `Z`,
-    ].join(" ");
-
-    return { d };
-  });
-
+  const reduced = useMovimentoReduzido();
+  const target = ((activeIndex + 0.5) * width) / 5 - 12;
+  const x = useRef(new Animated.Value(target)).current;
+  const previousWidth = useRef(width);
+  useEffect(() => {
+    x.stopAnimation();
+    if (reduced || previousWidth.current !== width) x.setValue(target);
+    else
+      Animated.timing(x, {
+        toValue: target,
+        duration: 200,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    previousWidth.current = width;
+    return () => x.stopAnimation();
+  }, [target, width, reduced, x]);
+  // Os dois recortes terminam nos ombros da curva; o traço nunca invade o Mapa.
   return (
-    <Svg
-      width={width}
-      height={svgH}
-      style={{ position: "absolute", top: -extra, left: 0 }}
-      pointerEvents="none"
-    >
-      <AnimatedPath
-        animatedProps={animatedProps}
-        fill={fill}
-        stroke={cores}
-        strokeWidth={1}
-      />
-    </Svg>
+    <>
+      {[
+        { left: 0, width: width / 2 - 49 },
+        { left: width / 2 + 49, width: width / 2 - 49 },
+      ].map((clip) => (
+        <View
+          key={clip.left}
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 1,
+            left: clip.left,
+            width: clip.width,
+            height: 3,
+            overflow: "hidden",
+            opacity: activeIndex < 0 ? 0 : 1,
+          }}
+        >
+          <Animated.View
+            style={{
+              position: "absolute",
+              left: -clip.left,
+              width: 24,
+              height: 3,
+              borderRadius: 1.5,
+              backgroundColor: "#FFC107",
+              transform: [{ translateX: x }],
+            }}
+          />
+        </View>
+      ))}
+    </>
   );
 }
 
 export default function NavBar() {
   const pathname = usePathname();
+  const [mapFeedback, setMapFeedback] = useState(0);
   const { cores } = useTema();
-  const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-
-  const activeIndex = tabs.findIndex((t) => routeMatches(t.href, pathname));
-  const safeIndex = activeIndex === -1 ? 0 : activeIndex;
-  const activeTab = tabs[safeIndex] as TabItem;
-
-  const expandedWidth = screenWidth + 3;
-  const navHeight = 54;
-  const horizontalPadding = 16;
-  const bottomOffset = -2;
-
-  const sphereSize = 50;
-  const sphereR = sphereSize / 2;
-  const sphereOverlap = sphereR * 0.7;
-  const clampedInset = Math.min(Math.max(insets.bottom, 0), 60);
-  const insetOffset = clampedInset * (clampedInset < 25 ? 0 : 0.65);
-  const sphereBottom = navHeight + insetOffset - sphereOverlap;
-
-  const tabWidth = (expandedWidth - horizontalPadding * 2) / tabs.length;
-
-  const getNotchCX = (index: number) =>
-    horizontalPadding + index * tabWidth + tabWidth / 2;
-
-  const getSphereLeft = (index: number) => getNotchCX(index) - sphereR;
-
-  const notchCX = useSharedValue(getNotchCX(safeIndex));
-  const sphereX = useSharedValue(getSphereLeft(safeIndex));
-
-  const prevIndex = useRef(safeIndex);
-
-  const bump0 = useSharedValue(safeIndex === 0 ? 1 : 0);
-  const bump1 = useSharedValue(safeIndex === 1 ? 1 : 0);
-  const bump2 = useSharedValue(safeIndex === 2 ? 1 : 0);
-  const bump3 = useSharedValue(safeIndex === 3 ? 1 : 0);
-  const bumpValues = useMemo(() => [bump0, bump1, bump2, bump3],
-    [bump0, bump1, bump2, bump3]);
-
-  useEffect(() => {
-    const prev = prevIndex.current;
-    if (prev === safeIndex) return;
-
-    cancelAnimation(bumpValues[prev]);
-    cancelAnimation(bumpValues[safeIndex]);
-    cancelAnimation(sphereX);
-    cancelAnimation(notchCX);
-
-    bumpValues[prev].value = withSpring(0, BUMP_CONFIG);
-    bumpValues[safeIndex].value = withSpring(1, BUMP_CONFIG);
-    const targetNotch = horizontalPadding + safeIndex * tabWidth + tabWidth / 2;
-    sphereX.value = withSpring(targetNotch - sphereR, SPRING_CONFIG);
-    notchCX.value = withSpring(targetNotch, SPRING_CONFIG);
-
-    prevIndex.current = safeIndex;
-  }, [safeIndex, tabWidth, sphereR, bumpValues, notchCX, sphereX]);
-
-  const sphereStyle = useAnimatedStyle(() => ({ left: sphereX.value }));
-
+  const { width } = useWindowDimensions();
+  const { bottom } = useSafeAreaInsets();
+  const tutorial = useTutorial();
+  const cx = width / 2;
+  const height = ALTURA_NAVBAR + bottom;
+  const extra = 14;
+  // Raio de 32dp: círculo de 25dp + folga real de 7dp, sem máscara.
+  const d = `M 0 ${extra} L ${cx - 49} ${extra} C ${cx - 39} ${extra}, ${cx - 32} 17, ${cx - 32} 33 A 32 32 0 0 0 ${cx + 32} 33 C ${cx + 32} 17, ${cx + 39} ${extra}, ${cx + 49} ${extra} L ${width} ${extra} L ${width} ${height + extra} L 0 ${height + extra} Z`;
   return (
-    <>
-      {/* ── Esfera ── */}
-      <Animated.View
+    <View
+      style={{
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height,
+        zIndex: 100,
+        elevation: 10,
+      }}
+    >
+      <Svg
+        width={width}
+        height={height + extra}
         pointerEvents="none"
-        style={[
-          sphereStyle,
-          {
-            position: "absolute",
-            bottom: sphereBottom,
-            width: sphereSize,
-            height: sphereSize,
-            borderRadius: sphereR,
-            backgroundColor: cores.fundoPrimario,
-            alignItems: "center",
-            justifyContent: "center",
-            shadowColor: cores.fundoPrimario,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.45,
-            shadowRadius: 10,
-            elevation: 16,
-            zIndex: 101,
-          },
-        ]}
+        style={{ position: "absolute", top: -extra }}
       >
-        <SphereIcon tab={activeTab} />
-      </Animated.View>
-
-      {/* ── Navbar ── */}
-      <View
-        style={{
-          position: "absolute",
-          bottom: bottomOffset,
-          left: 0,
-          right: 0,
-          height: navHeight + insets.bottom,
-          overflow: "visible",
-          zIndex: 100,
-          shadowColor: cores.sombra,
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          elevation: 10,
-        }}
-      >
-        <NavShape
-          width={expandedWidth}
-          height={navHeight + insets.bottom}
-          notchCX={notchCX}
-          notchR={sphereR + 1}
-          br={0}
-          fill={cores.fundoNav}
-          cores={cores.bordaNav}
-        />
-
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: navHeight,
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: horizontalPadding,
-          }}
-        >
-          {tabs.map((tab, index) => (
-            <TabButton
+        <Path d={d} fill={cores.fundoNav} stroke={cores.bordaNav} />
+      </Svg>
+      <View style={{ flexDirection: "row", height: ALTURA_NAVBAR }}>
+        {tabs.map((tab) => {
+          const active = routeMatches(tab.href, pathname);
+          const central = tab.href === "/";
+          return (
+            <TutorialTarget
               key={tab.href}
-              tab={tab}
-              isActive={index === safeIndex}
-              tabWidth={tabWidth}
-              bumpProgress={bumpValues[index]}
-              cores={cores}
-            />
-          ))}
-        </View>
+              kind="line"
+              enabled={tab.href === "/linhas" && tutorial.step === "lineTab"}
+              style={{ width: width / 5 }}
+            >
+              <Pressable
+                onPress={() => {
+                  if (central) setMapFeedback((value) => value + 1);
+                  if (!active) router.navigate(tab.href);
+                }}
+                accessibilityRole="tab"
+                accessibilityLabel={`Ir para ${tab.label}`}
+                accessibilityState={{ selected: active }}
+                android_ripple={{ color: "#80808025", borderless: true }}
+                style={{
+                  width: width / 5,
+                  minHeight: ALTURA_NAVBAR,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 3,
+                }}
+              >
+                {central ? (
+                  <View
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      width: 50,
+                      height: 50,
+                      borderRadius: 25,
+                      backgroundColor: "#FFC107",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      elevation: 3,
+                      shadowColor: "#B48200",
+                      shadowOpacity: 0.2,
+                      shadowRadius: 3,
+                    }}
+                  >
+                    <NavBarIcon
+                      href={tab.href}
+                      Icon={tab.Icon}
+                      active={active}
+                      feedback={mapFeedback}
+                    />
+                  </View>
+                ) : (
+                  <NavBarIcon href={tab.href} Icon={tab.Icon} active={active} />
+                )}
+                {!central && (
+                  <Text
+                    maxFontSizeMultiplier={1.3}
+                    style={{
+                      marginTop: 0,
+                      color: active
+                        ? cores.textoPrimario
+                        : cores.textoSecundario,
+                      fontSize: 11,
+                      fontWeight: active ? "800" : "500",
+                    }}
+                  >
+                    {tab.label}
+                  </Text>
+                )}
+              </Pressable>
+            </TutorialTarget>
+          );
+        })}
       </View>
-    </>
+      <NavBarIndicator
+        width={width}
+        activeIndex={tabs.findIndex((tab) => routeMatches(tab.href, pathname))}
+      />
+    </View>
   );
 }

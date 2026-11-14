@@ -12,6 +12,7 @@ function carregar(arquivo, dependencias = {}) {
   modulo.paths = module.paths;
   modulo.require = (id) => {
     if (Object.hasOwn(dependencias, id)) return dependencias[id];
+    if (id.startsWith(".")) return Module.createRequire(filename)(id);
     throw new Error(`Dependência inesperada: ${id}`);
   };
   modulo._compile("const __DEV__ = false;\n" + ts.transpileModule(fs.readFileSync(filename, "utf8"), {
@@ -54,7 +55,7 @@ const { estadoInicialPainelRadar: inicial, reduzirEstadoPainelRadar: reduzir } =
 const observar = (amostra, temEventos, concluida = true, contexto = "parada-A") =>
   ({ tipo: "observar", amostra: String(amostra), temEventos, concluida, contexto });
 
-test("ETA vencido já é removido pelo filtro existente antes de observar o painel", () => {
+test("ETA vencido preserva evidência recente; consulta vencida é removida", () => {
   const { eventosValidosRadar } = carregar("radarParada.ts", {
     "../types/estruturaV2": { rotuloSentidoPublico: () => "não utilizado" },
   });
@@ -63,7 +64,8 @@ test("ETA vencido já é removido pelo filtro existente antes de observar o pain
     vinculos: [{ linhaId: "linha", sentidoId: "sentido", padraoVersaoId: "versao" }] };
   const evento = { eventId: "evento", paradaId: "parada", linhaId: "linha",
     sentidoId: "sentido", padraoVersaoId: "versao", estimatedAt: "2026-10-10T11:59:00Z" };
-  assert.deepEqual(eventosValidosRadar([evento], parada, agora, agora), []);
+  assert.deepEqual(eventosValidosRadar([evento], parada, agora, agora), [evento]);
+  assert.deepEqual(eventosValidosRadar([evento], parada, agora - 600000, agora), []);
   assert.equal(eventosValidosRadar([{ ...evento, estimatedAt: "2026-10-10T12:01:00Z" }], parada, agora, agora).length, 1);
 });
 
@@ -146,10 +148,13 @@ function harnessReact() {
 for (const estruturasAntes of [true, false]) {
   test(`WebView reenvia estruturas em cada ready; estruturas antes=${estruturasAntes}, GPS tardio`, () => {
     const harness = harnessReact();
+    let focused = true; let demand = [];
     const Mapa = carregar("../components/mapOSM/mapOSM.tsx", {
       react: harness.react,
+      "react-native": {View: "View", AppState: {currentState: "active", addEventListener: () => ({remove() {}})}},
+      "@react-navigation/native": {useIsFocused: () => focused},
       "react-native-webview": { WebView: "WebView" },
-      "@/src/services/unifiedLocation": {useUnifiedLocation: () => ({snapshots: [], now: 0})},
+      "@/src/services/unifiedLocation": {useUnifiedLocation: codes => { demand = codes; return {snapshots: [], now: 0}; }},
       "@/src/services/hybridContext": require('./hybridContext.ts'),
       "@/src/services/hybridGps": require('./hybridGps.ts'),
       "@/src/services/gpsPresentationPolicy": require('./gpsPresentationPolicy.ts'),
@@ -161,11 +166,11 @@ for (const estruturasAntes of [true, false]) {
       "./webview/mapHtml": { buildMapHtml: (args) => JSON.stringify(args) },
       "@/src/services/veiculosMapa": { adaptarRailParaMapa: (item) => item },
     }).default;
-    const linha = { structureKey: "linha:versao", nome: "SV866", segmentos: [[[1, 2], [3, 4]]], posicoes: [] };
+    const linha = { modal: "onibus", structureKey: "linha:versao", nome: "SV866", segmentos: [[[1, 2], [3, 4]]], posicoes: [] };
     let readyNotifications = 0;
     let props = { location: null, linhasParaMostrar: estruturasAntes ? [linha] : [], onReady: () => readyNotifications++ };
     let view;
-    const render = () => { view = harness.render(() => Mapa(props, null)); };
+    const render = () => { view = harness.render(() => Mapa(props, null)); view = view.props.children.find(child => child?.type === "WebView"); };
     render();
     assert.equal(readyNotifications, 0);
     const source = view.props.source;

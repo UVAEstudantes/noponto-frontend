@@ -1,3 +1,5 @@
+import { useMovimentoReduzido } from "../demo/InterfaceDemo";
+import Confirmacao from "../Confirmacao";
 import TutorialTarget from "../tutorial/TutorialTarget";
 import TutorialOverlay from "../tutorial/TutorialOverlay";
 import { useTutorial } from "../tutorial/TutorialProvider";
@@ -39,6 +41,8 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import {
+  Animated as NativeAnimated,
+  useWindowDimensions,
   Dimensions,
   Modal,
   Pressable,
@@ -204,40 +208,53 @@ function IconeModal({ modal, cor }: { modal: string; cor: string }) {
 }
 
 // ─── SelectModalLinhas ──────────────────────────────────────────────────────
-// Botões com largura mínima e rolagem horizontal para incluir Favoritos sem truncar nomes.
+function SegmentoModal({ largura, children }: { largura: number; children: React.ReactNode }) {
+  const reduzido = useMovimentoReduzido();
+  const value = React.useRef(new NativeAnimated.Value(largura)).current;
+  React.useEffect(() => {
+    const animation = NativeAnimated.timing(value, { toValue: largura, duration: reduzido ? 0 : 180, useNativeDriver: false });
+    animation.start(); return () => animation.stop();
+  }, [largura, reduzido, value]);
+  return <NativeAnimated.View style={{ width: value }}>{children}</NativeAnimated.View>;
+}
 function SelectModalLinhas({ opcoes, selecionadoId, onSelecionar }: {
   opcoes: { id: string; nome: string }[]; selecionadoId?: string | null; onSelecionar: (id: string) => void;
 }) {
   const { cores } = useTema();
+  const { fontScale } = useWindowDimensions();
+  const reduzido = useMovimentoReduzido();
   const [largura, setLargura] = React.useState(0);
-  const scrollRef = React.useRef<ScrollView>(null);
-  const itemWidth = Math.max(104, (largura - 8) / Math.max(1, opcoes.length));
-  const animLeft = useSharedValue(4);
-  const idx = Math.max(0, opcoes.findIndex((item) => item.id === selecionadoId));
+  const inner = Math.max(0, largura - 4);
+  const idx = opcoes.findIndex(item => item.id === selecionadoId);
+  const fallback = fontScale > 1.25 || (largura > 0 && inner < (opcoes.length - 1) * 48 + 88);
+  const cols = Math.max(1, fallback ? Math.min(fontScale > 1.8 ? 1 : 2, opcoes.length) : opcoes.length);
+  const rowHeight = fallback ? Math.max(48, Math.ceil(fontScale * 22 + 18)) : 44;
+  const activeWidth = Math.max(44, inner - (opcoes.length - 1) * 48);
+  const cell = Math.max(44, (inner - (cols - 1) * 4) / cols);
+  const widths = opcoes.map((_, i) => fallback || idx < 0 ? cell : i === idx ? activeWidth : 44);
+  const left = 2 + (fallback ? Math.max(0, idx) % cols * (cell + 4) : Math.max(0, idx) * 48);
+  const top = 2 + (fallback ? Math.floor(Math.max(0, idx) / cols) * (rowHeight + 4) : 0);
+  const targetWidth = widths[idx] ?? cell;
+  const indicator = React.useRef({ left: new NativeAnimated.Value(left), top: new NativeAnimated.Value(top), width: new NativeAnimated.Value(targetWidth) }).current;
   React.useEffect(() => {
-    animLeft.value = withSpring(4 + idx * itemWidth, { damping: 75, stiffness: 680 });
-    scrollRef.current?.scrollTo({ x: Math.max(0, idx * itemWidth - largura + itemWidth + 8), animated: true });
-  }, [idx, itemWidth, largura, animLeft]);
-  const sliderStyle = useAnimatedStyle(() => ({ left: animLeft.value }));
-  return <View onLayout={(event) => setLargura(event.nativeEvent.layout.width)}
-    style={{ marginHorizontal: 16, marginVertical: 10, borderRadius: 12, overflow: "hidden", backgroundColor: cores.fundoSecundario }}>
-    <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}>
-      <View style={{ padding: 4, flexDirection: "row" }}>
-        <Animated.View style={[sliderStyle, { position: "absolute", top: 4, bottom: 4,
-          width: itemWidth, borderRadius: 9, backgroundColor: cores.fundoPrimario }]} />
-        {opcoes.map((item) => {
-          const selected = item.id === selecionadoId;
-          const { Icon } = identidadeModalMapa(item.id);
-          return <Pressable key={item.id} onPress={() => onSelecionar(item.id)}
-            accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={item.nome}
-            style={{ width: itemWidth, minHeight: 44, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}>
-            <Icon size={15} color={selected ? cores.textoInverso : item.id === "favoritos" ? cores.iconePrimario : cores.textoSecundario}
-              fill={item.id === "favoritos" && selected ? cores.textoInverso : "transparent"} />
-            <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? cores.textoInverso : cores.textoSecundario }}>{item.nome}</Text>
-          </Pressable>;
-        })}
-      </View>
-    </ScrollView>
+    const animation = NativeAnimated.parallel([
+      NativeAnimated.timing(indicator.left, { toValue: left, duration: reduzido ? 0 : 180, useNativeDriver: false }),
+      NativeAnimated.timing(indicator.top, { toValue: top, duration: reduzido ? 0 : 180, useNativeDriver: false }),
+      NativeAnimated.timing(indicator.width, { toValue: targetWidth, duration: reduzido ? 0 : 180, useNativeDriver: false }),
+    ]);
+    animation.start(); return () => animation.stop();
+  }, [left, top, targetWidth, reduzido, indicator]);
+  const rows = Array.from({ length: Math.ceil(opcoes.length / cols) }, (_, row) => opcoes.slice(row * cols, (row + 1) * cols));
+  return <View onLayout={event => setLargura(event.nativeEvent.layout.width)} style={{ marginHorizontal: 8, marginVertical: 8, padding: 2, gap: 4, borderRadius: 15, backgroundColor: cores.fundoSecundario }}>
+    <NativeAnimated.View pointerEvents="none" style={{ position: "absolute", height: rowHeight, borderRadius: 11, backgroundColor: "#FFC107", left: indicator.left, top: indicator.top, width: indicator.width, opacity: idx >= 0 && largura > 0 ? 1 : 0 }}/>
+    {rows.filter(row => row.length).map((row, r) => <View key={r} style={{ flexDirection: "row", gap: 4 }}>
+      {row.map((item, c) => { const i = r * cols + c; const selected = i === idx; const { Icon } = identidadeModalMapa(item.id);
+        return <SegmentoModal key={item.id} largura={widths[i]}><Pressable accessibilityRole="button" accessibilityLabel={item.nome} accessibilityState={{ selected }} onPress={() => onSelecionar(item.id)} android_ripple={{ color: "rgba(0,0,0,.12)" }}
+          style={{ minHeight: rowHeight, paddingHorizontal: 5, paddingVertical: 8, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", borderRadius: 11 }}>
+          <Icon size={21} color={selected ? "#302600" : cores.textoSecundario}/>{selected && <Text numberOfLines={fallback ? undefined : 1} style={{ flexShrink: 1, fontSize: 12, fontWeight: "700", color: "#302600" }}>{item.nome}</Text>}
+        </Pressable></SegmentoModal>;
+      })}
+    </View>)}
   </View>;
 }
 
@@ -265,10 +282,6 @@ function LinhaCard({
 }: LinhaCardProps) {
   const { cores } = useTema();
   const tutorial = useTutorial();
-  const [confirmando, setConfirmando] = React.useState(false);
-  React.useEffect(() => {
-    if (!modoRemocao) setConfirmando(false);
-  }, [modoRemocao]);
 
   const iconeBg = misturar(linha.cor, cores.fundoSecundario, 0.25);
 
@@ -285,14 +298,6 @@ function LinhaCard({
     transform: [{ scale: scale.value }],
   }));
 
-  // Animação de saída ao confirmar remoção
-  const removeOpacity = useSharedValue(1);
-  const removeScale = useSharedValue(1);
-  const removeStyle = useAnimatedStyle(() => ({
-    opacity: removeOpacity.value,
-    transform: [{ scale: removeScale.value }],
-  }));
-
   function handlePressIn() {
     scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
   }
@@ -301,90 +306,12 @@ function LinhaCard({
     scale.value = withSpring(1, { damping: 15, stiffness: 300 });
   }
 
-  function handleLongPress() {
-    setConfirmando(true);
-  }
-
-  function handleConfirmarRemover() {
-    removeOpacity.value = withTiming(0, { duration: 250 });
-    removeScale.value = withTiming(0.88, { duration: 250 }, (done) => {
-      if (done) runOnJS(aoRemover)();
-    });
-  }
-
-  function handleCancelar() {
-    setConfirmando(false);
-  }
+  function handleLongPress() { aoRemover(); }
 
   return (
-    <Animated.View style={removeStyle}>
+    <Animated.View>
       <Animated.View style={animStyle}>
-        {confirmando ? (
-          /* ── Banner de confirmação de remoção ── */
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: misturar("#ff4444", cores.fundoPainel, 0.12),
-                justifyContent: "space-between",
-              },
-            ]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{ fontWeight: "700", fontSize: 13, color: cores.perigo }}
-              >
-                Remover &quot;{codigo}&quot;?
-              </Text>
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: cores.textoSecundario,
-                  marginTop: 2,
-                }}
-              >
-                Esta linha será removida do mapa
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable
-                onPress={handleCancelar}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 10,
-                  backgroundColor: cores.fundoSecundario,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontWeight: "600",
-                    color: cores.textoSecundario,
-                  }}
-                >
-                  Cancelar
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleConfirmarRemover}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 10,
-                  backgroundColor: cores.perigo,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}
-                >
-                  Remover
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          /* ── Card normal ── */
+          {/* ── Card normal ── */}
           <Pressable
             onPress={modoRemocao ? undefined : aoAbrirConfig}
             onLongPress={modoRemocao ? undefined : handleLongPress}
@@ -422,7 +349,7 @@ function LinhaCard({
             {/* A remoção ocupa o espaço do chevron, sem cobrir os textos. */}
             {modoRemocao ? <Pressable
               accessibilityRole="button" accessibilityLabel={`Remover linha ${codigo}`}
-              onPress={(event) => { event.stopPropagation(); setConfirmando(true); }}
+              onPress={(event) => { event.stopPropagation(); aoRemover(); }}
               style={({ pressed }) => ({ width: 40, height: 40, flexShrink: 0,
                 alignItems: "center", justifyContent: "center", borderRadius: 10,
                 backgroundColor: pressed ? cores.fundoSecundario : "transparent" })}>
@@ -433,7 +360,6 @@ function LinhaCard({
               strokeWidth={2}
             />}
           </Pressable>
-        )}
       </Animated.View>
 
       {/* Divisor */}
@@ -577,6 +503,11 @@ function LinhasContainer({
 }: Props) {
   const { cores, temaAtual } = useTema();
   const favoritos = useFavoritos();
+  const [remocao, setRemocao] = React.useState<{ linhaId: string; linhaCodigo: string; favorita: boolean } | null>(null);
+  const confirmarRemocao = (linha: { linhaId: string; linhaCodigo: string }) => {
+    setRemocao(atual => atual ?? { ...linha, favorita: visualizacaoFavoritos });
+  };
+
   const tutorial = useTutorial();
   const tutorialEditing = tutorial.chapter === 4 && lineModalStep(tutorial.step);
   const listRef = React.useRef<ScrollView>(null);
@@ -803,11 +734,21 @@ function LinhasContainer({
 
         {/* Seletor de modal — mesmo padrão do SelectTransporte (slider animado) */}
         {opcoesModal.length > 0 && (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
           <SelectModalLinhas
-            opcoes={[...opcoesModal, { id: "favoritos", nome: "Favoritos" }]}
-            selecionadoId={modalSelecionadoId}
+            opcoes={opcoesModal}
+            selecionadoId={visualizacaoFavoritos ? null : modalSelecionadoId}
             onSelecionar={(id) => { setModoRemocao(false); setLinhaConfigId(null); tutorial.setLineModalOpen(false); aoSelecionarModal?.(id); }}
           />
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Filtrar favoritas"
+            accessibilityState={{ selected: visualizacaoFavoritos }}
+            onPress={() => { setModoRemocao(false); setLinhaConfigId(null); tutorial.setLineModalOpen(false); aoSelecionarModal?.(visualizacaoFavoritos ? (opcoesModal.find(m => m.id === modalAtivo)?.id ?? opcoesModal[0]?.id ?? "onibus") : "favoritos"); }}
+            style={{ width: 48, height: 48, marginRight: 16, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: visualizacaoFavoritos ? "rgba(255,193,7,.16)" : cores.fundoSecundario }}>
+            <Star size={21} color={visualizacaoFavoritos ? "#D69C00" : cores.textoSecundario} fill={visualizacaoFavoritos ? "#FFC107" : "transparent"}/>
+          </Pressable>
+          </View>
         )}
 
         {/* Ações fixas: fora da rolagem, entre o seletor e os cards. */}
@@ -927,7 +868,7 @@ function LinhasContainer({
                 aoToggleFavorita={() => favoritos.alternar({ linhaId: linha.linhaId, codigo: linha.linhaCodigo,
                   nome: linha.subtitulo || linha.nomeExibicao, modal: linha.modal })}
                 isLast={index === linhasSelecionadas.length - 1}
-                aoRemover={() => aoRemoverLinha(linha.linhaId)}
+                aoRemover={() => confirmarRemocao(linha)}
                 aoToggleAtiva={() => aoToggleAtiva(linha.linhaId)}
                 aoAbrirConfig={() => { setLinhaConfigId(linha.linhaId); if (tutorial.step === "lineControls" && tutorial.lineId === linha.linhaId) tutorial.advance("next"); }}
               />
@@ -1102,9 +1043,7 @@ function LinhasContainer({
               </TutorialTarget>
               <TutorialTarget kind="line" clipRef={configRef} reveal dimmed={tutorialEditing && tutorial.step !== "lineRemove"} enabled={tutorial.step === "lineRemove"}>
               <Pressable onPress={() => {
-                setLinhaConfigId(null); tutorial.setLineModalOpen(false);
-                if (visualizacaoFavoritos) favoritos.remover(linhaConfig.linhaId);
-                else aoRemoverLinha(linhaConfig.linhaId);
+                confirmarRemocao(linhaConfig);
               }}
                 style={{ marginTop: 10, minHeight: 46, borderRadius: 12, flexDirection: "row", gap: 8,
                   alignItems: "center", justifyContent: "center", backgroundColor: "rgba(239,68,68,.10)" }}>
@@ -1116,6 +1055,13 @@ function LinhasContainer({
           )}
         </View>
       </Modal>
+      <Confirmacao visivel={!!remocao} titulo="Remover linha?" variante="destrutiva" confirmarTexto="Remover"
+        descricao={`A linha ${remocao?.linhaCodigo ?? ""} será removida da sua lista. Você poderá adicioná-la novamente depois.`}
+        onCancelar={() => setRemocao(null)} onConfirmar={() => {
+          if (!remocao) return;
+          if (remocao.favorita) favoritos.remover(remocao.linhaId); else aoRemoverLinha(remocao.linhaId);
+          setLinhaConfigId(null); tutorial.setLineModalOpen(false); setRemocao(null);
+        }}/>
     </>
   );
 }

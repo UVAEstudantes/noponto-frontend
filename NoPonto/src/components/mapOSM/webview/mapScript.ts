@@ -84,12 +84,12 @@ function applyVehiclePresentation(el,color,modal){
   var image=inner.querySelector('.vehicle-art');
   if(!image){image=document.createElement('img');image.className='vehicle-art';image.alt='';image.draggable=false;inner.appendChild(image)}
   var direction=inner.querySelector('.vehicle-direction');
-  if(!direction){direction=document.createElement('div');direction.className='vehicle-direction';inner.appendChild(direction)}
+  if(!direction){direction=document.createElement('div');direction.className='vehicle-direction';direction.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 13" aria-hidden="true"><path d="M7 1 L13 12 L1 12 Z" fill="currentColor" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>';inner.appendChild(direction)}
   // Compensate artwork orientation before placing the triangle 7px ahead.
   var angle=visual.orientacao*Math.PI/180;
   var front=Math.abs(Math.sin(angle))*visual.largura/2+Math.max(Math.cos(angle)*visual.ancoraY,-Math.cos(angle)*(visual.altura-visual.ancoraY));
   direction.style.top=(20-front-14)+'px';
-  direction.style.borderBottomColor=color;
+  direction.style.setProperty('--direction-color',color);
   image.src=visual.uri;
   image.style.width=visual.largura+'px';image.style.height=visual.altura+'px';
   image.style.left=(20-visual.largura/2)+'px';image.style.top=(20-visual.ancoraY)+'px';
@@ -1116,6 +1116,9 @@ function updateUser(data){
   var pos=filterUserLocation(data);
   if(!pos)return;
   if(userAnimationFrame!==null)cancelAnimationFrame(userAnimationFrame);
+  var firstPosition=userMarker.getElement().style.visibility==='hidden';
+  if(firstPosition)userMarker.setLngLat([pos.lng,pos.lat]);
+  userMarker.getElement().style.visibility='visible';
   var start=userMarker.getLngLat(),t0=performance.now();
   var duration=pos.snap?0:500;
   function step(ts){
@@ -1221,6 +1224,7 @@ window.onload=function(){
     map.on('mouseenter','rail-vehicles-layer',function(){map.getCanvas().style.cursor='pointer'});
     map.on('mouseleave','rail-vehicles-layer',function(){map.getCanvas().style.cursor=''});
     userMarker=new maplibregl.Marker({element:userIcon(),anchor:'center'}).setLngLat([${lngInicial},${latInicial}]).addTo(map);
+    userMarker.getElement().style.visibility='hidden';
     setMapStyle('${estiloMapaPadrao}');
     setDark(false);
 

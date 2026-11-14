@@ -618,7 +618,8 @@ class RadarNativeNotificationModule : Module() {
         setTextViewText(R.id.heads_up_eta, it.eta)
         val detail = it.detail ?: nextText(it)
         setTextViewText(R.id.heads_up_next, detail)
-        setViewVisibility(R.id.heads_up_next, if (detail.isEmpty()) View.GONE else View.VISIBLE)
+        // Heads-up reserves two rows; secondary vehicles remain in the expanded view.
+        setViewVisibility(R.id.heads_up_next, View.GONE)
       }
     }
 

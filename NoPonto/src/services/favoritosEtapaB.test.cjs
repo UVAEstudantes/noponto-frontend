@@ -114,7 +114,8 @@ test("um hub e inscrições compartilhadas: retirar uma tela não cancela uma li
   class HubConnectionBuilder { withUrl() { return this; } withAutomaticReconnect() { return this; }
     build() { builds++; return hub; } }
   const service = carregar("gpsHub.ts", { "react-native": { Platform: { OS: "android" }, AppState: { currentState: "active", addEventListener() {} } }, "@/src/config/env": { config: { GPS_HUB_URL: "mock" } },
-    "@microsoft/signalr": { HubConnectionBuilder, HubConnectionState: { Connected: "Connected", Connecting: "Connecting" } },
+    "@microsoft/signalr": { HubConnectionBuilder, HubConnectionState: { Connected: "Connected", Connecting: "Connecting", Disconnected: "Disconnected" } },
+    "./gateway": { gatewayHubUrl: () => "mock", gateway: { snapshot: () => ({ active: 0, status: "online" }), subscribe() {}, hubConnected() {}, async hubFailure() {} } },
     "./veiculosMapa": {} });
   const a = Symbol(); const b = Symbol(); const listenerA = () => {}; const listenerB = () => {};
   service.iniciarGpsHub(listenerA); service.iniciarGpsHub(listenerB);

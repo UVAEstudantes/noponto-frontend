@@ -2,11 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-function runtime() {
+function runtime(hidden = false) {
   const source = fs.readFileSync(__dirname + '/mapScript.ts', 'utf8');
   let position = {lat: 0, lng: 0}, frame=0, clock=0;
   const frames=new Map(), centers=[];
-  const c = { userMarker: {getLngLat: () => position, setLngLat: ([lng,lat]) => {position={lat,lng};}},
+  const element = {style: {visibility: hidden ? 'hidden' : 'visible'}};
+  const c = { userMarker: {getElement: () => element, getLngLat: () => position, setLngLat: ([lng,lat]) => {position={lat,lng};}},
     map: {easeTo() {}, jumpTo: x=>centers.push(x.center), getBearing: () => 0}, document: {querySelector: () => null},
     parseNum: v => typeof v === 'number' && Number.isFinite(v) ? v : null,
     distanceMeters: (a,b) => Math.hypot(a.lat-b.lat,a.lng-b.lng)*111320,
@@ -59,4 +60,16 @@ test('one animation owns dot and camera; manual pan disables follow until recent
  assert.equal(h.centers.at(-1)[0],h.position().lng);
  h.c.gestures.dragstart();const calls=h.centers.length;h.fix(40,0);h.tick();assert.equal(h.centers.length,calls);assert.ok(h.position().lng*111320>30);
  h.c.window.centerOnUser();h.fix(50,1000);h.tick();assert.equal(h.centers.at(-1)[0],h.position().lng);
+});
+
+test('default coordinate remains hidden until first valid fix and does not pull manually moved camera', () => {
+  const h = runtime(true);
+  assert.equal(h.c.userMarker.getElement().style.visibility, 'hidden');
+  h.c.updateUser({userLocation: [NaN, NaN]});
+  assert.equal(h.c.userMarker.getElement().style.visibility, 'hidden');
+  h.fix(100, 0, 5, 1);
+  h.tick();
+  assert.equal(h.c.userMarker.getElement().style.visibility, 'visible');
+  assert.ok(h.position().lng * 111320 > 95);
+  assert.equal(h.centers.length, 0);
 });

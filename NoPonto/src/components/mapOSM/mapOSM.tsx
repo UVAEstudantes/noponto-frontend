@@ -11,7 +11,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { View } from "react-native";
+import { AppState, View } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { WebView } from "react-native-webview";
 import { MapaOSMProps, MapaOSMRef } from "./types";
 import { buildMapHtml } from "./webview/mapHtml";
@@ -62,7 +63,10 @@ const MapaOSM = forwardRef<MapaOSMRef, MapaOSMProps>(
     },
     ref,
   ) => {
-    const unified = useUnifiedLocation(legacyLines.filter(l => l.modal === 'onibus').map(l => l.nome));
+    const focused = useIsFocused();
+    const [foreground, setForeground] = useState(AppState.currentState === 'active');
+    useEffect(() => { const sub = AppState.addEventListener('change', state => setForeground(state === 'active')); return () => sub.remove(); }, []);
+    const unified = useUnifiedLocation((focused && foreground ? legacyLines : []).filter(l => l.modal === 'onibus').map(l => l.nome));
     const hybridComposer = useRef(createHybridComposer());
     const [contextBoundary,setContextBoundary]=useState(0);
     const linhasParaMostrar = useMemo(() => hybridComposer.current(legacyLines, unified.snapshots, Math.max(unified.now,contextBoundary)), [legacyLines, unified.snapshots, unified.now,contextBoundary]);

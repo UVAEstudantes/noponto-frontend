@@ -1,3 +1,4 @@
+import LinhasDaParada from "./linhasDaParada";
 import { useTutorial } from "../tutorial/TutorialProvider";
 import TutorialTarget from "../tutorial/TutorialTarget";
 import {passengerRadar} from '@/src/services/radarPassenger';
@@ -409,7 +410,7 @@ const ParadaSheet = ({
                 gap: 10,
               }}
             >
-              <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: "center",
+              <View style={{ display: Dimensions.get("window").width < 360 ? "none" : "flex", width: 42, height: 42, borderRadius: 21, alignItems: "center",
                 justifyContent: "center", backgroundColor: misturar("#10B981", cores.fundoCard,
                   temaAtual === "escuro" ? 0.20 : 0.12) }}>
                 <MapPin size={21} color={temaAtual === "escuro" ? "#6EE7B7" : "#07883F"} />
@@ -435,9 +436,11 @@ const ParadaSheet = ({
                   Ponto de embarque
                 </Text>
               </View>
+
+              {visivel && parada?.paradaId && <LinhasDaParada key={parada.paradaId} paradaId={parada.paradaId} nome={parada.nome}/> }
               {onMonitorarRadar && <Pressable onPress={onMonitorarRadar} accessibilityRole="button"
                 accessibilityLabel={physicalModal === "trem" ? "Monitorar esta estação" : "Monitorar esta parada"}
-                hitSlop={6} style={{ width: 36, height: 36, borderRadius: 18,
+                hitSlop={6} style={{ width: 40, height: 40, borderRadius: 20,
                   alignItems: "center", justifyContent: "center", backgroundColor: misturar(cores.iconePrimario, cores.fundoCard,
                     temaAtual === "escuro" ? 0.2 : 0.12) }}>
                 <Bell size={17} color={cores.iconePrimario} />
@@ -445,9 +448,9 @@ const ParadaSheet = ({
               <Pressable
                 onPress={onFechar} accessibilityRole="button" accessibilityLabel="Fechar detalhes da parada" hitSlop={6}
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: cores.fundoSecundario,

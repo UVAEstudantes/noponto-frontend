@@ -98,6 +98,7 @@ function useController() {
   }, [step]);
   useEffect(() => {
     if (linePanelStep(step) && !lineContext) {
+      if (step === "lineRemove") { setStep("lineTab"); return; }
       setResumeVehicles(4);
       setStep("search");
     }
