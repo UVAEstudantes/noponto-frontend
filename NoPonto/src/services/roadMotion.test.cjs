@@ -1,0 +1,35 @@
+/* global __dirname */
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+function fixture(){
+ const source=fs.readFileSync(path.join(__dirname,'../components/mapOSM/webview/mapScript.ts'),'utf8');
+ const extract=name=>{const m=source.match(new RegExp('function '+name+'\\([^]*?\\n}'));assert.ok(m,name);return m[0];};
+ const base=Date.parse('2026-11-15T12:00:00Z');let now=base,tick;const frames=new Map();let frameId=0;
+ const c={Date:{now:()=>now},performance:{now:()=>now},drState:{},vehicleMarkers:{},vehiclePopups:{},vehicleHeadings:{},animFrames:{},window:{},motionTraceOrders:[],gpsPolicy:{baseProjectionMs:60000,maxProjectionMetres:250,delayedMs:180000,publicMs:480000},roadMovement:{accepted:0,repeated:0,routeSyncs:0,linearSyncs:0,positionWrites:0},drInterval:null,movementDiagnostics:false,roadMotionHorizonMs:60000,parseNum:x=>x==null?null:Number(x),distanceMeters:(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)*111000,interpolarNaRota:(coords,p)=>[0,p],headingNaRota:()=>90,setHeading:()=>{},reportRoadMovement:()=>{},setInterval:f=>{tick=f;return 1;},gpsMarkerOpacity:()=>1,requestAnimationFrame:f=>{frames.set(++frameId,f);return frameId;},cancelAnimationFrame:id=>frames.delete(id)};
+ vm.createContext(c);vm.runInContext(['roadIdentityChanged','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
+ const marker={pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return {style:{}};},remove(){}};
+ const p={backendUnified:true,backendValidUntil:base+480000,backendMotionEligible:true,projectionUntil:base+60000,projectionMaxMetres:250,comprimentoRotaMetros:111000,projectionSpeedKmh:6,latitude:0,longitude:0};
+ const update=(over={},coords=[[0,0],[0,1]],timestamp=base,position=0,identity='line|direction|pattern|version')=>c.updateRoadMotion('bus',marker,{...p,...over},coords,timestamp,position,identity);
+ const advance=ms=>{const until=now+ms;while(now<until){now+=100;tick?.();}};
+ c.startDR();return{c,p,base,marker,update,advance,frames};
+}
+test('late geometry uses the original fix and preserves deadline and projected budget',()=>{
+ const f=fixture();f.update({backendMotionEligible:false},null,f.base,null);f.advance(30000);f.update();
+ assert.ok(f.c.drState.bus.lineCoords);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);assert.equal(f.c.drState.bus.projectionUntil,f.base+60000);
+ f.advance(10000);assert.ok(f.c.drState.bus.projectedMetres>0);const used=f.c.drState.bus.projectedMetres;
+ f.update({projectionUntil:f.base+90000,projectionMaxMetres:500});assert.equal(f.c.drState.bus.projectedMetres,used);assert.equal(f.c.drState.bus.projectionUntil,f.base+60000);assert.equal(f.c.drState.bus.projectionMaxMetres,250);
+ f.advance(30000);const frozen=f.marker.pos.lng;f.update();f.advance(30000);assert.equal(f.marker.pos.lng,frozen);
+});
+test('same GPS eligibility withdrawal cancels RAF and rejects regressive or conflicting fixes',()=>{
+ const f=fixture();f.update();f.update({longitude:.001},undefined,f.base+1000,.001);assert.ok(f.c.animFrames.bus);
+ f.update({longitude:.001,backendMotionEligible:false},undefined,f.base+1000,.001);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.frames.size,0);
+ f.update({longitude:.001,backendMotionEligible:true},undefined,f.base,0);assert.equal(f.c.drState.bus.backendMotionEligible,false);
+ f.update({longitude:.5},undefined,f.base+1000,.5);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.001);
+});
+test('ambiguous context cannot start motion and fresh GPS still advances normally',()=>{
+ const f=fixture();f.update({backendMotionEligible:false},null,f.base,null);f.update({backendMotionEligible:false},[[0,0],[0,1]],f.base,0);f.advance(10000);assert.equal(f.marker.pos.lng,0);
+ f.update({},undefined,f.base+10000,.001);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.ok(f.c.animFrames.bus);
+});
+test('same GPS route refresh preserves consumed distance and eligibility can resume before expiry',()=>{
+ const f=fixture();f.update();f.advance(10000);const used=f.c.drState.bus.projectedMetres;f.update({backendMotionEligible:false});f.advance(10000);f.update();assert.equal(f.c.drState.bus.projectedMetres,used);f.advance(1000);assert.ok(f.c.drState.bus.projectedMetres>used);
+ const old=f.c.drState.bus.posicaoNaRota;f.update({},[[0,0],[0,.5],[0,1]]);assert.ok(f.c.drState.bus.posicaoNaRota>=old);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
+});
