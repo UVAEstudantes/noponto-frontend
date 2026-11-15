@@ -13,6 +13,8 @@ concurrency:
 
 jobs:
   build:
+    # CI/CD mobile intencionalmente desativado; remova a condição para reativar.
+    if: ${{ false }}
     name: 🏗️ Build APK
     runs-on: ubuntu-latest
 

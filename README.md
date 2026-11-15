@@ -1,160 +1,82 @@
-# NoPonto
+# NoPonto Mobile
 
-Aplicativo mobile desenvolvido com React Native, Expo e NativeWind (Tailwind CSS).
+Aplicativo acadêmico NoPonto para consultar transporte público e acompanhar ônibus, BRT e trem. Integra mapas, linhas, favoritos e Radar de Espera com o backend do projeto.
 
-## 🚀 Tecnologias
+## Funcionalidades e estado atual
 
-- **React Native** 0.81.5
-- **Expo** ~54.0.23
-- **Expo Router** ~6.0.14 (File-based routing)
-- **NativeWind** 4.2.1 (Tailwind CSS para React Native)
-- **TypeScript** ~5.9.2
-- **pnpm** - Gerenciador de pacotes
+- Mapa com MapLibre em WebView, localização do usuário, filtros de modal, linhas, percursos, paradas e veículos; atualizações rodoviárias via HTTP/SignalR.
+- Consulta de linhas e paradas, seleção de linhas no mapa, favoritos e armazenamento local de preferências e percursos.
+- Trem com consulta periódica de snapshots e refresh; as posições são estimativas do backend, com qualidade e idade próprias.
+- Radar de Espera com seleção e acompanhamento por parada/linha, notificações e avisos por voz. O caminho remoto Android depende de API Radar, Firebase/FCM, build nativa compatível e permissões. Não depende de JavaScript executando continuamente em segundo plano.
+- Perfil com nome/cor persistidos localmente. Indicadores de mobilidade e conteúdo demonstrativo não representam histórico real de viagens nem autenticação de conta no servidor.
+- Rotinas com formulários, estados e percursos ilustrativos: funcionalidade demonstrativa, sem motor de rotas, agendamento real ou integração de viagem concluídos.
+- Configurações de tema, indicadores, voz e abertura; tutorial e sinalização de conectividade, gateway e fontes de transporte.
 
-## 📁 Estrutura do Projeto
+Permissões, disponibilidade das fontes e configuração afetam os recursos oferecidos. Telas demonstrativas e notificações locais de teste não comprovam entrega push em produção.
 
-```
-NoPonto/
-├── app/                      # Rotas do Expo Router
-│   ├── (tabs)/              # Grupo de tabs
-│   │   ├── _layout.tsx      # Layout das tabs
-│   │   ├── index.tsx        # Tela inicial
-│   │   └── explore.tsx      # Tela de exploração
-│   ├── _layout.tsx          # Layout principal
-│   └── modal.tsx            # Modal de exemplo
-├── src/
-│   ├── components/          # Componentes reutilizáveis
-│   ├── services/           # Serviços (API, etc)
-│   ├── types/              # Tipos TypeScript
-│   ├── utils/              # Funções utilitárias
-│   └── styles/             # Estilos customizados
-├── assets/                 # Imagens e recursos estáticos
-├── components/             # Componentes base do Expo
-├── constants/              # Constantes da aplicação
-└── hooks/                  # Hooks customizados
+## Stack e organização
 
-```
+Confirmado em `NoPonto/package.json`: Expo `~55.0.23`, React Native `0.83.6`, React `19.2.0`, TypeScript `~5.9.2`, Expo Router 55, NativeWind 4, React Native Paper, TanStack Query e SignalR. O app usa AsyncStorage/SecureStore, Expo Location, Notifications e Speech, além de plugins e módulos Android próprios.
 
-## 🛠️ Setup
+| Caminho | Responsabilidade |
+| --- | --- |
+| `NoPonto/app/` | Rotas e layout Expo Router |
+| `NoPonto/src/components/` | Mapa, Radar, navegação, tutorial e UI |
+| `NoPonto/src/features/` | Perfil e Rotinas |
+| `NoPonto/src/services/` | HTTP, gateway, SignalR, armazenamento e notificações |
+| `NoPonto/src/hooks/`, `src/types/` | Estado integrado e contratos |
+| `NoPonto/assets/` | Imagens, fontes e vídeo |
+| `NoPonto/plugins/`, `modules/` | Configuração e recursos nativos |
+| `NoPonto/scripts/` | Validação e builds locais |
 
-### Pré-requisitos
+## Desenvolvimento local
 
-- Node.js (v18 ou superior)
-- pnpm (`npm install -g pnpm`)
-- Expo Go no seu dispositivo móvel
-- Expo CLI global (opcional): `npm install -g expo-cli`
+Use Node.js 22 e pnpm 10, como no workflow, e um Expo Dev Client compatível com as dependências nativas. Android requer SDK, Java e dispositivo/emulador configurados; scripts locais também validam CMake/Ninja e Firebase. Expo Go não cobre os módulos próprios nem valida o Radar remoto Android.
 
-### Instalação
-
-1. Clone o repositório
-2. Instale as dependências:
-
-```bash
-pnpm install
+```sh
+cd NoPonto
+pnpm install --frozen-lockfile
 ```
 
-3. Copie o arquivo de ambiente:
+Crie `NoPonto/.env` com valores do seu ambiente. Não há `.env.example` versionado para copiar. Não versione credenciais, arquivos Firebase privados ou chaves de assinatura. Variáveis `EXPO_PUBLIC_*` entram no bundle e devem conter somente configuração pública.
 
-```bash
-cp .env.example .env
+| Variável | Finalidade |
+| --- | --- |
+| `EXPO_PUBLIC_API_BASE_URL` | Origem principal da API |
+| `EXPO_PUBLIC_API_FALLBACK_URL` | Origem alternativa da mesma API |
+| `EXPO_PUBLIC_GPS_HUB_ROUTE` | Caminho do hub, normalmente `/hub/gps` |
+| `EXPO_PUBLIC_GPS_HUB_URL` | URL completa do hub quando necessária |
+| `EXPO_PUBLIC_RADAR_API_BASE_URL` | Origem do Radar remoto |
+| `EXPO_PUBLIC_RADAR_REMOTE_ENABLED` | Habilitação do caminho remoto (`true`) |
+| `EXPO_PUBLIC_REQUEST_TIMEOUT_MS` | Timeout HTTP |
+| `APP_VARIANT` | Variante nativa; `development` para Dev Client |
+
+Preencha as origens com os endereços do ambiente autorizado, acessíveis pelo dispositivo. O valor local padrão de API no código usa loopback, que não aponta para o computador quando executado em telefone físico.
+
+O gerenciador compartilhado verifica liveness e alterna entre gateway principal e fallback; readiness e saúde das fontes não decidem essa troca. Operações de negócio não são repetidas automaticamente. SignalR acompanha a origem ativa. Radar acompanha a troca quando usa a mesma origem da API; uma origem própria permanece separada. Builds standalone exigem origens HTTPS autorizadas na configuração nativa.
+
+Os perfis existentes em `eas.json` já definem origens e podem sobrepor o `.env`; revise-os antes de gerar um bundle/build. Alterações nas variáveis incorporadas exigem novo bundle ou build apropriado.
+
+Com o Dev Client instalado, execute no diretório `NoPonto`:
+
+```sh
+pnpm exec expo start --dev-client --lan
 ```
 
-## 🏃‍♂️ Rodando o Projeto
+Em PowerShell, selecione previamente a variante com `$env:APP_VARIANT = 'development'` quando necessário. Mudanças nativas exigem recompilar o cliente.
 
-### Com Tunnel (Recomendado para Expo Go)
+Scripts presentes: `pnpm start` (túnel), `pnpm start:local`, `pnpm android` e `pnpm ios` (Metro com túnel), `pnpm web` e `pnpm lint`. Os comandos Android/iOS do package não geram um binário nativo. O alvo principal é mobile; web não equivale à validação dos recursos Android.
 
-```bash
-pnpm start
-```
+## APK e CI/CD
 
-ou
+Os scripts PowerShell em `NoPonto/scripts/` incluem `build-dev-local.ps1` e `build-release-local.ps1`. O primeiro gera Dev Client; o segundo exige Firebase de produção e keystore/chaves fornecidos pelo ambiente. Não crie ou substitua credenciais para executar uma build. Os scripts usam flavors Gradle, validam pré-requisitos e copiam APKs para `.local-apks/`.
 
-```bash
-pnpm expo start --tunnel
-```
+No EAS, os perfis existentes incluem `development` (Dev Client), `radar`, `nativeprobe`, `preview` (APK interno) e `production` (AAB). Consulte os scripts e `eas.json` antes de escolher uma variante. Nenhum build local, EAS ou deploy foi executado nesta limpeza.
 
-### Localmente (sem tunnel)
+O workflow `.github/workflows/build.yaml` está **temporariamente desativado** por `if: ${{ false }}` no job `build`. Tanto pushes para `main` quanto `workflow_dispatch` mantêm seus gatilhos, mas pulam o job inteiro. Remover a condição reativa o fluxo EAS/APK existente. A alteração permanece em `chore/principal`, para revisão antes de futura integração à `main`.
 
-```bash
-pnpm start:local
-```
+## Validação e documentação
 
-### Android/iOS específico
+Há testes Node junto ao código (`*.test.ts`/`*.test.cjs`) e executores em `scripts/`. Não existe script `pnpm test` no package atual. Para verificações manuais, `pnpm exec tsc --noEmit` e `pnpm lint` estão disponíveis; testes específicos devem usar o executor apropriado. Nesta limpeza foram feitas apenas verificações estáticas de referências, preservação de arquivos, YAML e diff.
 
-```bash
-pnpm android  # Android com tunnel
-pnpm ios      # iOS com tunnel
-```
-
-## 🎨 Usando Tailwind CSS (NativeWind)
-
-Você pode usar classes do Tailwind diretamente no `className` dos componentes:
-
-```tsx
-import { View, Text } from "react-native";
-
-export function MyComponent() {
-  return (
-    <View className="flex-1 bg-white p-4">
-      <Text className="text-2xl font-bold text-blue-600">Olá, NativeWind!</Text>
-    </View>
-  );
-}
-```
-
-### Classes úteis do Tailwind:
-
-- **Layout**: `flex`, `flex-row`, `flex-col`, `justify-center`, `items-center`
-- **Espaçamento**: `p-4`, `m-2`, `px-6`, `py-3`, `gap-4`
-- **Cores**: `bg-blue-500`, `text-white`, `border-gray-300`
-- **Tamanhos**: `w-full`, `h-screen`, `w-1/2`
-- **Tipografia**: `text-xl`, `font-bold`, `text-center`
-- **Bordas**: `rounded-lg`, `border-2`, `shadow-lg`
-
-Consulte a [documentação do Tailwind](https://tailwindcss.com/docs) para mais classes.
-
-## 📱 Conectando ao Expo Go
-
-1. Instale o **Expo Go** no seu dispositivo:
-   - [Android](https://play.google.com/store/apps/details?id=host.exp.exponent)
-   - [iOS](https://apps.apple.com/app/expo-go/id982107779)
-
-2. Execute `pnpm start` no terminal
-
-3. Escaneie o QR code:
-   - **Android**: Use o Expo Go
-   - **iOS**: Use a câmera do iPhone
-
-4. O app carregará automaticamente no seu dispositivo
-
-## 🔧 Scripts Disponíveis
-
-- `pnpm start` - Inicia o servidor de desenvolvimento com tunnel
-- `pnpm start:local` - Inicia o servidor sem tunnel
-- `pnpm android` - Abre no Android com tunnel
-- `pnpm ios` - Abre no iOS com tunnel
-- `pnpm web` - Abre no navegador web
-- `pnpm lint` - Executa o linter
-- `pnpm reset-project` - Reseta o projeto
-
-## 📚 Recursos Úteis
-
-- [Documentação do Expo](https://docs.expo.dev/)
-- [Documentação do Expo Router](https://docs.expo.dev/router/introduction/)
-- [Documentação do NativeWind](https://www.nativewind.dev/)
-- [Documentação do Tailwind CSS](https://tailwindcss.com/docs)
-- [React Native Docs](https://reactnative.dev/)
-
-## 🤝 Contribuindo
-
-1. Crie uma branch para sua feature (`git checkout -b feature/MinhaFeature`)
-2. Commit suas mudanças (`git commit -m 'Adiciona MinhaFeature'`)
-3. Push para a branch (`git push origin feature/MinhaFeature`)
-4. Abra um Pull Request
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+[Backend](https://github.com/UVAEstudantes/noponto-backend) · [Documentação](https://github.com/UVAEstudantes/noponto-docs) · [Índice documental](https://github.com/UVAEstudantes/noponto-docs/blob/main/INDICE.md) · [Releases](https://github.com/UVAEstudantes/noponto-frontend/releases)
