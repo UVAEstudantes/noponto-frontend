@@ -384,10 +384,10 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     dr.tracePosition=motionTraceOrders.length?p:null;
     var validContext=coords&&coords.length>=2&&position!==null&&position>=0&&position<=1
       &&coords.every(function(c){return c&&Number.isFinite(c[0])&&Number.isFinite(c[1])&&Math.abs(c[0])<=90&&Math.abs(c[1])<=180});
-    if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;stopAnim(key);return;}
+    if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;if(!dr.observedInterpolation)stopAnim(key);return;}
     var contextKey=JSON.stringify(coords);
     if(dr.routeKey!==contextKey||dr.identity!==identity){
-      stopAnim(key);dr.lineCoords=coords;dr.routeKey=contextKey;dr.identity=identity;dr.comprimentoGraus=null;
+      stopAnim(key);dr.observedInterpolation=false;dr.lineCoords=coords;dr.routeKey=contextKey;dr.identity=identity;dr.comprimentoGraus=null;
       dr.routeMetres=parseNum(p.comprimentoRotaMetros)||comprimentoRotaGraus(coords)*111000;
       dr.posicaoNaRota=Math.min(1,position+(dr.projectedMetres||0)/dr.routeMetres);
       dr.gpsPosition=position;
@@ -405,7 +405,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.backendMotionEligible=false;
       if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<=dr.gpsTimestamp)return;
       var priorTime=dr.gpsTimestamp,priorCoordinate=dr.gpsCoordinate;
-      stopAnim(key);dr.backendMotionEligible=false;dr.gpsTimestamp=timestamp;
+      stopAnim(key);dr.observedInterpolation=true;dr.backendMotionEligible=false;dr.gpsTimestamp=timestamp;
       dr.lineCoords=null;dr.velocidade=0;dr.posicaoNaRota=null;dr.gpsPosition=null;dr.routeKey=null;
       var dest={lat:parseNum(p.latitude),lng:parseNum(p.longitude)};
       dr.gpsCoordinate=dest;
@@ -422,7 +422,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       return;
     }
 
-    dr.backendMotionEligible=true;
+    dr.observedInterpolation=false;dr.backendMotionEligible=true;
   }else{dr.backendUnified=false;}
   if(dr.alternative && (timestamp===null || timestamp<Date.parse(dr.alternative.physicalAt))){
     stopAnim(key);marker.setLngLat([dr.alternative.longitude,dr.alternative.latitude]);return;
@@ -493,7 +493,7 @@ function startDR(){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
           delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
         }
-        if(!dr.backendMotionEligible||now>=dr.projectionUntil){stopAnim(key);if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
+        if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(!dr.observedInterpolation)stopAnim(key);if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
       }
       if(dr.alternative){
         var physicalAgeMs=now-Date.parse(dr.alternative.physicalAt);

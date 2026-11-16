@@ -47,3 +47,12 @@ test('changed route length cannot reinterpret the old fraction as newly travelle
  assert.equal(f.c.drState.bus.projectedMetres,used);assert.equal(f.c.drState.bus.posicaoNaRota,.4+used/222000);
  assert.equal(f.c.drState.bus.gpsCoordinate.lng,0);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
 });
+
+test('projection cutoff does not cancel interpolation toward a genuinely new physical fix',()=>{
+ const f=fixture();f.update({backendMotionEligible:false},null,f.base,null);f.advance(1000);
+ f.update({backendMotionEligible:false,longitude:.0001},null,f.base+1000,null);
+ assert.ok(f.c.animFrames.bus);f.advance(100);
+ assert.ok(f.c.animFrames.bus);f.update({backendMotionEligible:false,longitude:.0001},null,f.base+1000,null);assert.ok(f.c.animFrames.bus);
+ const frame=[...f.frames.values()].at(-1);frame(f.base+2700);
+ assert.equal(f.marker.pos.lng,.0001);assert.equal(f.c.animFrames.bus,undefined);
+});
