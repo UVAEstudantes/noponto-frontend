@@ -127,3 +127,10 @@ test('legacy zero cannot keep projecting an old average but distinct route progr
  assert.ok(f.c.drState.bus.velocidade>0&&f.c.drState.bus.velocidade<10);
  f.update({backendUnified:false,velocidade:0,velocidadeMedia:40,longitude:.0002},undefined,f.base+20000,.0002);assert.equal(f.c.drState.bus.velocidade,0);
 });
+
+test('confirmed legacy terminal stop cannot retain an extrapolated position indefinitely',()=>{
+ const f=fixture();f.update({backendUnified:false,velocidadeMedia:6});f.advance(10000);const shown=f.marker.pos.lng;
+ f.update({backendUnified:false,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'},undefined,f.base+10000,0);
+ assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.drState.bus.velocidade,0);
+ f.advance(31000);assert.equal(f.marker.pos.lng,0);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
+});

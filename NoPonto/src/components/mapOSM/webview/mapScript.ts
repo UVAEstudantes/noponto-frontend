@@ -475,7 +475,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   dr.velocidade=terminalStopped?0:Math.max(0,speed||0);
   dr.gpsTimestamp=timestamp;dr.gpsPosition=position;dr.gpsCoordinate=dest;dr.projectedMetres=0;
   if(terminalStopped)roadMovement.terminalStops++;
-  if(terminalStopped&&!first){stopAnim(key);return;}
+  if(terminalStopped&&!first)stopAnim(key);
   var valid=coords&&coords.length>=2&&position!==null&&position>=0&&position<=1
     &&coords.every(function(c){return c&&Number.isFinite(c[0])&&Number.isFinite(c[1])&&Math.abs(c[0])<=90&&Math.abs(c[1])<=180});
   var routeKey=valid?JSON.stringify(coords):null,routeChanged=dr.routeKey!==routeKey;
@@ -494,7 +494,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     var correcting=debt>0||!sameRoute&&!first&&previousPosition!=null;
     dr.visualHoldAt=null;dr.visualAhead=false;dr.posicaoNaRota=position;
     var c=interpolarNaRota(coords,position),target={lat:c[0],lng:c[1]};
-    if(first||correcting){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
+    if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
   }else{
     dr.posicaoNaRota=null;
     if(!first){roadMovement.linearSyncs++;animateTo(key,marker,dest,1600);}

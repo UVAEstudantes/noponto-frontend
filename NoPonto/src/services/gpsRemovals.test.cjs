@@ -1075,7 +1075,7 @@ test('terminal remains stationary and confirmed direction reanchors correct geom
     r.p={...r.p,timestamp:r.f.clock.now,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'};r.send();
     r.f.clock.now+=3000;r.web.ticks[0]();const stopped=r.marker().getLngLat().lng;
     assert.equal(stopped,priorStop);
-    r.f.clock.now+=120000;r.web.ticks[0]();assert.equal(r.marker().getLngLat().lng,stopped);
+    r.f.clock.now+=120000;r.web.ticks[0]();assert.ok(Math.abs(r.marker().getLngLat().lng-r.p.longitude)<1e-10);assert.equal(r.state().visualAhead,false);
     const old=r.marker(),popup=r.web.context.vehiclePopups[r.key];popup.open=true;popup.events.open();
     r.web.context.toggleDetails(popup.getElement().querySelector('.popup-toggle'));
     r.p={...r.p,timestamp:r.f.clock.now,sentidoId:'B',padraoVersaoId:'version-B',posicaoNaRota:0,longitude:-43.18};r.send();
@@ -1089,15 +1089,15 @@ test('terminal remains stationary and confirmed direction reanchors correct geom
   }finally{r.f.dispose();}
 });
 
-test('new confirmed stationary terminal sample stops a pending reconciliation without moving it',()=>{
+test('new confirmed stationary terminal sample cancels interpolation and anchors the physical position',()=>{
   const r=roadScenario();
   try{
     r.p={...r.p,timestamp:r.f.clock.now,posicaoNaRota:.2,longitude:-43.196};r.send();
     const frame=r.web.context.animFrames[r.key];assert.ok(frame);
-    r.web.frames.get(frame)(r.f.clock.now+350);const frozen=r.marker().getLngLat().lng;
+    r.web.frames.get(frame)(r.f.clock.now+350);
     r.f.clock.now+=1000;r.p={...r.p,timestamp:r.f.clock.now,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'};r.send();
     assert.equal(r.web.context.animFrames[r.key],undefined);
-    r.f.clock.now+=1000;r.web.ticks[0]();assert.equal(r.marker().getLngLat().lng,frozen);
+    r.f.clock.now+=1000;r.web.ticks[0]();assert.ok(Math.abs(r.marker().getLngLat().lng-r.p.longitude)<1e-10);
   }finally{r.f.dispose();}
 });
 
