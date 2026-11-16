@@ -387,10 +387,9 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;stopAnim(key);return;}
     var contextKey=JSON.stringify(coords);
     if(dr.routeKey!==contextKey||dr.identity!==identity){
-      var previousProgress=dr.identity===identity?dr.posicaoNaRota:null;
       stopAnim(key);dr.lineCoords=coords;dr.routeKey=contextKey;dr.identity=identity;dr.comprimentoGraus=null;
       dr.routeMetres=parseNum(p.comprimentoRotaMetros)||comprimentoRotaGraus(coords)*111000;
-      dr.posicaoNaRota=Math.min(1,Math.max(previousProgress||0,position+(dr.projectedMetres||0)/dr.routeMetres));
+      dr.posicaoNaRota=Math.min(1,position+(dr.projectedMetres||0)/dr.routeMetres);
       dr.gpsPosition=position;
     }
     if(dr.decelFactor==null)dr.decelFactor=1;

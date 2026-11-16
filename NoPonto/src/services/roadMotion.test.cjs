@@ -31,7 +31,7 @@ test('ambiguous context cannot start motion and fresh GPS still advances normall
 });
 test('same GPS route refresh preserves consumed distance and eligibility can resume before expiry',()=>{
  const f=fixture();f.update();f.advance(10000);const used=f.c.drState.bus.projectedMetres;f.update({backendMotionEligible:false});f.advance(10000);f.update();assert.equal(f.c.drState.bus.projectedMetres,used);f.advance(1000);assert.ok(f.c.drState.bus.projectedMetres>used);
- const old=f.c.drState.bus.posicaoNaRota;f.update({},[[0,0],[0,.5],[0,1]]);assert.ok(f.c.drState.bus.posicaoNaRota>=old);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
+ const old=f.c.drState.bus.posicaoNaRota;f.update({},[[0,0],[0,.5],[0,1]]);assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota-old)<1e-12);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
 });
 
 test('legacy to unified handoff cannot reset an untracked projection budget',()=>{
@@ -39,4 +39,11 @@ test('legacy to unified handoff cannot reset an untracked projection budget',()=
  const physical=f.c.drState.bus.gpsTimestamp;assert.equal(physical,f.base);assert.equal(f.c.drState.bus.backendMotionEligible,false);
  f.update();const current=f.marker.pos.lng;f.advance(1000);assert.equal(f.marker.pos.lng,current);
  f.update({},undefined,f.base+11000,.001);assert.equal(f.c.drState.bus.projectedMetres,0);
+});
+
+test('changed route length cannot reinterpret the old fraction as newly travelled distance',()=>{
+ const f=fixture();f.update({},undefined,f.base,.8);f.advance(1000);const used=f.c.drState.bus.projectedMetres;
+ f.update({comprimentoRotaMetros:222000},[[0,0],[0,2]],f.base,.4);
+ assert.equal(f.c.drState.bus.projectedMetres,used);assert.equal(f.c.drState.bus.posicaoNaRota,.4+used/222000);
+ assert.equal(f.c.drState.bus.gpsCoordinate.lng,0);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
 });
