@@ -1003,7 +1003,7 @@ for(const presence of [true,false]){
     const r=roadScenario(presence);
     try{
       r.tick(60);const before=r.metres();
-      r.p={...r.p,timestamp:r.start+20000,posicaoNaRota:.101,longitude:-43.19798};r.send();
+      const physical=(before-50)/r.length;r.p={...r.p,timestamp:r.start+20000,posicaoNaRota:physical,longitude:-43.2+physical*.02};r.send();
       assert.equal(r.metres(),before);assert.equal(r.web.context.animFrames[r.key],undefined);
       r.f.clock.now+=1000;r.web.ticks[0]();assert.equal(r.metres(),before);assert.equal(r.state().visualAhead,true);assert.ok(r.state().projectedMetres>0);
       const current=r.metres();for(let i=0;i<5;i++)r.send();assert.equal(r.metres(),current);
@@ -1074,7 +1074,7 @@ test('terminal remains stationary and confirmed direction reanchors correct geom
     r.tick(60);const priorStop=r.marker().getLngLat().lng;
     r.p={...r.p,timestamp:r.f.clock.now,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'};r.send();
     r.f.clock.now+=3000;r.web.ticks[0]();const stopped=r.marker().getLngLat().lng;
-    assert.equal(stopped,priorStop);
+    assert.equal(stopped,r.state().visualAhead?priorStop:r.p.longitude);assert.equal(r.web.context.animFrames[r.key],undefined);
     r.f.clock.now+=120000;r.web.ticks[0]();assert.ok(Math.abs(r.marker().getLngLat().lng-r.p.longitude)<1e-10);assert.equal(r.state().visualAhead,false);
     const old=r.marker(),popup=r.web.context.vehiclePopups[r.key];popup.open=true;popup.events.open();
     r.web.context.toggleDetails(popup.getElement().querySelector('.popup-toggle'));
@@ -1696,4 +1696,25 @@ test('hybrid GTFS ITS continuity reaches real WebView with one identity and boun
   f.clock.now=origin+105000;v.operational={...op,status:0,timestampGps:new Date(origin+80000).toISOString(),longitude:.001+30/3.6*80/111195};v.location.physicalAt=v.operational.timestampGps;v.location.longitude=v.operational.longitude;v.location.source='GTFSRT_BUS';snapshot.revision++;
   const restored=send();assert.equal(restored.contextConfidence,'confirmed');assert.equal(web.context.vehicleMarkers[key],marker);
  }finally{f.dispose();}
+});
+
+function delayedRoadBridge({speed=30,age=25,cap=250,horizon=90,context='retained',remaining=10000}={}){
+ const f=fixture({presence:false}),at=f.clock.now-age*1000,m=111195;
+ const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);
+ let p={id:'D86000',ordem:'D86000',linhaId:'line',latitude:0,longitude:0,timestamp:at,backendUnified:true,backendMotionEligible:!!context,backendValidUntil:at+480000,projectionUntil:at+horizon*1000,projectionSpeedKmh:speed,projectionMaxMetres:cap,comprimentoRotaMetros:remaining,posicaoNaRota:context?0:null,padraoVersaoId:context?'out':null,sentidoId:context?'direction':null,contextConfidence:context,velocidade:speed,lastObservedSpeedKmh:speed,physicalOnly:!context,unifiedSource:'ITS_CURRENT'};
+ const line={nome:'855',linhaId:'line',modal:'onibus',segmentos:[[[0,0],[0,remaining/m]]],itinerarioSegmentoMap:{out:0}};
+ const key='onibus:855:D86000';const send=over=>{p={...p,...over};web.context.window.updateMap({unifiedCodes:['855'],linhas:[{...line,posicoes:[p]}]});};
+ send();web.context.startDR();const marker=web.context.vehicleMarkers[key];
+ const metres=()=>marker.getLngLat().lng*m;
+ const advance=seconds=>{const until=f.clock.now+seconds*1000;while(f.clock.now<until){f.clock.now+=100;for(const tick of web.ticks)tick();for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}}};
+ return {f,web,at,m,key,send,metres,advance,state:()=>web.context.drState[key]};
+}
+for(const [speed,age] of [[30,25],[40,30]])test(`delayed basic ${speed} kmh GPS spends only rendered distance before spatial taper`,()=>{
+ const r=delayedRoadBridge({speed,age});try{
+  const start=r.metres(),used=r.state().projectedMetres;r.advance(5);const moved=r.metres()-start,expected=speed/3.6*5;
+  assert.ok(Math.abs(moved-expected)<1,`actual marker ${moved}m versus ${expected}m`);
+  assert.ok(Math.abs(r.state().projectedMetres-used-moved)<.1);assert.equal(r.state().gpsTimestamp,r.at);
+  r.send();const consumed=r.state().projectedMetres;assert.ok(Math.abs(consumed-used-moved)<.1);
+  r.advance(70);assert.ok(r.state().projectedMetres<=250);assert.ok(r.metres()<=250.1);
+ }finally{r.f.dispose();}
 });

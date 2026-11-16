@@ -579,8 +579,11 @@ function startDR(){
       if(!dr.comprimentoGraus)return;
       var remaining=Math.max(0,(dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-(dr.projectedMetres||0));
       var duration=until-dr.gpsTimestamp,cap=dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres;
-      var metres=Math.min(remaining,Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,duration,cap)
-        -roadProjectionMetres(dr.velocidade*dr.decelFactor,from-dr.gpsTimestamp,duration,cap)));
+      var requested=Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,duration,Infinity)
+        -roadProjectionMetres(dr.velocidade*dr.decelFactor,from-dr.gpsTimestamp,duration,Infinity));
+      // Spatial confidence spends the actual ledger, never an unrendered arrival delay.
+      var taper=Math.min(50,cap),free=Math.max(0,remaining-taper);
+      var metres=requested<=free?requested:free+Math.min(remaining,taper)*(1-Math.exp(-(requested-free)/Math.max(1,taper)));
       dr.projectedMetres=(dr.projectedMetres||0)+metres;
       var step=metres/(dr.routeMetres||dr.comprimentoGraus*111000);
       dr.posicaoNaRota=Math.min(1,dr.posicaoNaRota+step);
