@@ -9,8 +9,8 @@ export interface GpsPresentationPolicy {
 // Physical, contextual and projection lifetimes deliberately remain independent.
 const DEFAULT_POLICY:Readonly<GpsPresentationPolicy>=Object.freeze({
   delayedMs:180000,attenuatedMs:300000,publicMs:480000,
-  currentSpeedMs:60000,contextMs:180000,baseProjectionMs:60000,
-  coherentProjectionMs:90000,maxProjectionMetres:250,
+  currentSpeedMs:60000,contextMs:180000,baseProjectionMs:90000,
+  coherentProjectionMs:120000,maxProjectionMetres:250,
   terminalRadiusMetres:35,terminalExitMetres:70,dwellMs:15000,
   initialStops:3,initialMetres:1500,
 });

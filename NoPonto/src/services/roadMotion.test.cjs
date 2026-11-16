@@ -74,3 +74,17 @@ test('large backwards discrepancy or changed directed route corrects without rev
  f.update({longitude:.002},undefined,f.base+2000,.002,'line|return|pattern2|version');
  assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.identity,'line|return|pattern2|version');
 });
+
+test('projection fades across sixty seconds and approaches spatial cap without a hard cut',()=>{
+ const f=fixture();f.update({projectionUntil:f.base+90000,projectionSpeedKmh:40});
+ f.advance(59000);const a=f.c.drState.bus.projectedMetres;f.advance(1000);const b=f.c.drState.bus.projectedMetres;
+ f.advance(1000);const c=f.c.drState.bus.projectedMetres;
+ assert.ok(c>b&&b>a);assert.ok(c-b<b-a);assert.ok(c<250);
+ f.advance(28000);const near=f.c.drState.bus.projectedMetres;f.advance(1000);assert.ok(f.c.drState.bus.projectedMetres-near<.1);
+ f.advance(30000);assert.ok(f.c.drState.bus.projectedMetres<250);
+});
+test('coherent projection tapers to a safe stop at 120 seconds without renewing the fix',()=>{
+ const f=fixture();f.update({projectionUntil:f.base+120000});f.advance(90000);const at90=f.c.drState.bus.projectedMetres;
+ f.advance(10000);assert.ok(f.c.drState.bus.projectedMetres>at90);f.advance(20000);const end=f.marker.pos.lng;
+ f.advance(10000);assert.equal(f.marker.pos.lng,end);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
+});

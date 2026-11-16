@@ -512,13 +512,18 @@ function startDR(){
       }
       if(dr.visualAhead)return;
       if(!dr.lineCoords||dr.posicaoNaRota==null||!dr.velocidade||dr.velocidade<1||animFrames[key])return;
-      var until=dr.gpsTimestamp===null?from:dr.gpsTimestamp+(dr.backendUnified?Math.max(0,dr.projectionUntil-dr.gpsTimestamp):roadMotionHorizonMs);
+      var until=dr.gpsTimestamp===null?from:dr.gpsTimestamp+(dr.backendUnified?Math.max(0,dr.projectionUntil-dr.gpsTimestamp):Math.min(120000,Math.max(90000,roadMotionHorizonMs)));
       var dt=Math.max(0,Math.min(now,until)-from)/1000;
       if(!dt)return;
       if(!dr.comprimentoGraus)dr.comprimentoGraus=comprimentoRotaGraus(dr.lineCoords);
       if(!dr.comprimentoGraus)return;
-      var step=kmhParaGrausPorSeg(dr.velocidade*dr.decelFactor)*dt/dr.comprimentoGraus;
-      if(dr.backendUnified){var remaining=Math.max(0,dr.projectionMaxMetres-(dr.projectedMetres||0));var metres=Math.min(remaining,dr.velocidade*dr.decelFactor/3.6*dt);dr.projectedMetres=(dr.projectedMetres||0)+metres;step=metres/(dr.routeMetres||dr.comprimentoGraus*111000);}
+      var remaining=Math.max(0,(dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-(dr.projectedMetres||0));
+      var duration=until-dr.gpsTimestamp;
+      var confidence=Math.pow(Math.min(1,Math.max(0,until-now)/Math.max(1,duration-30000)),2);
+      var spatial=Math.min(1,remaining/100);
+      var metres=Math.min(remaining,dr.velocidade*dr.decelFactor/3.6*dt*confidence*spatial);
+      dr.projectedMetres=(dr.projectedMetres||0)+metres;
+      var step=metres/(dr.routeMetres||dr.comprimentoGraus*111000);
       dr.posicaoNaRota=Math.min(1,dr.posicaoNaRota+step);
       if(motionTraceOrders.length&&dr.backendUnified&&((dr.projectedMetres||0)>=dr.projectionMaxMetres||dr.posicaoNaRota>=1))traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');
       var coord=interpolarNaRota(dr.lineCoords,dr.posicaoNaRota);

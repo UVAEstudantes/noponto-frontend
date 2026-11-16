@@ -47,7 +47,7 @@ test('duplicates do not create history and delayed GPS disables projection witho
  const f=fixture();f.v.operational=null;
  for(let i=0;i<6;i++)assert.equal(f.tick(0,.001).padraoVersaoId,null);
  const active=fixture();active.tick(0,.001);active.v.operational=null;active.v.location.source='ITS_CURRENT';active.tick(30,.002);
- const p=active.compose([active.line],[active.s],base+95000)[0].posicoes![0];assert.equal(p.timestamp,base+30000);assert.equal(p.backendMotionEligible,false);assert.equal(p.presencaRotulo,'GPS disponível');assert.equal(p.velocidade,undefined);assert.equal(p.lastObservedSpeedKmh,20);
+ const p=active.compose([active.line],[active.s],base+125000)[0].posicoes![0];assert.equal(p.timestamp,base+30000);assert.equal(p.backendMotionEligible,false);assert.equal(p.presencaRotulo,'GPS disponível');assert.equal(p.velocidade,undefined);assert.equal(p.lastObservedSpeedKmh,20);
 });
 
 test('regressive GPS cannot move the physical timestamp backward or count toward inference',()=>{
