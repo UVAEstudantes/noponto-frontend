@@ -115,3 +115,21 @@ test('adaptive budget stays basic near a stop or without known next stop',()=>{
   assert.equal(f.tick(40,.001+step*2).projectionMaxMetres,250);
  }
 });
+
+test('fresh ITS fixes outlive stale GTFS SemSinal without renewing validated operational context',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.motionEligible=false;f.v.operational!.status=1;
+ for(const t of [30,60,90]){
+  const p=f.tick(t,.001+t*.00003);assert.equal(p.padraoVersaoId,'out');assert.equal(p.sentidoId,'direction');
+  assert.equal(p.contextValidatedAt,base);assert.equal(p.contextConfidence,'retained');assert.equal(p.physicalOnly,false);
+  assert.equal(p.backendMotionEligible,true);assert.ok(p.posicaoNaRota!>0);assert.equal(p.proximaParadaNome,'Parada seguinte');
+  assert.equal(p.timestamp,base+t*1000);assert.equal(f.compose([f.line],[f.s],base+t*1000)[0].posicoes!.length,1);
+ }
+ f.v.operational={...f.v.operational!,status:0,timestampGps:new Date(base+120000).toISOString(),longitude:.0046};f.v.location.source='GTFSRT_BUS';
+ assert.equal(f.tick(120,.0046).contextConfidence,'confirmed');
+});
+for(const conflict of ['line','direction','inactive','same-fix'])test(`ITS cannot override operational ${conflict} conflict with fresh physical speed`,()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=conflict==='inactive'?2:1;
+ if(conflict==='line')f.v.operational!.linhaId='other';if(conflict==='direction')f.v.operational!.sentidoId='reverse';
+ const p=f.tick(conflict==='same-fix'?0:30,conflict==='same-fix'?.001:.002);
+ assert.equal(p.backendMotionEligible,false);assert.equal(p.padraoVersaoId,null);
+});

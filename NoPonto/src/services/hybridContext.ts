@@ -66,16 +66,21 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       if(invalid) {track.context=undefined;track.samples=[];track.lastProjection=undefined;track.blockedAt=Math.max(track.blockedAt,sample.at);}
       if(!invalid&&(!last||sample.at>last.at))track.samples=[...track.samples,sample].slice(-6);
       const op=vehicle.operational, opAt=op?Date.parse(op.timestampGps):0;
-      if(op&&(op.status!==0||track.context&&opAt>=track.operationAt&&(op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context.pattern||op.sentidoId!=null&&op.sentidoId!==track.context.direction))) {
+      const physicalContinuation=!!track.context&&vehicle.location.source==='ITS_CURRENT'&&op?.status===1&&opAt<sample.at
+        &&op.linhaId===line.linhaId&&op.codigoLinha===line.nome
+        &&(op.padraoVersaoId==null||op.padraoVersaoId===track.context.pattern)
+        &&(op.sentidoId==null||op.sentidoId===track.context.direction);
+      // Missing an old operational cycle does not negate a newer compatible physical observation.
+      if(op&&(op.status!==0&&!physicalContinuation||track.context&&opAt>=track.operationAt&&(op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context.pattern||op.sentidoId!=null&&op.sentidoId!==track.context.direction))) {
         restriction='operational_conflict';
         track.context=undefined;track.samples=[sample];
-        if(op.status!==0)track.blockedAt=Math.max(track.blockedAt,sample.at);
+        if(op.status!==0&&!physicalContinuation)track.blockedAt=Math.max(track.blockedAt,sample.at);
       }
       if(op&&(opAt>track.operationAt||!track.context&&opAt===track.operationAt)) {
         track.operationAt=opAt;
         // An unusable same-trip update does not revoke prior validated evidence.
         // Its original validation time is never renewed by this fallback.
-        if(op.status!==0||op.linhaId!==line.linhaId||op.codigoLinha!==line.nome||op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context?.pattern)track.context=undefined;
+        if(op.status!==0&&!physicalContinuation||op.linhaId!==line.linhaId||op.codigoLinha!==line.nome||op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context?.pattern)track.context=undefined;
         if(!invalid&&opAt>track.blockedAt&&opAt<=now&&now-opAt<CONTEXT_MS&&op.status===0
           &&op.linhaId===line.linhaId&&op.codigoLinha===line.nome&&op.padraoVersaoId&&op.sentidoId) {
           const index=line.itinerarioSegmentoMap?.[op.padraoVersaoId];
