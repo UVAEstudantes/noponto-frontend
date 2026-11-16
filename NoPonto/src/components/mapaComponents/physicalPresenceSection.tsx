@@ -20,7 +20,7 @@ export function renderPhysicalPresenceSection(vehicles: PhysicalVehicle[], now: 
         <Text style={{ color: cores.textoSecundario, fontSize: 10 }}>
           {vehicle.lineState === "Inherited" ? "Linha herdada" : vehicle.lineState === "Informed" ? "Linha informada" : "Linha não confirmada"}
           {` · GPS há ${Math.floor(age.seconds / 60)} min`}
-          
+
           {` · ${physicalLocationLabel(vehicle)} · ${physicalFacilityName(vehicle.facilityStopId)}`}
         </Text>
         <GpsFreshnessIndicator at={Date.parse(vehicle.physicalAt)} now={now} uncertain={vehicle.location==='UncertainLocation'} textColor={cores.textoSecundario}/>

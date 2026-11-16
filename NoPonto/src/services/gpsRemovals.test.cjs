@@ -1561,9 +1561,9 @@ test('D86150 origin geometry projects continuously without a trip and stops befo
   assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);
   f.clock.now+=1000;for(const [id,fn]of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}
   const observed=marker.getLngLat().lng;web.context.startDR();
-  for(let i=0;i<20;i++){f.clock.now+=1000;web.ticks[0]();}
+  for(let i=0;i<20;i++){f.clock.now+=1000;for(const [id,fn]of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}web.ticks[0]();}
   assert.ok(marker.getLngLat().lng>observed);assert.equal(marker.getLngLat().lat,0);
-  for(let i=0;i<80;i++){f.clock.now+=1000;web.ticks[0]();}
+  for(let i=0;i<80;i++){f.clock.now+=1000;for(const [id,fn]of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}web.ticks[0]();}
   assert.ok(marker.getLngLat().lng<.002);assert.equal(marker.getLngLat().lat,0);assert.equal(web.context.drState[key].gpsTimestamp,at+40000);
  }finally{f.dispose();}
 });
@@ -1585,7 +1585,7 @@ test('hybrid WebView temporal sequence keeps one moving marker through ITS zero 
   send(80,100,0);advance(5);const pending=marker.getLngLat().lng;advance(10);assert.ok(marker.getLngLat().lng>=pending);assert.ok(marker.getLngLat().lng<=125/m);send(100,100,0);advance(5);const stopped=marker.getLngLat().lng;advance(3);assert.equal(marker.getLngLat().lng,stopped);assert.ok(p.padraoVersaoId||p.physicalRoutePattern);
   send(110,100,0);advance(5);assert.equal(p.backendMotionEligible,false);
   for(const [seconds,d,confirmed]of [[140,200,false],[170,350,true],[200,500,false],[230,650,false],[260,800,false],[290,950,false],[320,1100,false],[350,1250,false],[380,1400,false],[410,1550,true]]){
-   send(seconds,d,18,confirmed);advance(5);assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(marker.getLngLat().lng>d/m,`render advances after ${seconds}`);assert.equal(web.context.drState[key].gpsTimestamp,start+seconds*1000);
+   send(seconds,d,18,confirmed);advance(Math.max(5,Math.ceil((web.context.drState[key].forwardDurationMs||0)/1000)+2));assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(marker.getLngLat().lng>d/m,`render advances after ${seconds}`);assert.equal(web.context.drState[key].gpsTimestamp,start+seconds*1000);
   }
   const last=marker.getLngLat().lng;advance(100);assert.ok(marker.getLngLat().lng>=last);advance(Math.max(0,Math.ceil((web.context.drState[key].projectionUntil-f.clock.now)/1000))+1);const frozen=marker.getLngLat().lng;advance(30);assert.equal(marker.getLngLat().lng,frozen);
  }finally{f.dispose();}

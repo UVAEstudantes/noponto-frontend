@@ -3,14 +3,15 @@ const test = require("node:test");
 const { criarHarness } = require("../../hooks/radarTestHarness.cjs");
 const { temas } = require("../../constants/tema.ts");
 
+function TutorialTargetMock(props){return {type:props.component??"View",props};}
 function nodes(value) {
-  if(value?.type?.name==="GpsFreshnessIndicator")return nodes(value.type(value.props));
+  if((value?.type?.name==="GpsFreshnessIndicator"||value?.type===TutorialTargetMock))return nodes(value.type(value.props));
   if (Array.isArray(value)) return value.flatMap(nodes);
   if (!value || typeof value !== "object") return [];
   return [value, ...nodes(value.props?.children)];
 }
 function texto(value) {
-  if(value?.type?.name==="GpsFreshnessIndicator")return texto(value.type(value.props));
+  if((value?.type?.name==="GpsFreshnessIndicator"||value?.type===TutorialTargetMock))return texto(value.type(value.props));
   if (Array.isArray(value)) return value.map(texto).join("");
   if (value == null || typeof value === "boolean") return "";
   if (typeof value !== "object") return String(value);
@@ -19,12 +20,14 @@ function texto(value) {
 function ui(h) {
   const pan = {};
   for (const key of ["activeOffsetY", "onStart", "onUpdate", "onEnd"]) pan[key] = () => pan;
-  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){}};
+  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){},setLineModalOpen(){}};
   const mocks = {
     "../tutorial/TutorialProvider":{useTutorial:()=>tutorial},
-    "../tutorial/TutorialTarget":{__esModule:true,default:"TutorialTarget"},
+    "../tutorial/TutorialTarget":{__esModule:true,default:TutorialTargetMock},
     "../tutorial/TutorialOverlay":{__esModule:true,default:"TutorialOverlay"},
     "./linhasDaParada":{__esModule:true,default:"LinhasDaParada"},
+    "../demo/InterfaceDemo":{useMovimentoReduzido:()=>false},
+    "../Confirmacao":{__esModule:true,default:"Confirmacao"},
     "./radarAvisosPorVoz":{__esModule:true,default:"Voice"},
     "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView", Modal: "Modal",
       Platform: { OS: "android" }, StyleSheet: { absoluteFillObject: {} },
@@ -116,12 +119,14 @@ function sheet() {
 function railSheet(overrides = {}) {
   const h = criarHarness(), pan = {};
   for (const key of ["activeOffsetY", "onStart", "onUpdate", "onEnd"]) pan[key] = () => pan;
-  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){}};
+  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){},setLineModalOpen(){}};
   const mocks = {
     "../tutorial/TutorialProvider":{useTutorial:()=>tutorial},
-    "../tutorial/TutorialTarget":{__esModule:true,default:"TutorialTarget"},
+    "../tutorial/TutorialTarget":{__esModule:true,default:TutorialTargetMock},
     "../tutorial/TutorialOverlay":{__esModule:true,default:"TutorialOverlay"},
     "./linhasDaParada":{__esModule:true,default:"LinhasDaParada"},
+    "../demo/InterfaceDemo":{useMovimentoReduzido:()=>false},
+    "../Confirmacao":{__esModule:true,default:"Confirmacao"},
     "./radarAvisosPorVoz":{__esModule:true,default:"Voice"},
     "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView",
       Dimensions: { get: () => ({ height: 800, width: 400 }) } },
