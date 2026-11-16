@@ -154,7 +154,7 @@ for(const speed of [30,40])test(`coherent delayed ${speed} kmh projection compen
  assert.ok(Math.abs(old-speed/3.6*65)<Math.abs(previous-speed/3.6*65),'less presentation lag than stage 2A');
  const gps=speed/3.6*40/111000;
  f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);
- assert.equal(f.c.drState.bus.gpsTimestamp,f.base+40000);assert.ok(f.c.drState.bus.projectedMetres<=cap);
+ assert.equal(f.c.drState.bus.gpsTimestamp,f.base+40000);assert.ok(f.c.drState.bus.projectedMetres<=cap);assert.ok(f.c.animFrames.bus,'bounded forward reconciliation uses a short transition');
  assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota*111000-speed/3.6*65)<speed/3.6*12,'normal reconciliation remains close to current progress');
  const used=f.c.drState.bus.projectedMetres;f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);assert.equal(f.c.drState.bus.projectedMetres,used);
  f.advance(130000);assert.ok(f.c.drState.bus.projectedMetres<=cap);

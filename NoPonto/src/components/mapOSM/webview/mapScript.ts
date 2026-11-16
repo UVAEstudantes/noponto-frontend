@@ -508,6 +508,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.projectedMetres=roadProjectionMetres(dr.velocidade*dr.decelFactor,Date.now()-timestamp,dr.projectionUntil-timestamp,dr.projectionMaxMetres);
       dr.posicaoNaRota=Math.min(1,position+dr.projectedMetres/routeMetres);
     }
+    if(correcting&&sameRoute&&dr.posicaoNaRota>=previousPosition&&(dr.posicaoNaRota-previousPosition)*routeMetres<=150)correcting=false;
     var c=interpolarNaRota(coords,dr.posicaoNaRota),target={lat:c[0],lng:c[1]};
     if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
   }else{
