@@ -794,7 +794,7 @@ for (const presence of [true,false]) {
 }
 
 for(const presence of [true,false]){
-test(`DTO with zero instantaneous speed and route progress keeps legacy movement ON=${presence}`,()=>{
+test(`DTO with zero instantaneous speed cannot project a legacy average without distinct progress ON=${presence}`,()=>{
   const f=fixture({presence});
   try{
     f.clock.now=Date.parse('2026-10-23T12:00:00Z');
@@ -807,7 +807,7 @@ test(`DTO with zero instantaneous speed and route progress keeps legacy movement
     const send=()=>web.context.window.updateMap({linhas:[{nome:'006',modal:'onibus',segmentos:[[[-22.9,-43.21],[-22.9,-43.19]]],posicoes:[p]}]});
     const key='onibus:006:REAL-SHAPE';send();web.context.startDR();
     const marker=web.context.vehicleMarkers[key];const initial=marker.getLngLat().lng;
-    f.clock.now+=1000;web.ticks[0]();assert.ok(marker.getLngLat().lng>initial,'legacy average speed must still move an unmatched vehicle');
+    f.clock.now+=1000;web.ticks[0]();assert.equal(marker.getLngLat().lng,initial,'one zero fix cannot justify projecting an old average');assert.equal(web.context.drState[key].velocidade,0);
     const heading=web.context.vehicleHeadings[key],before=marker.getLngLat().lng;
     p={...p,presencaEstado:'indeterminado',presencaIdadeSegundos:41,presencaRotulo:'Estado indeterminado'};send();
     assert.equal(marker.getLngLat().lng,before);assert.equal(web.context.vehicleHeadings[key],heading,'presentation must not point back at old GPS');
