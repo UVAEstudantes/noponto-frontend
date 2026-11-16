@@ -591,6 +591,7 @@ test(`hook and WebView apply GPS boundaries at 60 120 179 180 181 299 300 301 se
       for(const tick of f.intervals.values()) if(tick.fixtureIntervalMs===(presence?1000:15000))tick();
       const vehicles=h.render().getVeiculosPorCodigo('006',null,'line-006');
       view=native.render(props());assert.equal(view.props.source,source);
+      web.context.startDR();web.ticks[0]();
       const marker=web.context.vehicleMarkers[key];
       if(seconds>(presence?300:180)){
         assert.deepEqual(vehicles,[]);assert.equal(marker,undefined);
@@ -600,7 +601,7 @@ test(`hook and WebView apply GPS boundaries at 60 120 179 180 181 299 300 301 se
         assert.equal(vehicles[0].atualizadoEm,raw.timestampGps);
         assert.equal(vehicles[0].latitude,raw.latitude);
         assert.equal(vehicles[0].longitude,raw.longitude);
-        assert.equal(marker.el.style.opacity||'1',presence&&seconds>=180?'0.55':'1');
+        assert.equal(marker.el.style.opacity||'1',seconds>180?'0.55':'1');
         const meta=web.context.vehiclePopups[key].getElement().querySelector('.popup-meta').innerHTML;
         assert.ok(meta.includes('data-ts="'+start+'"'));
         if(presence){
@@ -694,7 +695,7 @@ test('retained old GPS is held without renewing observation time',()=>{
     assert.equal(marker.getLngLat().lng,projected);
     assert.equal(web.context.animFrames[key],undefined);
     assert.equal(web.context.drState[key].gpsTimestamp,Date.parse(raw.timestampGps));
-    assert.equal(marker.el.style.opacity,'0.55');
+    assert.equal(marker.el.style.opacity,'1');
     assert.match(web.context.vehiclePopups[key].getElement().querySelector('.popup-meta').innerHTML,/Última observação: em viagem/);
     assert.match(web.context.vehiclePopups[key].html,/GPS h/);
   }finally{f.dispose();}
@@ -775,7 +776,7 @@ for (const presence of [true,false]) {
       f.clock.now+=180000;
       for(const tick of f.intervals.values())if(tick.fixtureIntervalMs===(presence?1000:15000))tick();
       if(presence)assert.equal(present().gpsAtrasado,true);
-      send();assert.equal(web.context.vehicleMarkers[key].el.style.opacity,presence?'0.55':'1');
+      send();assert.equal(web.context.vehicleMarkers[key].el.style.opacity,'1');
       f.emit('PosicaoAtualizada',[{...raw,timestampServidor:new Date(f.clock.now).toISOString()}]);
       assert.equal(present().atualizadoEm,raw.timestampGps);
       if(presence)assert.equal(present().gpsAtrasado,true);
@@ -1303,7 +1304,7 @@ test('ITS newer coordinates update one operational marker without projection and
   update([{...p,timestamp:f.clock.now-100000,longitude:.0015}]);assert.equal(marker.getLngLat().lng,.003);
   assert.equal(web.context.vehiclePopups[key].getElement().querySelector('.popup-stats').innerHTML,'');
   assert.equal(web.context.vehiclePopups[key].getElement().querySelector('.popup-card').getAttribute('data-empty-details'),'true');
-  f.clock.now+=600000;web.ticks[0]();assert.equal(marker.getElement().style.opacity,'0');
+  f.clock.now+=600000;web.ticks[0]();assert.equal(marker.getElement().style.opacity,'0.55');
   update([{...p,timestamp:f.clock.now,longitude:.004}]);assert.equal(web.context.drState[key].alternative,null);
   assert.equal(web.context.drState[key].gpsTimestamp,f.clock.now);
   web.context.window.updatePhysicalPresence([v]);assert.equal(web.context.drState[key].alternative,null);
@@ -1891,7 +1892,7 @@ test('three distinct stationary fixes and ITS GTFS signal changes remain fully v
 
 test('fresh validated zero clears an earlier uncertain location without changing physical evidence',()=>{
  const r=delayedRoadBridge({speed:0,age:0,cap:250});try{
-  r.advance(1);r.send({timestamp:r.f.clock.now,locationUncertain:true,backendMotionEligible:false});r.advance(1);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'0.55');
+  r.advance(1);r.send({timestamp:r.f.clock.now,locationUncertain:true,backendMotionEligible:false});r.advance(1);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');
   r.advance(10);const at=r.f.clock.now;r.send({timestamp:at,locationUncertain:false,backendMotionEligible:false,unifiedSource:'GTFSRT_BUS'});r.advance(1);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');assert.equal(r.state().gpsTimestamp,at);
  }finally{r.f.dispose();}
 });
@@ -1963,5 +1964,30 @@ test('legacy physical presence cannot silently roll a routed marker back or repl
   r.web.context.unifiedCodes=[];const farther={...physical,longitude:(shown-250)/r.m,physicalAt:new Date(r.f.clock.now-5000).toISOString()};r.web.context.window.updatePhysicalPresence([farther]);assert.ok(r.metres()>=shown-.001,'unresolved legacy geometry cannot silently invalidate route continuity');
   for(const m of writes)assert.ok(m>=shown-.001);
   assert.equal(r.state().alternative.physicalAt,farther.physicalAt);assert.equal(Object.keys(r.web.context.physicalMarkers).length,0);
+ }finally{r.f.dispose();}
+});
+
+for(const age of [20,60,120,180,181])test(`road marker DOM opacity follows only physical GPS age ${age}s`,()=>{
+ const r=delayedRoadBridge({speed:0,age,cap:250});try{
+  const marker=r.web.context.vehicleMarkers[r.key];
+  r.send({locationUncertain:true,backendMotionEligible:false,gpsAtrasado:true});r.state().visualUncertain=true;
+  r.web.ticks[0]();assert.equal(marker.getElement().style.opacity,age>180?'0.55':'1');
+  r.send({unifiedSource:'GTFSRT_BUS',presencaRotulo:'SemSinal'});r.web.ticks[0]();
+  assert.equal(marker.getElement().style.opacity,age>180?'0.55':'1');assert.equal(r.state().gpsTimestamp,r.at);
+ }finally{r.f.dispose();}
+});
+
+test('road marker never fades or recreates during source updates and exceptional recovery',()=>{
+ const r=delayedRoadBridge({speed:30,age:20,cap:750});try{
+  const marker=r.web.context.vehicleMarkers[r.key],el=marker.getElement(),writes=[];
+  Object.defineProperty(el.style,'opacity',{configurable:true,get:()=>writes.at(-1)||'1',set:value=>writes.push(String(value))});
+  for(const source of ['GTFSRT_BUS','ITS_CURRENT','GTFSRT_BUS']){
+   r.send({unifiedSource:source,gpsAtrasado:true,locationUncertain:true});r.state().visualUncertain=true;r.web.ticks[0]();
+   assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.equal(marker.getElement(),el);
+  }
+  Object.assign(r.state(),{visualAhead:true,confirmedRouteRegression:true,gpsPosition:0,posicaoNaRota:.05,backendMotionEligible:false});
+  r.web.ticks[0]();r.advance(1);
+  assert.ok(writes.length>0);assert.ok(writes.every(value=>value==='1'),JSON.stringify(writes));
+  assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.notEqual(el.style.display,'none');assert.notEqual(el.style.visibility,'hidden');
  }finally{r.f.dispose();}
 });

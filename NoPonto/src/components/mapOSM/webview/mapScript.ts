@@ -40,7 +40,8 @@ function gpsFreshness(at,now,uncertain){
   return {label:level.label,color:uncertain?'#b7791f':level.color,icon:level.icon,uncertain:!!uncertain};
 }
 function gpsSignalHtml(icon){return '<i data-lucide="signal" class="gps-bars-off" aria-hidden="true"></i><i data-lucide="'+icon+'" class="gps-bars-on" aria-hidden="true"></i>'; }
-function gpsMarkerOpacity(at){var age=Date.now()-at;return age>gpsPolicy.publicMs?'0':age>=gpsPolicy.attenuatedMs?'0.55':'1';}
+function gpsMarkerOpacity(at){return Date.now()-at>180000?'0.55':'1';}
+function roadMarkerOpacity(key,at){var dr=drState[key];return gpsMarkerOpacity(Math.max(Number(at)||0,dr&&dr.gpsTimestamp||0,dr&&dr.alternative?Date.parse(dr.alternative.physicalAt)||0:0));}
 var physicalMarkers={},lastPhysicalPresence=[],unified838Active=false,unifiedCodes=[];
 var physicalLocationLabels=${JSON.stringify(physicalLocationLabels)};
 var operationalPhysicalWatermarks={};
@@ -602,6 +603,7 @@ function startDR(){
     var now=Date.now(),from=lastTick;lastTick=now;
     Object.keys(drState).forEach(function(key){
       var dr=drState[key];
+      dr.marker.getElement().style.opacity=gpsMarkerOpacity(dr.alternative?Date.parse(dr.alternative.physicalAt):dr.gpsTimestamp);
       if(dr.visualAhead){
         var estimate=dr.gpsPosition,canReconcile=dr.backendUnified?dr.backendMotionEligible:dr.velocidade>2;
         var reconcileUntil=dr.projectionUntil||dr.gpsTimestamp+Math.min(120000,Math.max(90000,roadMotionHorizonMs));
@@ -610,8 +612,8 @@ function startDR(){
         var debt=Math.max(0,(dr.posicaoNaRota-estimate)*(dr.routeMetres||0));dr.reconcileDebt=debt;
         if(debt<=5&&canReconcile){dr.visualAhead=false;dr.visualHoldAt=null;dr.reconcileFactor=1;}
         else if(dr.confirmedRouteRegression){
-          // Contradictory physical fixes permit an explicit hidden recovery; age or ineligibility alone do not.
-          dr.visualUncertain=true;var el=dr.marker.getElement();el.style.transition='opacity 0.4s';el.style.opacity='0';
+          // Contradictory physical fixes permit an explicit recovery; age or ineligibility alone do not.
+          dr.visualUncertain=true;
           if(!dr.recoveryAt)dr.recoveryAt=now;
           if(now-dr.recoveryAt<500)return;
           var physical=dr.lineCoords&&estimate!=null?interpolarNaRota(dr.lineCoords,estimate):[dr.gpsCoordinate.lat,dr.gpsCoordinate.lng];
@@ -626,7 +628,6 @@ function startDR(){
       }
       if(dr.backendUnified){
         var backendAge=now-dr.gpsTimestamp;
-        dr.marker.getElement().style.opacity=now>=dr.backendValidUntil?'0':dr.visualUncertain?'0.55':gpsMarkerOpacity(dr.gpsTimestamp);
         if(backendAge>gpsPolicy.publicMs||now>=dr.backendValidUntil){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
           delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
@@ -634,8 +635,6 @@ function startDR(){
         if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(!dr.observedInterpolation){if(animFrames[key]&&dr.animationPosition!=null)dr.posicaoNaRota=dr.animationPosition;stopAnim(key);}if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
       }
       if(dr.alternative){
-        var physicalAgeMs=now-Date.parse(dr.alternative.physicalAt);
-        dr.marker.getElement().style.opacity=physicalAgeMs>gpsPolicy.publicMs?'0':physicalAgeMs>=300000?'0.55':'1';
         return;
       }
       if(dr.visualCorrectionAt===dr.gpsTimestamp)return;
@@ -1579,7 +1578,7 @@ window.updateMap=function(data){
       if(!marker){
         var posInicial=dest;
         var el=busIcon(color,heading,linha.modal);
-        if(p.presencaEstado){el.style.opacity=p.backendUnified?gpsMarkerOpacity(Number(p.timestamp)):(p.gpsAtrasado?'0.55':'1');el.title=passengerStatusLabel(p.presencaRotulo||'');}
+        if(p.presencaEstado){el.style.opacity=roadMarkerOpacity(vKey,gpsTimestamp);el.title=passengerStatusLabel(p.presencaRotulo||'');}
         marker=new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([posInicial.lng,posInicial.lat]);
         popup=new maplibregl.Popup({offset:18,closeButton:false});
         setPopupHTMLPreservingDetails(popup,buildPopup(linha,p,vid,heading));
@@ -1611,7 +1610,7 @@ window.updateMap=function(data){
 
       var markerEl=marker.getElement();
       if(markerEl){
-        markerEl.style.opacity=p.backendUnified?gpsMarkerOpacity(Number(p.timestamp)):(p.gpsAtrasado?'0.55':'1');markerEl.title=passengerStatusLabel(p.presencaRotulo||'');
+        markerEl.style.opacity=roadMarkerOpacity(vKey,gpsTimestamp);markerEl.title=passengerStatusLabel(p.presencaRotulo||'');
         applyVehiclePresentation(markerEl,color,linha.modal);
       }
 
@@ -1706,7 +1705,7 @@ window.updatePhysicalPresence=function(vehicles){
           dr.posicaoNaRota=alternativeProgress;
           if(alternativeProgress==null){dr.lineCoords=null;dr.routeKey=null;dr.visualUncertain=true;}
         }
-        opMarker.getElement().style.opacity=age>=300?'0.55':'1';
+        opMarker.getElement().style.opacity=roadMarkerOpacity(opKey,Date.parse(v.physicalAt));
         opMarker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),ambiguousPhysical:true,statusText:'Última posição conhecida'};
         var opPopup=vehiclePopups[opKey];
         if(opPopup)setPopupHTMLPreservingDetails(opPopup,buildPhysicalPopup(v));
@@ -1745,7 +1744,7 @@ window.updatePhysicalPresence=function(vehicles){
     marker.setLngLat([v.longitude,v.latitude]);
     if(marker._physicalPopup&&marker._physicalPopup.isOpen())marker._physicalPopup.setLngLat([v.longitude,v.latitude]).setHTML(buildPhysicalPopup(v));
     applyVehiclePresentation(marker.getElement(),physicalLineColor(v),v.modal);
-    marker.getElement().style.opacity=age>=300?'0.55':'1';
+    marker.getElement().style.opacity=gpsMarkerOpacity(Date.parse(v.physicalAt));
     var line=v.serviceCode&&(v.lineState==='Informed'||v.lineState==='Inherited') ? 'Linha '+v.serviceCode+' ('+(v.lineState==='Inherited'?'herdada':'informada')+')' : 'Linha não confirmada';
     marker.getElement().title='Veículo '+order+' · '+line+' · GPS há '+Math.floor(age/60)+' min'+(age>=300?' · GPS atrasado':'')+' · '+(physicalLocationLabels[v.location]||physicalLocationLabels.UncertainLocation)+' · partida não confirmada';
   });
