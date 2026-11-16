@@ -1859,10 +1859,10 @@ test('GPS freshness matches native and WebView clocks without promising spatial 
   }
   const p={id:'D86000',timestamp:r.at,backendUnified:true,physicalOnly:true,locationUncertain:true,lastObservedSpeedKmh:30};
   const html=r.web.context.buildPopup({nome:'855',modal:'onibus'},p,p.id,0);assert.match(html,/Frescor temporal do GPS: Muito recente/);assert.match(html,/Localização incerta/);assert.match(html,/data-uncertain="true"/);assert.match(html,/data-stale="true"/);assert.equal(native(NaN,r.at).label,"Atualização indisponível");assert.equal(r.web.context.gpsFreshness(r.at+1000,r.at,false).label,"Atualização indisponível");
-  assert.notEqual(native(r.at,r.at,true).color,native(r.at,r.at,false).color);
+  assert.equal(native(r.at,r.at,true).color,native(r.at,r.at,false).color);
   const signal={innerHTML:''};const fresh={querySelector:()=>signal,attributes:{},style:{},getAttribute(n){return this.attributes[n]??(n==='data-key'?r.key:'true')},setAttribute(n,v){this.attributes[n]=v}},root={querySelector:s=>s==='.gps-freshness'?fresh:null};
   r.web.context.document.querySelectorAll=()=>[{getAttribute:()=>String(r.at),closest:()=>root}];r.f.clock.now=r.at+181000;r.web.context.updateTimeAgo();
-  assert.match(fresh.attributes['aria-label'],/Sem atualização confiável/);assert.match(fresh.attributes['aria-label'],/Localização incerta/);assert.match(signal.innerHTML,/wifi-off/);assert.equal(r.state().gpsTimestamp,r.at);
+  assert.match(fresh.attributes['aria-label'],/Sem atualização confiável/);assert.match(fresh.attributes['aria-label'],/Localização incerta/);assert.match(signal.innerHTML,/data-bars="0"/);assert.equal(r.state().gpsTimestamp,r.at);
  }finally{r.f.dispose();}
 });
 
@@ -1901,7 +1901,7 @@ test('fresh validated zero clears an earlier uncertain location without changing
 test('freshness signal is inside the vehicle header and never creates marker decorations',()=>{
  const r=delayedRoadBridge({speed:30,age:0,cap:750});try{
   const p={id:'D86000',timestamp:r.at,backendUnified:true};const html=r.web.context.buildPopup({nome:'855',modal:'onibus'},p,p.id,0);
-  const header=html.slice(html.indexOf('class="popup-header"'),html.indexOf('class="popup-meta"'));assert.match(header,/class="gps-freshness"/);assert.match(header,/data-lucide="signal"/);assert.match(header,/<summary aria-label="Explicar frescor GPS">/);assert.match(header,/gps-bars-off/);assert.doesNotMatch(html,/>As barras indicam/);assert.match(html,/<details class="gps-freshness"/);assert.match(header,/aria-label="Frescor temporal/);
+  const header=html.slice(html.indexOf('class="popup-header"'),html.indexOf('class="popup-meta"'));assert.match(header,/class="gps-freshness"/);assert.match(header,/<svg[^>]*data-bars="5"/);assert.match(header,/<summary aria-label="Explicar frescor GPS">/);assert.match(header,/gps-bars-on/);assert.doesNotMatch(html,/>As barras indicam/);assert.match(html,/<details class="gps-freshness"/);assert.match(header,/aria-label="Frescor temporal/);
   assert.equal((html.match(/class="gps-freshness"/g)||[]).length,1);assert.equal(r.state().freshnessDot,undefined);assert.equal(typeof r.web.context.updateRoadFreshness,'undefined');
   r.advance(65);assert.equal(r.state().freshnessDot,undefined);assert.equal(r.state().gpsTimestamp,r.at);
  }finally{r.f.dispose();}
@@ -2003,5 +2003,19 @@ test('forward recovery follows rendered route frames across delayed GPS and sour
    r.advance(.1);const current=r.metres();assert.ok(current>=previous-.001);assert.ok((current-previous)*36<=61,`visual speed ${(current-previous)*36}`);previous=current;
   }
   assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.ok(r.web.frames.size>0);
+ }finally{r.f.dispose();}
+});
+
+
+test('WebView five bar signal and help panel reflect physical age without uncertainty recoloring',()=>{
+ const r=delayedRoadBridge({speed:0,age:0});try{
+  for(const [seconds,bars] of [[45,5],[60,4],[90,3],[120,2],[180,1],[181,0]]){
+   const now=r.at+seconds*1000,q=r.web.context.gpsFreshness(r.at,now,true),native=r.f.load('gpsPresentationPolicy.ts').gpsFreshness(r.at,now,false);
+   assert.equal(q.bars,bars);assert.equal(q.color,native.color);const svg=r.web.context.gpsSignalHtml(q.icon);
+   assert.equal((svg.match(/class="gps-bars-on"/g)||[]).length,bars);assert.equal((svg.match(/class="gps-bars-off"/g)||[]).length,5-bars);
+  }
+  const html=r.web.context.buildPopup({nome:'855',modal:'onibus'},{id:'D86000',timestamp:r.at,backendUnified:true,locationUncertain:true},'D86000',0);
+  assert.match(html,/<details class="gps-freshness"/);assert.doesNotMatch(html,/<details class="gps-freshness"[^>]* open/);assert.match(html,/Atualização da localização/);assert.match(html,/GPS há 0 segundos/);assert.match(html,/Localização operacional incerta/);assert.match(html,/Não indica sinal de internet/);
+  const css=r.f.load('../components/mapOSM/webview/mapStyles.ts').MAP_WEBVIEW_STYLES;assert.match(css,/background:var\(--popup-surface\);color:var\(--popup-fg\)/);assert.match(css,/left:10px;right:10px/);assert.match(css,/summary svg\{[^}]*width:22px;height:22px/);
  }finally{r.f.dispose();}
 });

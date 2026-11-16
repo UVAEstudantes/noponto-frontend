@@ -35,11 +35,16 @@ var gpsFreshnessLevels=${JSON.stringify(GPS_FRESHNESS_LEVELS)};
 var gpsFreshnessHelp=${JSON.stringify(GPS_FRESHNESS_HELP)};
 function gpsFreshness(at,now,uncertain){
   var age=now-at;
-  if(!Number.isFinite(at)||!Number.isFinite(age)||age<0)return {label:'Atualiza\u00e7\u00e3o indispon\u00edvel',color:'#737373',icon:'wifi-off',uncertain:true};
+  if(!Number.isFinite(at)||!Number.isFinite(age)||age<0)return {label:'Atualiza\u00e7\u00e3o indispon\u00edvel',color:'#737373',bars:0,icon:'wifi-off',uncertain:true};
   var level=gpsFreshnessLevels.find(function(l){return age<=l.until})||gpsFreshnessLevels[gpsFreshnessLevels.length-1];
-  return {label:level.label,color:uncertain?'#b7791f':level.color,icon:level.icon,uncertain:!!uncertain};
+  return {label:level.label,color:level.color,bars:level.bars,icon:level.icon,uncertain:!!uncertain};
 }
-function gpsSignalHtml(icon){return '<i data-lucide="signal" class="gps-bars-off" aria-hidden="true"></i><i data-lucide="'+icon+'" class="gps-bars-on" aria-hidden="true"></i>'; }
+function gpsSignalHtml(icon){
+  var level=gpsFreshnessLevels.find(function(l){return l.icon===icon}),bars=level?level.bars:0;
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" data-bars="'+bars+'">'+[0,1,2,3,4].map(function(i){return '<rect x="'+(2+i*4)+'" y="'+(18-i*3)+'" width="2" height="'+(4+i*3)+'" rx="1" class="'+(i<bars?'gps-bars-on':'gps-bars-off')+'" fill="currentColor"/>'}).join('')+'</svg>';
+}
+function gpsFreshnessPanel(q,at,uncertain){return '<strong>Atualiza\u00e7\u00e3o da localiza\u00e7\u00e3o</strong><div class="gps-freshness-reading"><span class="gps-freshness-signal" style="color:'+q.color+'">'+gpsSignalHtml(q.icon)+'</span><span><b>GPS h\u00e1 '+Math.max(0,Math.floor((Date.now()-at)/1000))+' segundos</b><br>'+escapeHtml(q.label)+'</span></div><p>As barras mostram h\u00e1 quanto tempo a localiza\u00e7\u00e3o foi atualizada. Menos barras significam uma informa\u00e7\u00e3o mais antiga.</p><p class="gps-freshness-note">N\u00e3o indica sinal de internet nem garante a posi\u00e7\u00e3o exata.</p>'+(uncertain?'<p class="gps-freshness-note">Localiza\u00e7\u00e3o operacional incerta.</p>':'');}
+
 function gpsMarkerOpacity(at){return Date.now()-at>180000?'0.55':'1';}
 function roadMarkerOpacity(key,at){var dr=drState[key];return gpsMarkerOpacity(Math.max(Number(at)||0,dr&&dr.gpsTimestamp||0,dr&&dr.alternative?Date.parse(dr.alternative.physicalAt)||0:0));}
 var physicalMarkers={},lastPhysicalPresence=[],unified838Active=false,unifiedCodes=[];
@@ -923,6 +928,7 @@ function updateTimeAgo(){
         var description='Frescor temporal do GPS: '+q.label+(uncertain?' \u00b7 Localiza\u00e7\u00e3o incerta':'')+(unknown?' \u00b7 Trajeto n\u00e3o confirmado':'')+(estimated?' \u00b7 Posi\u00e7\u00e3o estimada':'')+'. '+gpsFreshnessHelp;
         if(freshness.style)freshness.style.color=q.color;
         if(freshness.setAttribute){freshness.setAttribute('aria-label',description);freshness.setAttribute('title',description);}
+        var help=freshness.querySelector('.gps-freshness-help');if(help)help.innerHTML=gpsFreshnessPanel(q,ts,uncertain||unknown);
         if(freshness.getAttribute('data-icon')!==q.icon){freshness.querySelector('summary').innerHTML=gpsSignalHtml(q.icon);if(freshness.setAttribute)freshness.setAttribute('data-icon',q.icon);refreshIcons();}
       }
       var speed=root.querySelector('[data-speed-label]');
@@ -1056,7 +1062,7 @@ function buildPopup(linha,p,vid,heading){
   var freshness=gpsFreshness(tsMs==null?NaN:tsMs,Date.now(),!!p.locationUncertain||!!p.physicalOnly||!!(dr&&dr.visualUncertain));
   var spatialUncertain=!!p.locationUncertain||!!(dr&&dr.visualUncertain);
   var freshnessText='Frescor temporal do GPS: '+freshness.label+(p.physicalOnly?' \u00b7 Trajeto n\u00e3o confirmado':'')+(spatialUncertain?' \u00b7 Localiza\u00e7\u00e3o incerta':'')+(dr&&(dr.projectedMetres>1||dr.visualAhead)?' \u00b7 Posi\u00e7\u00e3o estimada':'')+'. '+gpsFreshnessHelp;
-  var freshnessHtml='<details class="gps-freshness" data-key="'+escapeHtml(motionKey)+'" data-uncertain="'+!!p.locationUncertain+'" data-route-unknown="'+!!p.physicalOnly+'" data-icon="'+freshness.icon+'" aria-label="'+escapeHtml(freshnessText)+'" title="'+escapeHtml(freshnessText)+'" style="color:'+freshness.color+'"><summary aria-label="Explicar frescor GPS">'+gpsSignalHtml(freshness.icon)+'</summary><div class="gps-freshness-help"><strong>Atualização da localização</strong><p>Mais barras verdes: GPS mais recente. Menos barras e cores quentes: localização mais antiga ou estimada.</p><p>Não indica intensidade de rede nem precisão absoluta.</p></div></details>';
+  var freshnessHtml='<details class="gps-freshness" data-key="'+escapeHtml(motionKey)+'" data-uncertain="'+!!p.locationUncertain+'" data-route-unknown="'+!!p.physicalOnly+'" data-icon="'+freshness.icon+'" aria-label="'+escapeHtml(freshnessText)+'" title="'+escapeHtml(freshnessText)+'" style="color:'+freshness.color+'"><summary aria-label="Explicar frescor GPS">'+gpsSignalHtml(freshness.icon)+'</summary><div class="gps-freshness-help">'+gpsFreshnessPanel(freshness,p.timestamp,spatialUncertain)+'</div></details>';
   var html='<div class="popup-card" data-road="true" data-empty-details="'+(!roadStats)+'" id="'+popupId+'">';
   html+='<div class="popup-header">';
   html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';

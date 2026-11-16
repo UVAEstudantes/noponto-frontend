@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {criarHarness}=require('../hooks/radarTestHarness.cjs');
-function loadIndicator(h){return h.carregar('../components/gpsFreshnessIndicator.tsx',{'react-native':{Text:'Text',View:'View'},'lucide-react-native':Object.fromEntries(['Signal','SignalHigh','SignalMedium','SignalLow','SignalZero','WifiOff'].map(k=>[k,k]))});}
+function loadIndicator(h){return h.carregar('../components/gpsFreshnessIndicator.tsx',{'react-native':{Text:'Text',View:'View'},'react-native-svg':{__esModule:true,default:'Svg',Rect:'Rect'}});}
 const flatten=x=>x==null||typeof x==='boolean'||typeof x==='function'?'':typeof x==='string'||typeof x==='number'?String(x):Array.isArray(x)?x.map(flatten).join(' '):typeof x.type==='function'?flatten(x.type(x.props)):flatten(x.props?.children);
 test('physical stop list displays freshness from GPS time without changing arrival predictions',()=>{
  const h=criarHarness(),now=Date.parse('2026-11-16T12:00:00Z');const indicator=loadIndicator(h);
@@ -24,11 +24,19 @@ test('stop terminal card adds temporal freshness without changing physical prese
 });
 
 
-test('native signal family represents physical age and overrides green for uncertain locations',()=>{
+test('native five bar SVG preserves gray inactive bars and separates operational uncertainty',()=>{
  const h=criarHarness(),{GpsFreshnessIndicator}=loadIndicator(h),at=Date.parse('2026-11-16T12:00:00Z');
- for(const [seconds,name] of [[0,'Signal'],[46,'SignalHigh'],[61,'SignalMedium'],[91,'SignalLow'],[121,'SignalZero'],[181,'WifiOff']]){
-  const view=GpsFreshnessIndicator({at,now:at+seconds*1000,textColor:'gray'});assert.equal(view.props.children[0].props.children[1].type,name);assert.match(view.props.accessibilityLabel,/idade da localização, não a intensidade de rede/);assert.equal(view.props.children[0].props.children[1].props.size,20);
+ for(const [seconds,bars] of [[0,5],[46,4],[61,3],[91,2],[121,1],[181,0]]){
+  for(const textColor of ['black','white']){
+   const view=GpsFreshnessIndicator({at,now:at+seconds*1000,uncertain:true,textColor}),svg=view.props.children[0],rects=svg.props.children.flat();
+   assert.equal(svg.props.width,20);assert.equal(rects.length,5);assert.equal(rects.filter(r=>r.props.fill!=='#a3a3a3').length,bars);assert.ok(rects.slice(bars).every(r=>r.props.fill==='#a3a3a3'));assert.match(view.props.accessibilityLabel,/Localização incerta/);
+  }
  }
- const good=GpsFreshnessIndicator({at,now:at,textColor:'white'}),uncertain=GpsFreshnessIndicator({at,now:at,uncertain:true,textColor:'white'});
- assert.notEqual(good.props.children[0].props.children[1].props.color,uncertain.props.children[0].props.children[1].props.color);assert.match(uncertain.props.accessibilityLabel,/Localização incerta/);
+});
+
+test('five GPS bars and temporal color ignore operational uncertainty at every boundary',()=>{
+ const h=criarHarness(),{gpsFreshness}=h.carregar('../services/gpsPresentationPolicy.ts'),at=Date.parse('2026-11-16T12:00:00Z');
+ for(const [seconds,bars,color] of [[0,5,'#16a34a'],[45,5,'#16a34a'],[46,4,'#16a34a'],[60,4,'#16a34a'],[61,3,'#b7791f'],[90,3,'#b7791f'],[91,2,'#d97706'],[120,2,'#d97706'],[121,1,'#b45309'],[180,1,'#b45309'],[181,0,'#737373']]){
+  const q=gpsFreshness(at,at+seconds*1000,true);assert.equal(q.bars,bars);assert.equal(q.color,color);
+ }
 });
