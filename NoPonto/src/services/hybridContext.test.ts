@@ -93,3 +93,10 @@ for(const conflict of ['line','direction','status'])test(`partial context is rev
  f.v.operational={...f.v.operational!,timestampGps:new Date(base+30000).toISOString(),padraoVersaoId:null,sentidoId:conflict==='direction'?'opposite':null,linhaId:conflict==='line'?'other':'line',status:conflict==='status'?1:0};
  const p=f.tick(30,.002);assert.equal(p.padraoVersaoId,null);assert.equal(p.backendMotionEligible,false);
 });
+
+test('default visual horizon crosses 60 seconds but ends at 90 and coherent fixes permit 120',()=>{
+ const f=fixture();const p=f.tick(0,.001);assert.equal(p.projectionUntil,base+90000);
+ const aged=f.compose([f.line],[f.s],base+61000)[0].posicoes![0];assert.equal(aged.backendMotionEligible,true);assert.equal(aged.timestamp,base);assert.equal(aged.velocidade,undefined);
+ assert.equal(f.compose([f.line],[f.s],base+90000)[0].posicoes![0].backendMotionEligible,false);
+ const c=fixture();c.tick(0,.001);c.tick(20,.002);const coherent=c.tick(40,.003);assert.equal(coherent.projectionUntil,base+40000+120000);
+});

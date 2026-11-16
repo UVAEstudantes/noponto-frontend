@@ -65,8 +65,8 @@ test('new physical fix behind projection holds bounded debt without backwards RA
  assert.equal(f.c.drState.bus.posicaoNaRota,visual);assert.equal(f.c.animFrames.bus,undefined);
  assert.ok(f.c.drState.bus.projectedMetres>0);f.advance(10000);assert.equal(f.c.drState.bus.posicaoNaRota,visual);
  f.update({longitude:.0001},undefined,f.base+20000,.0001);f.advance(21000);
- f.update({longitude:.00011},undefined,f.base+41000,.00011);
- assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,.00011);
+ assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.drState.bus.posicaoNaRota,.0001);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+20000);
+ f.update({longitude:.00011},undefined,f.base+41000,.00011);assert.equal(f.c.drState.bus.posicaoNaRota,.00011);
 });
 test('large backwards discrepancy or changed directed route corrects without reverse animation',()=>{
  const f=fixture();f.update({},undefined,f.base,.01);f.update({longitude:0},undefined,f.base+1000,0);
@@ -96,4 +96,26 @@ test('validated route bearing wins over noisy snapshots and small angular jitter
  tangent=1;f.c.drState.bus.posicaoNaRota+=20/111000;f.c.updateRoadHeading('bus',f.marker,180);assert.equal(f.c.vehicleHeadings.bus,1);
  tangent=90;f.c.drState.bus.posicaoNaRota+=5/111000;f.c.updateRoadHeading('bus',f.marker,0);assert.equal(f.c.vehicleHeadings.bus,90);
  f.c.drState.bus.velocidade=0;tangent=180;f.c.updateRoadHeading('bus',f.marker,180);assert.equal(f.c.vehicleHeadings.bus,90);
+});
+
+test('loss of projection eligibility cannot animate a physical fix backwards along the same route',()=>{
+ const f=fixture();f.update();f.advance(10000);const shown=f.marker.pos.lng;
+ f.update({backendMotionEligible:false,longitude:.00005},undefined,f.base+10000,.00005);
+ assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
+ f.advance(31000);assert.equal(f.marker.pos.lng,.00005);assert.equal(f.c.drState.bus.visualAhead,false);
+});
+
+test('legacy road projection also bounds trailing GPS debt and waits for new physical evidence',()=>{
+ const f=fixture();f.update({backendUnified:false,velocidadeMedia:6});f.advance(10000);
+ const shown=f.marker.pos.lng;f.update({backendUnified:false,velocidadeMedia:6,longitude:.00005},undefined,f.base+10000,.00005);
+ assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.animFrames.bus,undefined);
+ f.advance(31000);assert.equal(f.marker.pos.lng,.00005);f.advance(10000);assert.equal(f.marker.pos.lng,.00005);
+ f.update({backendUnified:false,velocidadeMedia:6,longitude:.0002},undefined,f.base+51000,.0002);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+51000);assert.ok(f.c.animFrames.bus);
+});
+
+test('physical progress catches visual debt before timeout and repeated snapshots cannot restart it',()=>{
+ const f=fixture();f.update();f.advance(10000);const shown=f.c.drState.bus.posicaoNaRota;
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);const deadline=f.c.drState.bus.visualHoldAt,used=f.c.drState.bus.projectedMetres;
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.visualHoldAt,deadline);assert.equal(f.c.drState.bus.projectedMetres,used);
+ f.update({longitude:shown+.0001},undefined,f.base+11000,shown+.0001);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.drState.bus.projectedMetres,0);assert.ok(f.c.animFrames.bus);
 });

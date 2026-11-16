@@ -1005,7 +1005,7 @@ for(const presence of [true,false]){
       r.tick(60);const before=r.metres();
       r.p={...r.p,timestamp:r.start+20000,posicaoNaRota:.101,longitude:-43.19798};r.send();
       assert.equal(r.metres(),before);assert.equal(r.web.context.animFrames[r.key],undefined);
-      r.f.clock.now+=1000;r.web.ticks[0]();assert.ok(r.metres()>before);
+      r.f.clock.now+=1000;r.web.ticks[0]();assert.equal(r.metres(),before);assert.equal(r.state().visualAhead,true);assert.ok(r.state().projectedMetres>0);
       const current=r.metres();for(let i=0;i<5;i++)r.send();assert.equal(r.metres(),current);
       assert.equal(r.state().gpsTimestamp,r.start+20000);
     }finally{r.f.dispose();}
