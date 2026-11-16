@@ -4,6 +4,9 @@ export const MAP_WEBVIEW_STYLES = `
     .tutorial-vehicle-focus{outline:2px solid #FFC107;outline-offset:4px}
     /* R28: content only; marker anchoring and popup positioning stay unchanged. */
     .popup-card[data-road]{max-height:min(48vh,300px);overflow-y:auto;overscroll-behavior:contain;gap:8px}
+    .popup-card[data-road] .popup-title-row{flex-wrap:nowrap}
+    .popup-card[data-road] .popup-vehicle{min-width:0;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+    .gps-freshness{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:18px}
     .popup-card[data-road] .popup-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
     .popup-card[data-road] .popup-details.open{max-height:min(30vh,190px);overflow-y:auto}
     .popup-card[data-road][data-empty-details="true"] .popup-toggle,.popup-card[data-road][data-empty-details="true"] .popup-details{display:none}

@@ -50,15 +50,17 @@ export function gpsPresentation(physicalAt:number,now:number,policy:Readonly<Gps
 
 // Temporal freshness is not spatial confidence or ETA accuracy.
 export const GPS_FRESHNESS_LEVELS=[
-  {until:60000,label:'Recente',color:'#3b82f6'},
-  {until:90000,label:'Atrasado',color:'#d97706'},
-  {until:120000,label:'Muito atrasado',color:'#c2410c'},
-  {until:180000,label:'Última localização estimada',color:'#a16207'},
-  {until:Number.MAX_SAFE_INTEGER,label:'Sem atualização confiável',color:'#737373'},
-];
+  {until:30000,label:'Muito recente',color:'#16a34a',icon:'signal'},
+  {until:60000,label:'Recente',color:'#16a34a',icon:'signal-high'},
+  {until:90000,label:'Atrasado',color:'#b7791f',icon:'signal-medium'},
+  {until:120000,label:'Muito atrasado',color:'#d97706',icon:'signal-low'},
+  {until:180000,label:'Última localização estimada',color:'#737373',icon:'signal-zero'},
+  {until:Number.MAX_SAFE_INTEGER,label:'Sem atualização confiável',color:'#737373',icon:'wifi-off'},
+] as const;
+export const GPS_FRESHNESS_HELP='As barras indicam a idade da localização, não a intensidade de rede ou a precisão.';
 export function gpsFreshness(physicalAt:number,now:number,uncertain=false){
   const age=now-physicalAt;
-  if(!Number.isFinite(physicalAt)||!Number.isFinite(age)||age<0)return {label:'Atualização indisponível',color:'#737373',uncertain:true};
+  if(!Number.isFinite(physicalAt)||!Number.isFinite(age)||age<0)return {label:'Atualização indisponível',color:'#737373',icon:'wifi-off' as const,uncertain:true};
   const level=GPS_FRESHNESS_LEVELS.find(l=>age<l.until)??GPS_FRESHNESS_LEVELS.at(-1)!;
-  return {label:level.label,color:uncertain?'#d97706':level.color,uncertain};
+  return {label:level.label,color:uncertain?'#b7791f':level.color,icon:level.icon,uncertain};
 }

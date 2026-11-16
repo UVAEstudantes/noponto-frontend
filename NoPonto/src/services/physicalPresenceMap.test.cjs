@@ -56,7 +56,7 @@ function runtime() {
       setAttribute(k,v) { this.attributes[k]=v; }, getAttribute(k) { return this.attributes[k]; } };
   }
   const contract = require('./physicalPresenceContract.ts');
-  const context = { drState:{},gpsFreshness:require('./gpsPresentationPolicy.ts').gpsFreshness,movementDiagnostics:false,gpsPolicy:require('./gpsPresentationPolicy.ts').GPS_POLICY,window: {}, map: {}, maplibregl: { Marker, Popup },
+  const context = { drState:{},gpsFreshness:require('./gpsPresentationPolicy.ts').gpsFreshness,gpsFreshnessHelp:require('./gpsPresentationPolicy.ts').GPS_FRESHNESS_HELP,movementDiagnostics:false,gpsPolicy:require('./gpsPresentationPolicy.ts').GPS_POLICY,window: {}, map: {}, maplibregl: { Marker, Popup },
     document: { createElement: element },
     lastMapData: {linhas:[{linhaId:'line-838',modal:'onibus',cor:'#aabbcc'}]},
     renderIndicator: (style,modal,color) => ({uri:style+':'+modal+':'+color,largura:14,altura:42,ancoraY:21,orientacao:0}),
