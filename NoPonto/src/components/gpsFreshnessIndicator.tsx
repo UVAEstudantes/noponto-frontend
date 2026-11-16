@@ -6,6 +6,6 @@ const icons={'signal':Signal,'signal-high':SignalHigh,'signal-medium':SignalMedi
 export function GpsFreshnessIndicator({at,now,uncertain=false,textColor}:{at:number;now:number;uncertain?:boolean;textColor:string}){
  const q=gpsFreshness(at,now,uncertain),Icon=icons[q.icon];
  return <View accessible accessibilityLabel={`Frescor temporal do GPS: ${q.label}. ${uncertain?'Localização incerta. ':''}${GPS_FRESHNESS_HELP}`} style={{flexDirection:'row',alignItems:'center',gap:4,flexShrink:1}}>
-  <Icon size={16} color={q.color}/><Text style={{fontSize:10,color:textColor,flexShrink:1}}>{'GPS: '+q.label}</Text>
+  <View style={{width:20,height:20}}><Signal size={20} color="#a3a3a3" style={{position:'absolute',opacity:.5}}/><Icon size={20} color={q.color} style={{position:'absolute'}}/></View><Text style={{fontSize:10,color:textColor,flexShrink:1}}>{'GPS: '+q.label}</Text>
  </View>;
 }

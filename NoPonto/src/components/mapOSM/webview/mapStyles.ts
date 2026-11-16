@@ -6,7 +6,14 @@ export const MAP_WEBVIEW_STYLES = `
     .popup-card[data-road]{max-height:min(48vh,300px);overflow-y:auto;overscroll-behavior:contain;gap:8px}
     .popup-card[data-road] .popup-title-row{flex-wrap:nowrap}
     .popup-card[data-road] .popup-vehicle{min-width:0;max-width:110px;overflow:hidden;text-overflow:ellipsis}
-    .gps-freshness{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:18px}
+    .gps-freshness{margin-left:auto;flex:0 0 28px;width:28px;height:28px}
+    .gps-freshness summary{position:relative;width:28px;height:28px;cursor:pointer;list-style:none;border-radius:6px}
+    .gps-freshness summary::-webkit-details-marker{display:none}
+    .gps-freshness summary:focus-visible{outline:2px solid currentColor}
+    .gps-freshness summary svg{position:absolute;inset:0;width:28px;height:28px}
+    .gps-bars-off{color:#a3a3a3;opacity:.5}.gps-bars-on{color:inherit}
+    .gps-freshness-help{position:absolute;z-index:5;left:10px;right:10px;top:52px;padding:12px;border:1px solid var(--popup-border);border-radius:12px;background:var(--popup-surface);color:var(--popup-fg);box-shadow:0 6px 18px #0003;font-size:12px;font-weight:400}
+    .gps-freshness-help p{margin:6px 0 0}
     .popup-card[data-road] .popup-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
     .popup-card[data-road] .popup-details.open{max-height:min(30vh,190px);overflow-y:auto}
     .popup-card[data-road][data-empty-details="true"] .popup-toggle,.popup-card[data-road][data-empty-details="true"] .popup-details{display:none}

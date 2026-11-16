@@ -68,6 +68,7 @@ function runtime() {
     drState:{}, vehicleIndexByOrder: {}, vehicleMarkers: {}, physicalMarkers: markers,
     lastPhysicalPresence: [], Date: FakeDate };
   const run = (from,to) => vm.runInNewContext(script.slice(script.indexOf(from),script.indexOf(to,script.indexOf(from))),context);
+  run('function gpsSignalHtml(', 'function gpsMarkerOpacity(');
   run('function rememberOperationalPhysicalGps(', 'var autoFollow=');
   run('function applyVehiclePresentation(', 'var railBranchColors=');
   run('function setHeading(', 'function busIcon(');

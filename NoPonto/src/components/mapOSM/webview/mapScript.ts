@@ -36,9 +36,10 @@ var gpsFreshnessHelp=${JSON.stringify(GPS_FRESHNESS_HELP)};
 function gpsFreshness(at,now,uncertain){
   var age=now-at;
   if(!Number.isFinite(at)||!Number.isFinite(age)||age<0)return {label:'Atualiza\u00e7\u00e3o indispon\u00edvel',color:'#737373',icon:'wifi-off',uncertain:true};
-  var level=gpsFreshnessLevels.find(function(l){return age<l.until})||gpsFreshnessLevels[gpsFreshnessLevels.length-1];
+  var level=gpsFreshnessLevels.find(function(l){return age<=l.until})||gpsFreshnessLevels[gpsFreshnessLevels.length-1];
   return {label:level.label,color:uncertain?'#b7791f':level.color,icon:level.icon,uncertain:!!uncertain};
 }
+function gpsSignalHtml(icon){return '<i data-lucide="signal" class="gps-bars-off" aria-hidden="true"></i><i data-lucide="'+icon+'" class="gps-bars-on" aria-hidden="true"></i>'; }
 function gpsMarkerOpacity(at){var age=Date.now()-at;return age>gpsPolicy.publicMs?'0':age>=gpsPolicy.attenuatedMs?'0.55':'1';}
 var physicalMarkers={},lastPhysicalPresence=[],unified838Active=false,unifiedCodes=[];
 var physicalLocationLabels=${JSON.stringify(physicalLocationLabels)};
@@ -901,10 +902,8 @@ function updateTimeAgo(){
         var description='Frescor temporal do GPS: '+q.label+(uncertain?' \u00b7 Localiza\u00e7\u00e3o incerta':'')+(unknown?' \u00b7 Trajeto n\u00e3o confirmado':'')+(estimated?' \u00b7 Posi\u00e7\u00e3o estimada':'')+'. '+gpsFreshnessHelp;
         if(freshness.style)freshness.style.color=q.color;
         if(freshness.setAttribute){freshness.setAttribute('aria-label',description);freshness.setAttribute('title',description);}
-        if(freshness.getAttribute('data-icon')!==q.icon){freshness.innerHTML='<i data-lucide="'+q.icon+'" style="width:17px;height:17px" aria-hidden="true"></i>';if(freshness.setAttribute)freshness.setAttribute('data-icon',q.icon);refreshIcons();}
+        if(freshness.getAttribute('data-icon')!==q.icon){freshness.querySelector('summary').innerHTML=gpsSignalHtml(q.icon);if(freshness.setAttribute)freshness.setAttribute('data-icon',q.icon);refreshIcons();}
       }
-      var status=root.querySelector('.popup-status');
-      if((age>=60000||uncertain)&&status){status.style.color='#b7791f';if(status.setAttribute)status.setAttribute('data-stale','true');}
       var speed=root.querySelector('[data-speed-label]');
       if(speed&&age>=gpsPolicy.currentSpeedMs)speed.textContent='\u00daltima velocidade'+(speed.getAttribute&&speed.getAttribute('data-speed-estimated')==='true'?' estimada':'');
     }
@@ -1036,7 +1035,7 @@ function buildPopup(linha,p,vid,heading){
   var freshness=gpsFreshness(tsMs==null?NaN:tsMs,Date.now(),!!p.locationUncertain||!!p.physicalOnly||!!(dr&&dr.visualUncertain));
   var spatialUncertain=!!p.locationUncertain||!!(dr&&dr.visualUncertain);
   var freshnessText='Frescor temporal do GPS: '+freshness.label+(p.physicalOnly?' \u00b7 Trajeto n\u00e3o confirmado':'')+(spatialUncertain?' \u00b7 Localiza\u00e7\u00e3o incerta':'')+(dr&&(dr.projectedMetres>1||dr.visualAhead)?' \u00b7 Posi\u00e7\u00e3o estimada':'')+'. '+gpsFreshnessHelp;
-  var freshnessHtml='<span class="gps-freshness" role="img" data-key="'+escapeHtml(motionKey)+'" data-uncertain="'+!!p.locationUncertain+'" data-route-unknown="'+!!p.physicalOnly+'" data-icon="'+freshness.icon+'" aria-label="'+escapeHtml(freshnessText)+'" title="'+escapeHtml(freshnessText)+'" style="color:'+freshness.color+'"><i data-lucide="'+freshness.icon+'" style="width:17px;height:17px" aria-hidden="true"></i></span>';
+  var freshnessHtml='<details class="gps-freshness" data-key="'+escapeHtml(motionKey)+'" data-uncertain="'+!!p.locationUncertain+'" data-route-unknown="'+!!p.physicalOnly+'" data-icon="'+freshness.icon+'" aria-label="'+escapeHtml(freshnessText)+'" title="'+escapeHtml(freshnessText)+'" style="color:'+freshness.color+'"><summary aria-label="Explicar frescor GPS">'+gpsSignalHtml(freshness.icon)+'</summary><div class="gps-freshness-help"><strong>Atualização da localização</strong><p>Mais barras verdes: GPS mais recente. Menos barras e cores quentes: localização mais antiga ou estimada.</p><p>Não indica intensidade de rede nem precisão absoluta.</p></div></details>';
   var html='<div class="popup-card" data-road="true" data-empty-details="'+(!roadStats)+'" id="'+popupId+'">';
   html+='<div class="popup-header">';
   html+='<div class="popup-indicator" style="--c:'+corFinal+'">'+iconSvg+'</div>';
@@ -1045,11 +1044,11 @@ function buildPopup(linha,p,vid,heading){
   html+='<div class="popup-sub">'+escapeHtml(sentido ? 'Sentido: '+sentido : 'Sentido desconhecido')+'</div>';
   html+='</div>';
   html+='</div>';
-  html+='<div class="popup-meta"><span class="popup-status" data-stale="'+(p.gpsAtrasado||freshness.uncertain||p.physicalOnly||Date.now()-tsMs>=60000?'true':'false')+'" style="'+(p.gpsAtrasado||freshness.uncertain||p.physicalOnly||Date.now()-tsMs>=60000?'color:#b7791f':'')+'">'+escapeHtml(passengerStatusLabel(p.presencaRotulo||'Ao vivo'))+'</span><span class="popup-time">GPS há '+tempoHtml+'</span><span class="gps-warning">'+escapeHtml(p.gpsWarning||'')+'</span></div>';
+  html+='<div class="popup-meta"><span class="popup-status" data-stale="'+(p.locationUncertain||p.physicalOnly?'true':'false')+'" style="'+(p.locationUncertain||p.physicalOnly?'color:#b7791f':'')+'">'+escapeHtml(passengerStatusLabel(p.presencaRotulo||'Ao vivo'))+'</span><span class="popup-time">GPS há '+tempoHtml+'</span><span class="gps-warning">'+escapeHtml(p.gpsWarning||'')+'</span></div>';
   html+='<div class="popup-toggle" data-target="'+detailsId+'" onclick="toggleDetails(this,event)">'+
         '<span class="toggle-label">Mais detalhes</span><span class="toggle-chevron"></span></div>';
   html+='<div class="popup-details" id="'+detailsId+'">';
-  html+='<div class="popup-stats">'+roadStats+'</div><div style="font-size:10px;opacity:.85;margin-top:8px">'+escapeHtml(gpsFreshnessHelp)+'</div>';
+  html+='<div class="popup-stats">'+roadStats+'</div>';
   html+='</div>';
   html+='</div>';
   return html;

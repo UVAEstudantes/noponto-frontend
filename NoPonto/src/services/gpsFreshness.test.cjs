@@ -26,9 +26,9 @@ test('stop terminal card adds temporal freshness without changing physical prese
 
 test('native signal family represents physical age and overrides green for uncertain locations',()=>{
  const h=criarHarness(),{GpsFreshnessIndicator}=loadIndicator(h),at=Date.parse('2026-11-16T12:00:00Z');
- for(const [seconds,name] of [[0,'Signal'],[30,'SignalHigh'],[60,'SignalMedium'],[90,'SignalLow'],[120,'SignalZero'],[181,'WifiOff']]){
-  const view=GpsFreshnessIndicator({at,now:at+seconds*1000,textColor:'gray'});assert.equal(view.props.children[0].type,name);assert.match(view.props.accessibilityLabel,/idade da localização, não a intensidade de rede/);assert.equal(view.props.children[0].props.size,16);
+ for(const [seconds,name] of [[0,'Signal'],[46,'SignalHigh'],[61,'SignalMedium'],[91,'SignalLow'],[121,'SignalZero'],[181,'WifiOff']]){
+  const view=GpsFreshnessIndicator({at,now:at+seconds*1000,textColor:'gray'});assert.equal(view.props.children[0].props.children[1].type,name);assert.match(view.props.accessibilityLabel,/idade da localização, não a intensidade de rede/);assert.equal(view.props.children[0].props.children[1].props.size,20);
  }
  const good=GpsFreshnessIndicator({at,now:at,textColor:'white'}),uncertain=GpsFreshnessIndicator({at,now:at,uncertain:true,textColor:'white'});
- assert.notEqual(good.props.children[0].props.color,uncertain.props.children[0].props.color);assert.match(uncertain.props.accessibilityLabel,/Localização incerta/);
+ assert.notEqual(good.props.children[0].props.children[1].props.color,uncertain.props.children[0].props.children[1].props.color);assert.match(uncertain.props.accessibilityLabel,/Localização incerta/);
 });
