@@ -5,7 +5,7 @@ function fixture(){
  const extract=name=>{const m=source.match(new RegExp('function '+name+'\\([^]*?\\n}'));assert.ok(m,name);return m[0];};
  const base=Date.parse('2026-11-15T12:00:00Z');let now=base,tick;const frames=new Map();let frameId=0;
  const c={Date:{now:()=>now},performance:{now:()=>now},drState:{},vehicleMarkers:{},vehiclePopups:{},vehicleHeadings:{},animFrames:{},window:{},motionTraceOrders:[],gpsPolicy:{baseProjectionMs:60000,maxProjectionMetres:250,delayedMs:180000,publicMs:480000},roadMovement:{accepted:0,repeated:0,routeSyncs:0,linearSyncs:0,positionWrites:0},drInterval:null,movementDiagnostics:false,roadMotionHorizonMs:60000,parseNum:x=>x==null?null:Number(x),distanceMeters:(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)*111000,interpolarNaRota:(coords,p)=>[0,p],headingNaRota:()=>90,setHeading:()=>{},reportRoadMovement:()=>{},setInterval:f=>{tick=f;return 1;},gpsMarkerOpacity:()=>1,requestAnimationFrame:f=>{frames.set(++frameId,f);return frameId;},cancelAnimationFrame:id=>frames.delete(id)};
- vm.createContext(c);vm.runInContext(['roadIdentityChanged','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['roadIdentityChanged','roadProjectionMetres','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
  const marker={pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return {style:{}};},remove(){}};
  const p={backendUnified:true,backendValidUntil:base+480000,backendMotionEligible:true,projectionUntil:base+60000,projectionMaxMetres:250,comprimentoRotaMetros:111000,projectionSpeedKmh:6,latitude:0,longitude:0};
  const update=(over={},coords=[[0,0],[0,1]],timestamp=base,position=0,identity='line|direction|pattern|version')=>c.updateRoadMotion('bus',marker,{...p,...over},coords,timestamp,position,identity);
@@ -141,4 +141,18 @@ for(const speed of [30,40])test(`delayed ${speed} kmh fix retains temporal speed
  assert.ok((b-a)*3.6>speed*.9,'no temporal penalty at age 40');
  f.advance(14000);const before=f.c.drState.bus.projectedMetres;f.advance(1000);
  assert.ok((f.c.drState.bus.projectedMetres-before)*3.6>speed*.85,'no early compounded slowdown');
+});
+
+for(const speed of [30,40])test(`coherent delayed ${speed} kmh projection compensates physical age within its bounded ledger`,()=>{
+ const f=fixture();f.advance(25000);const cap=Math.min(600,speed/3.6*60);
+ f.update({projectionUntil:f.base+120000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained'});
+ const initial=f.c.drState.bus.projectedMetres;assert.ok(Math.abs(initial-speed/3.6*25)<1,'initial age is physical, not receipt time');
+ f.advance(15000);const a=f.c.drState.bus.projectedMetres;f.advance(1000);assert.ok((f.c.drState.bus.projectedMetres-a)*3.6>speed*.9);
+ f.advance(14000);const b=f.c.drState.bus.projectedMetres;f.advance(1000);assert.ok((f.c.drState.bus.projectedMetres-b)*3.6>Math.max(8,speed*.2));
+ f.advance(9000);const old=f.c.drState.bus.projectedMetres;assert.ok(old<cap);const gps=speed/3.6*40/111000;
+ f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);
+ assert.equal(f.c.drState.bus.gpsTimestamp,f.base+40000);assert.ok(f.c.drState.bus.projectedMetres<=cap);
+ assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota*111000-speed/3.6*65)<speed/3.6*12,'normal reconciliation remains close to current progress');
+ const used=f.c.drState.bus.projectedMetres;f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);assert.equal(f.c.drState.bus.projectedMetres,used);
+ f.advance(130000);assert.ok(f.c.drState.bus.projectedMetres<=cap);
 });

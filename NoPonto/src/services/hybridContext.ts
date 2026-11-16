@@ -229,6 +229,12 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         p.proximaParadaNome=next?.stop.nome??null;
         p.distanciaProximaParadaMetros=next?next.point!.metres-point.metres:null;
       }
+      // Extra distance requires individual coherence and a clear full-route corridor, never a shared prefix.
+      const adaptive=coherent&&selected.kind==='retained'&&p.physicalMotionState==='moving'
+        &&departure?.state!=='No terminal'&&departure?.state!=='Saindo do terminal'
+        ?Math.max(policy.maxProjectionMetres,Math.min(600,observed!/3.6*60)):policy.maxProjectionMetres;
+      if(next?.point&&next.point.metres-point.metres>adaptive+30&&point.totalMetres-point.metres>adaptive+30)
+        p.projectionMaxMetres=adaptive;
       // A restart can recover initial-corridor presence through the same
       // validated GTFS / multi-observation physical context, never proximity.
       if(!p.terminalPresence&&point.metres>10){

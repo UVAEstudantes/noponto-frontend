@@ -100,3 +100,18 @@ test('default visual horizon crosses 60 seconds but ends at 90 and coherent fixe
  assert.equal(f.compose([f.line],[f.s],base+90000)[0].posicoes![0].backendMotionEligible,false);
  const c=fixture();c.tick(0,.001);c.tick(20,.002);const coherent=c.tick(40,.003);assert.equal(coherent.projectionUntil,base+40000+120000);
 });
+
+for(const speed of [30,40])test(`adaptive budget ${speed} requires coherent individual progress and room before a stop`,()=>{
+ const f=fixture();f.line.paradasPorPadrao!.out[0].longitude=.015;f.line.paradasPorPadrao!.out[0].posicaoLinha=.75;f.v.location.speedKmh=speed;const step=speed/3.6*20/111195;
+ assert.equal(f.tick(0,.001).projectionMaxMetres,250);f.tick(20,.001+step);
+ const p=f.tick(40,.001+step*2);assert.ok(p.projectionMaxMetres!>250);assert.ok(p.projectionMaxMetres!<=600);
+ f.v.location.speedKmh=0;const stopped=f.tick(60,.001+step*2);assert.equal(stopped.backendMotionEligible,false);assert.equal(stopped.projectionMaxMetres,250);
+});
+
+test('adaptive budget stays basic near a stop or without known next stop',()=>{
+ for(const near of [true,false]){
+  const f=fixture();f.v.location.speedKmh=40;if(!near)f.line.paradasPorPadrao={};
+  const step=40/3.6*20/111195;f.tick(0,.001);f.tick(20,.001+step);
+  assert.equal(f.tick(40,.001+step*2).projectionMaxMetres,250);
+ }
+});

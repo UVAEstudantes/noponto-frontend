@@ -493,7 +493,12 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     }
     var correcting=debt>0||!sameRoute&&!first&&previousPosition!=null;
     dr.visualHoldAt=null;dr.visualAhead=false;dr.posicaoNaRota=position;
-    var c=interpolarNaRota(coords,position),target={lat:c[0],lng:c[1]};
+    // Only coherent full-route evidence compensates arrival delay; it shares the physical fix ledger.
+    if(p.backendUnified&&dr.backendMotionEligible&&p.contextConfidence&&dr.projectionMaxMetres>gpsPolicy.maxProjectionMetres){
+      dr.projectedMetres=roadProjectionMetres(dr.velocidade*dr.decelFactor,Date.now()-timestamp,dr.projectionUntil-timestamp,dr.projectionMaxMetres);
+      dr.posicaoNaRota=Math.min(1,position+dr.projectedMetres/routeMetres);
+    }
+    var c=interpolarNaRota(coords,dr.posicaoNaRota),target={lat:c[0],lng:c[1]};
     if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
   }else{
     dr.posicaoNaRota=null;
@@ -518,6 +523,13 @@ function kmhParaGrausPorSeg(kmh){
 }
 
 // Original incremental DR. RAF owns a marker during reconciliation; DR waits.
+function roadProjectionMetres(speed,age,duration,cap){
+  var seconds=Math.max(0,Math.min(age,duration))/1000,start=Math.min(55,duration/1000),span=Math.max(.001,duration/1000-start);
+  var u=Math.min(1,Math.max(0,(seconds-start)/span));
+  var travelled=Math.max(0,speed)/3.6*(Math.min(seconds,start)+span*(u-u*u*u+u*u*u*u/2));
+  var taper=Math.min(50,cap),free=Math.max(0,cap-taper);
+  return travelled<=free?travelled:free+taper*(1-Math.exp(-(travelled-free)/Math.max(1,taper)));
+}
 function startDR(){
   if(drInterval)return;
   var lastTick=Date.now();
@@ -549,16 +561,15 @@ function startDR(){
       if(dr.visualAhead||dr.visualCorrectionAt===dr.gpsTimestamp)return;
       if(!dr.lineCoords||dr.posicaoNaRota==null||!dr.velocidade||dr.velocidade<1||animFrames[key])return;
       var until=dr.gpsTimestamp===null?from:dr.gpsTimestamp+(dr.backendUnified?Math.max(0,dr.projectionUntil-dr.gpsTimestamp):Math.min(120000,Math.max(90000,roadMotionHorizonMs)));
+      if(now>=until)return;
       var dt=Math.max(0,Math.min(now,until)-from)/1000;
       if(!dt)return;
       if(!dr.comprimentoGraus)dr.comprimentoGraus=comprimentoRotaGraus(dr.lineCoords);
       if(!dr.comprimentoGraus)return;
       var remaining=Math.max(0,(dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-(dr.projectedMetres||0));
-      var duration=until-dr.gpsTimestamp;
-      var fade=Math.min(1,Math.max(0,(now-dr.gpsTimestamp-55000)/Math.max(1,duration-55000)));
-      var confidence=1-fade*fade*(3-2*fade);
-      var spatial=Math.min(1,remaining/100);
-      var metres=Math.min(remaining,dr.velocidade*dr.decelFactor/3.6*dt*confidence*spatial);
+      var duration=until-dr.gpsTimestamp,cap=dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres;
+      var metres=Math.min(remaining,Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,duration,cap)
+        -roadProjectionMetres(dr.velocidade*dr.decelFactor,from-dr.gpsTimestamp,duration,cap)));
       dr.projectedMetres=(dr.projectedMetres||0)+metres;
       var step=metres/(dr.routeMetres||dr.comprimentoGraus*111000);
       dr.posicaoNaRota=Math.min(1,dr.posicaoNaRota+step);
