@@ -416,3 +416,29 @@ test('physical ETA expires at the original contract deadline while refresh stays
  assert.equal(h.output.eventosRecebidos[0].vehicleId,'V1');
  h.output.atualizar();const request=pedidos.at(-1);request.resolve([e]);await h.flush();assert.equal(h.output.eventos.length,0);h.unmount();
 });
+
+test('Radar 4 14 4: successful omission removes a still valid arrival and its return restores it', async () => {
+  const { h, pedidos } = iniciar();
+  const started = h.now;
+  const near = { ...evento('A', 'near', 240), vehicleId: 'D86137',
+    estimatedAt: new Date(started + 240000).toISOString(),
+    lastRealtimeEvidenceUtc: new Date(started).toISOString(),
+    predictionValidUntilUtc: new Date(started + 90000).toISOString(), source: 'PhysicalCausal' };
+  const far = { ...evento('A', 'far', 840), vehicleId: 'D86138',
+    estimatedAt: new Date(started + 840000).toISOString() };
+  const first = () => chegadasDoRadar(h.output.eventos, parada(), [], h.output.recebidoEm, h.output.agora, [], [])[0];
+  pedidos[0].resolve([near, far]); await h.flush();
+  assert.equal(first().id, 'near'); assert.equal(first().etaSeg, 240);
+  await h.avancar(30000);
+  pedidos[1].resolve([far]); await h.flush();
+  assert.equal(h.output.statusConsulta, 'sucesso');
+  assert.ok(h.now < Date.parse(near.predictionValidUntilUtc));
+  assert.equal(first().id, 'far'); assert.equal(first().etaSeg, 810);
+  assert.equal(h.output.eventosPorId.has('near'), false);
+  await h.avancar(30000);
+  pedidos[2].resolve([near, far]); await h.flush();
+  assert.equal(first().id, 'near'); assert.equal(first().etaSeg, 180);
+  assert.equal(first().vehicleId, near.vehicleId);
+  assert.equal(h.output.eventos.length, 2);
+  h.unmount();
+});
