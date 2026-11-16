@@ -5,7 +5,7 @@ function fixture(){
  const extract=name=>{const m=source.match(new RegExp('function '+name+'\\([^]*?\\n}'));assert.ok(m,name);return m[0];};
  const base=Date.parse('2026-11-15T12:00:00Z');let now=base,tick;const frames=new Map();let frameId=0;
  const c={Date:{now:()=>now},performance:{now:()=>now},drState:{},vehicleMarkers:{},vehiclePopups:{},vehicleHeadings:{},animFrames:{},window:{},motionTraceOrders:[],gpsPolicy:{baseProjectionMs:60000,maxProjectionMetres:250,delayedMs:180000,publicMs:480000},roadMovement:{accepted:0,repeated:0,routeSyncs:0,linearSyncs:0,positionWrites:0},drInterval:null,movementDiagnostics:false,roadMotionHorizonMs:60000,parseNum:x=>x==null?null:Number(x),distanceMeters:(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)*111000,interpolarNaRota:(coords,p)=>[0,p],headingNaRota:()=>90,setHeading:()=>{},reportRoadMovement:()=>{},setInterval:f=>{tick=f;return 1;},gpsMarkerOpacity:()=>1,requestAnimationFrame:f=>{frames.set(++frameId,f);return frameId;},cancelAnimationFrame:id=>frames.delete(id)};
- vm.createContext(c);vm.runInContext(['roadIdentityChanged','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['roadIdentityChanged','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
  const marker={pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return {style:{}};},remove(){}};
  const p={backendUnified:true,backendValidUntil:base+480000,backendMotionEligible:true,projectionUntil:base+60000,projectionMaxMetres:250,comprimentoRotaMetros:111000,projectionSpeedKmh:6,latitude:0,longitude:0};
  const update=(over={},coords=[[0,0],[0,1]],timestamp=base,position=0,identity='line|direction|pattern|version')=>c.updateRoadMotion('bus',marker,{...p,...over},coords,timestamp,position,identity);
@@ -87,4 +87,13 @@ test('coherent projection tapers to a safe stop at 120 seconds without renewing 
  const f=fixture();f.update({projectionUntil:f.base+120000});f.advance(90000);const at90=f.c.drState.bus.projectedMetres;
  f.advance(10000);assert.ok(f.c.drState.bus.projectedMetres>at90);f.advance(20000);const end=f.marker.pos.lng;
  f.advance(10000);assert.equal(f.marker.pos.lng,end);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
+});
+
+test('validated route bearing wins over noisy snapshots and small angular jitter requires progress',()=>{
+ const f=fixture();f.update();let tangent=359;f.c.headingNaRota=()=>tangent;
+ f.c.updateRoadHeading('bus',f.marker,45);assert.equal(f.c.vehicleHeadings.bus,359);
+ for(const angle of [14,359,12,359]){tangent=angle;f.c.updateRoadHeading('bus',f.marker,angle);assert.equal(f.c.vehicleHeadings.bus,359);}
+ tangent=1;f.c.drState.bus.posicaoNaRota+=20/111000;f.c.updateRoadHeading('bus',f.marker,180);assert.equal(f.c.vehicleHeadings.bus,1);
+ tangent=90;f.c.drState.bus.posicaoNaRota+=5/111000;f.c.updateRoadHeading('bus',f.marker,0);assert.equal(f.c.vehicleHeadings.bus,90);
+ f.c.drState.bus.velocidade=0;tangent=180;f.c.updateRoadHeading('bus',f.marker,180);assert.equal(f.c.vehicleHeadings.bus,90);
 });

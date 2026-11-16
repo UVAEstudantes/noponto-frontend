@@ -362,6 +362,21 @@ function roadIdentityChanged(previous,next){
   var a=(previous||'').split('|'),b=next.split('|');
   return a.some(function(value,index){return value&&b[index]&&value!==b[index]});
 }
+function updateRoadHeading(key,marker,fallback){
+  var dr=drState[key];if(!dr)return;
+  var routed=dr.lineCoords&&dr.posicaoNaRota!=null;
+  var heading=routed?headingNaRota(dr.lineCoords,dr.posicaoNaRota):fallback;
+  if(typeof heading!=='number'||!isFinite(heading))return;
+  var metres=routed?dr.posicaoNaRota*(dr.routeMetres||comprimentoRotaGraus(dr.lineCoords)*111000):null;
+  var previous=vehicleHeadings[key],same=dr.headingIdentity===dr.identity;
+  if(typeof previous==='number'&&same){
+    if(!(dr.velocidade>2)||dr.visualAhead)return;
+    var delta=(heading-previous+540)%360-180;
+    if(Math.abs(delta)<=20&&(metres===null||dr.headingMetres==null||Math.abs(metres-dr.headingMetres)<15))return;
+  }
+  dr.headingIdentity=dr.identity;dr.headingMetres=metres;
+  vehicleHeadings[key]=heading;setHeading(marker,heading);
+}
 function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   var dr=drState[key],first=!dr;
   var previousPosition=dr&&dr.posicaoNaRota,previousIdentity=dr&&dr.identity;
@@ -529,7 +544,7 @@ function startDR(){
       var coord=interpolarNaRota(dr.lineCoords,dr.posicaoNaRota);
       if(coord){dr.marker.setLngLat([coord[1],coord[0]]);roadMovement.positionWrites++;
         var h=headingNaRota(dr.lineCoords,dr.posicaoNaRota);
-        if(typeof h==='number'){vehicleHeadings[key]=h;setHeading(dr.marker,h);}}
+        if(typeof h==='number')updateRoadHeading(key,dr.marker,h);}
     });
     if(movementDiagnostics){window.__r28WebPerformance=window.__r28WebPerformance||{ticks:0,maxTickMs:0};window.__r28WebPerformance.ticks++;window.__r28WebPerformance.maxTickMs=Math.max(window.__r28WebPerformance.maxTickMs,performance.now()-tickStarted);}
     reportRoadMovement(now);
@@ -1446,13 +1461,14 @@ window.updateMap=function(data){
         vehicleMarkers[vKey]=marker;
         createdNow++;
         vehiclePopups[vKey]=popup;
-        if(typeof heading==='number')vehicleHeadings[vKey]=heading;
+
         updateRoadMotion(vKey,marker,p,lineCoordsDR,gpsTimestamp,posicaoNaRota,identity);
+      updateRoadHeading(vKey,marker,heading);
       traceHybridMotion(vKey,p,drState[vKey],!reusedMotionMarker?'initial_coordinate':animFrames[vKey]?(p.backendMotionEligible?'route_reconciliation':'observed_interpolation'):'direct_coordinate',reusedMotionMarker,'marker');
         return;
       }
       updatedNow++;
-      if(typeof heading==='number'){vehicleHeadings[vKey]=heading;setHeading(marker,heading);}
+
 
       var markerEl=marker.getElement();
       if(markerEl){
@@ -1461,6 +1477,7 @@ window.updateMap=function(data){
       }
 
       updateRoadMotion(vKey,marker,p,lineCoordsDR,gpsTimestamp,posicaoNaRota,identity);
+      updateRoadHeading(vKey,marker,heading);
       traceHybridMotion(vKey,p,drState[vKey],!reusedMotionMarker?'initial_coordinate':animFrames[vKey]?(p.backendMotionEligible?'route_reconciliation':'observed_interpolation'):'direct_coordinate',reusedMotionMarker,'marker');
 
       if(popup){

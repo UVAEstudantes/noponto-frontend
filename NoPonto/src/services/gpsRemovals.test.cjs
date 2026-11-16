@@ -1061,11 +1061,11 @@ test('direction display filtering preserves the canonical route version index',(
 test('legacy DR freezes at its horizon and clamps the route end',()=>{
   const r=roadScenario();
   try{
-    r.tick(180);const frozen=r.metres();assert.ok(frozen>r.length*.1);
+    for(let age=41;age<=180;age++)r.tick(age);const frozen=r.metres();assert.ok(frozen>r.length*.1);
     r.tick(300);assert.equal(r.metres(),frozen);
   }finally{r.f.dispose();}
   const end=roadScenario(true,{posicaoNaRota:.999,longitude:-43.18002});
-  try{end.tick(180);assert.ok(Math.abs(end.metres()-end.length)<.01);}finally{end.f.dispose();}
+  try{for(let age=41;age<=180;age++)end.tick(age);assert.ok(Math.abs(end.metres()-end.length)<.01);}finally{end.f.dispose();}
 });
 
 test('terminal remains stationary and confirmed direction reanchors correct geometry',()=>{
@@ -1591,14 +1591,14 @@ test('hybrid WebView temporal sequence keeps one moving marker through ITS zero 
  }finally{f.dispose();}
 });
 
-test('canonical marker reconciles newer GPS behind a projected route end and visual labels never gate motion',()=>{
+test('canonical marker corrects a changed route discretely without reverse animation and labels never gate motion',()=>{
  const f=fixture({presence:false});try{
   const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock),at=f.clock.now;
   let p={id:'D86131',linhaId:'line',latitude:0,longitude:.009,timestamp:at,backendUnified:true,backendValidUntil:at+480001,backendMotionEligible:true,projectionUntil:at+90000,projectionMaxMetres:250,projectionSpeedKmh:36,comprimentoRotaMetros:1111.95,posicaoNaRota:.9,padraoVersaoId:'out',sentidoId:'out'};
   const send=()=>web.context.window.updateMap({unifiedCodes:['838'],linhas:[{nome:'838',modal:'onibus',segmentos:[[[0,0],[0,.01]]],itinerarioSegmentoMap:{out:0,other:0},posicoes:[p]}]});
   send();const key='onibus:838:D86131',marker=web.context.vehicleMarkers[key],popup=web.context.vehiclePopups[key];
   web.context.startDR();for(let i=0;i<30;i++){f.clock.now+=1000;web.ticks[0]();}assert.equal(marker.getLngLat().lng,.01);
-  p={...p,timestamp:f.clock.now,longitude:.0093,posicaoNaRota:.93,projectionUntil:f.clock.now+60000,padraoVersaoId:'other',presencaRotulo:'Localização incerta'};send();assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(web.frames.size>0);
+  p={...p,timestamp:f.clock.now,longitude:.0093,posicaoNaRota:.93,projectionUntil:f.clock.now+60000,padraoVersaoId:'other',presencaRotulo:'Localização incerta'};send();assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.equal(web.frames.size,0);assert.ok(Math.abs(marker.getLngLat().lng-.0093)<1e-8);
   f.clock.now+=1000;for(const [id,fn]of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}assert.ok(Math.abs(marker.getLngLat().lng-.0093)<1e-8);
   f.clock.now+=1000;web.ticks[0]();assert.ok(marker.getLngLat().lng>.0093);
  }finally{f.dispose();}
