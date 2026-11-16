@@ -64,9 +64,9 @@ test('new physical fix behind projection slows continuously without a backwards 
  f.advance(10000);assert.ok(f.marker.pos.lng>visual);const next=f.marker.pos.lng;
  f.update({longitude:.0001},undefined,f.base+20000,.0001);assert.equal(f.marker.pos.lng,next);f.advance(10000);assert.ok(f.marker.pos.lng>=next);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+20000);
 });
-test('large backwards discrepancy is hidden before reanchoring while a changed directed route remains legitimate',()=>{
+test('a large presentation gap alone cannot reanchor while a changed directed route remains legitimate',()=>{
  const f=fixture();f.update({},undefined,f.base,.01);const shown=f.marker.pos.lng;f.update({longitude:0},undefined,f.base+1000,0);
- assert.equal(f.marker.pos.lng,shown);f.advance(100);assert.equal(f.marker.getElement().style.opacity,'0');f.advance(600);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,0);
+ assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng>=shown);assert.notEqual(f.marker.getElement().style.opacity,'0');assert.equal(f.c.animFrames.bus,undefined);
  f.update({longitude:.002},undefined,f.base+2000,.002,'line|return|pattern2|version');assert.equal(f.c.drState.bus.identity,'line|return|pattern2|version');assert.equal(f.c.drState.bus.visualAhead,false);
 });
 
@@ -97,8 +97,8 @@ test('loss of projection eligibility cannot animate a physical fix backwards alo
  const f=fixture();f.update();f.advance(10000);const shown=f.marker.pos.lng;
  f.update({backendMotionEligible:false,longitude:.00005},undefined,f.base+10000,.00005);
  assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
- f.advance(31000);assert.equal(f.marker.pos.lng,.00005);assert.equal(f.c.drState.bus.visualAhead,false);
- f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
+ f.advance(31000);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.visualAhead,true);
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.backendMotionEligible,true);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
 });
 
 test('legacy road projection reconciles trailing GPS continuously without renewing the physical timestamp',()=>{
@@ -120,11 +120,11 @@ test('legacy zero cannot keep projecting an old average but distinct route progr
  f.update({backendUnified:false,velocidade:0,velocidadeMedia:40,longitude:.0002},undefined,f.base+20000,.0002);assert.equal(f.c.drState.bus.velocidade,0);
 });
 
-test('confirmed legacy terminal stop cannot retain an extrapolated position indefinitely',()=>{
+test('confirmed legacy terminal stop stops without returning to the historical anchor',()=>{
  const f=fixture();f.update({backendUnified:false,velocidadeMedia:6});f.advance(10000);const shown=f.marker.pos.lng;
  f.update({backendUnified:false,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'},undefined,f.base+10000,0);
  assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.drState.bus.velocidade,0);
- f.advance(31000);assert.equal(f.marker.pos.lng,0);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
+ f.advance(61000);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.equal(f.c.drState.bus.visualUncertain,true);
 });
 
 for(const speed of [30,40])test(`delayed ${speed} kmh fix retains temporal speed through 55 seconds`,()=>{
@@ -215,9 +215,9 @@ test('new delayed fixes and repeated metadata cannot extend the bounded dynamic 
  f.advance(4000);const nextPhysical=shown-140/111000;
  const next={longitude:nextPhysical,projectionUntil:f.base+125000,projectionSpeedKmh:6,projectionMaxMetres:300,contextConfidence:'retained'};
  f.update(next,undefined,f.base+35000,nextPhysical);assert.equal(f.c.drState.bus.visualHoldAt,start);assert.ok(f.marker.pos.lng>=shown);
- f.advance(f.c.drState.bus.reconcileLimitMs-(f.c.Date.now()-start)+700);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
- assert.ok(f.marker.pos.lng>nextPhysical,'timeout corrects to bounded current estimate, not historical anchor');assert.ok(f.marker.pos.lng<shown);
- const corrected=f.marker.pos.lng;f.update(next,undefined,f.base+35000,nextPhysical);f.advance(1000);assert.equal(f.marker.pos.lng,corrected);assert.equal(f.c.drState.bus.backendMotionEligible,false);
+ f.advance(f.c.drState.bus.reconcileLimitMs-(f.c.Date.now()-start)+700);assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.animFrames.bus,undefined);
+ assert.ok(f.marker.pos.lng>=shown,'deadline cannot authorize a reverse correction');assert.equal(f.c.drState.bus.visualUncertain,true);
+ const corrected=f.marker.pos.lng;f.update(next,undefined,f.base+35000,nextPhysical);f.advance(1000);assert.ok(f.marker.pos.lng>=corrected);assert.equal(f.c.drState.bus.backendMotionEligible,true);assert.equal(f.c.drState.bus.visualHoldAt,start);
 });
 
 test('a newer fix during forward RAF compares the rendered progress instead of its unfinished target',()=>{
@@ -228,11 +228,11 @@ test('a newer fix during forward RAF compares the rendered progress instead of i
  assert.equal(f.c.drState.bus.visualAhead,false);assert.ok(f.c.animFrames.bus);assert.equal(f.marker.pos.lng,rendered);
 });
 
-test('large same-time discrepancies and confirmed identity changes correct discretely without reverse RAF',()=>{
+test('large same-time gaps preserve progress until confirmed identity changes allow recovery',()=>{
  const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
  const shown=f.marker.pos.lng;
  f.update({longitude:0,projectionUntil:f.base+120000,projectionSpeedKmh:10,projectionMaxMetres:300,contextConfidence:'retained'},undefined,f.base+30000,0);
- assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.drState.bus.visualUncertain,false);assert.equal(f.c.drState.bus.visualCorrectionAt,f.c.drState.bus.gpsTimestamp);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
+ assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng>=shown);assert.equal(f.c.drState.bus.visualUncertain,true);assert.equal(f.c.drState.bus.visualCorrectionAt,undefined);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,true);
  f.update({longitude:.001},[[0,0],[0,.5]],f.base+31000,.002,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.identity,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
 });
 
@@ -279,4 +279,59 @@ test('rendered anchor recovery refuses off-route ambiguous or distant points',()
  assert.equal(project([[0,0],[0,.002]],{lat:.001,lng:.001},.5,222),null);
  assert.equal(project([[0,0],[0,.002],[0,0]],{lat:0,lng:.001},.5,444),null);
  assert.equal(project([[0,0],[0,1]],{lat:0,lng:.005},.001,111000),null);
+});
+
+function renderedSequence(){
+ const f=fixture(),writes=[];const write=f.marker.setLngLat;
+ f.marker.setLngLat=function(p){writes.push({at:f.c.Date.now(),metres:p[0]*111000});write.call(this,p);};
+ const render=ms=>{for(let t=0;t<ms;t+=100){f.advance(Math.min(100,ms-t));const pending=[...f.frames.entries()];f.frames.clear();for(const [,frame] of pending)frame(f.c.Date.now());}};
+ const monotone=()=>{for(let i=1;i<writes.length;i++)assert.ok(writes[i].metres>=writes[i-1].metres-.001,`rendered reverse ${writes[i-1].metres} -> ${writes[i].metres} at ${writes[i].at-f.base}ms`);};
+ const fix=(physical,at,over={},coords)=>f.update({projectionSpeedKmh:30,projectionMaxMetres:1000,contextConfidence:'retained',projectionUntil:at+120000,longitude:physical/111000,...over},coords,at,physical/111000);
+ return {...f,writes,render,monotone,fix,metres:()=>f.marker.getLngLat().lng*111000};
+}
+
+test('rendered GPS sequence stays monotone through source changes and reconciliation timeout',()=>{
+ const r=renderedSequence();r.render(25000);r.fix(0,r.base);r.render(20000);
+ const sources=['ITS_CURRENT','GTFSRT_BUS','ITS_CURRENT'];
+ for(let i=0;i<3;i++){
+  const at=r.c.Date.now()-25000,physical=30/3.6*(at-r.base)/1000-80;
+  const shown=r.metres();r.fix(physical,at,{unifiedSource:sources[i]});r.render(10000);
+  assert.ok(r.metres()>shown+30,'positive evidence must keep moving after an ordinary delayed fix');r.monotone();
+  const used=r.c.drState.bus.projectedMetres;r.fix(physical,at,{unifiedSource:sources[i]});assert.equal(r.c.drState.bus.projectedMetres,used);assert.equal(r.c.drState.bus.gpsTimestamp,at);
+ }
+ r.render(35000);r.monotone();assert.ok(r.c.drState.bus.backendMotionEligible,'timeout alone cannot disable valid motion');
+});
+
+test('rendered zero and eligibility loss never reanchor to a trailing physical coordinate',()=>{
+ const r=renderedSequence();r.fix(0,r.base);r.render(10000);const shown=r.metres();
+ r.fix(5,r.base+10000,{projectionSpeedKmh:3,projectionSpeedKind:'possible_stop',velocidade:0});r.render(5000);r.monotone();assert.ok(r.metres()>shown);
+ for(const at of [15000,25000,35000]){r.fix(5,r.base+at,{projectionSpeedKmh:0,backendMotionEligible:false,physicalMotionState:'stopped'});r.render(10000);r.monotone();}
+ const stopped=r.metres();r.render(5000);assert.equal(r.metres(),stopped);
+ r.fix(stopped+10,r.c.Date.now(),{projectionSpeedKmh:30});r.render(5000);r.monotone();assert.ok(r.metres()>stopped);
+});
+
+test('rendered route continuity survives missing geometry and a GPS during forward recovery',()=>{
+ const r=renderedSequence();r.fix(0,r.base);r.render(10000);const shown=r.metres();
+ r.fix(shown+80,r.c.Date.now());r.render(2000);const drawn=r.metres();assert.ok(drawn>shown&&drawn<shown+80);
+ r.fix(drawn-10,r.c.Date.now()-1000,{backendMotionEligible:false},null);r.render(3000);r.monotone();
+ const at=r.c.Date.now();r.fix(drawn-5,at);r.render(5000);r.monotone();assert.ok(r.metres()>drawn);
+ r.fix(r.metres()+10,r.c.Date.now());r.render(1000);const before=r.metres();
+ r.fix(before-10,r.c.Date.now(),{backendMotionEligible:false});r.render(2000);r.monotone();
+});
+
+test('rendered delayed positive GPS cannot roll back or freeze solely at reconciliation deadline',()=>{
+ const r=renderedSequence();r.render(30000);r.fix(0,r.base,{projectionSpeedKmh:40});r.render(30000);
+ const shown=r.metres(),at=r.base+30000,physical=shown-140;
+ r.fix(physical,at,{projectionSpeedKmh:6});r.render(65000);r.monotone();
+ assert.ok(r.metres()>shown+20);assert.equal(r.c.drState.bus.gpsTimestamp,at);assert.equal(r.c.drState.bus.projectionUntil,at+120000);
+});
+
+
+test('sustained distinct physical route regressions permit explicit uncertain recovery',()=>{
+ const r=renderedSequence();r.fix(1000,r.base);r.render(10000);
+ r.fix(900,r.base+10000);r.render(1000);r.monotone();assert.notEqual(r.marker.getElement().style.opacity,'0');
+ r.render(9000);r.fix(800,r.base+20000);r.render(700);
+ assert.ok(r.metres()<1000,'two contradictory physical fixes over20s permit exceptional recovery');
+ assert.equal(r.c.drState.bus.visualUncertain,true);assert.equal(r.c.drState.bus.visualCorrectionAt,r.base+20000);
+ assert.equal(r.c.animFrames.bus,undefined);const recovered=r.metres();r.fix(800,r.base+20000);r.render(1000);assert.equal(r.metres(),recovered);
 });

@@ -413,7 +413,18 @@ function roadVisualProgress(coords,coordinate,physicalPosition,routeMetres){
 function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   var dr=drState[key],first=!dr;
   var previousPosition=dr&&(animFrames[key]&&dr.animationPosition!=null?dr.animationPosition:dr.posicaoNaRota),previousIdentity=dr&&dr.identity;
-  var previousRoute=dr&&dr.routeKey,previousRouteMetres=dr&&dr.routeMetres;
+  var previousRoute=dr&&dr.routeKey,previousRouteMetres=dr&&dr.routeMetres,previousCoords=dr&&(dr.lineCoords||dr.continuityCoords);
+  if(dr&&previousPosition!=null)dr.posicaoNaRota=previousPosition;
+  if(dr&&timestamp>dr.gpsTimestamp){
+    var regression=previousRoute===JSON.stringify(coords)&&!roadIdentityChanged(previousIdentity,identity)&&position!=null&&dr.gpsPosition!=null
+      ?(dr.gpsPosition-position)*(previousRouteMetres||0):0;
+    if(regression>30){
+      if(!dr.regressionCount){dr.regressionAt=dr.gpsTimestamp;dr.regressionMetres=0;}
+      dr.regressionCount=(dr.regressionCount||0)+1;dr.regressionMetres+=regression;
+    }else{dr.regressionCount=0;dr.regressionMetres=0;}
+    // Only distinct, sustained physical regressions invalidate directed-route continuity.
+    dr.confirmedRouteRegression=dr.regressionCount>=2&&timestamp-dr.regressionAt>=15000&&dr.regressionMetres>150;
+  }
   if(first)dr=drState[key]={marker:marker,posicaoNaRota:null,gpsTimestamp:null,identity:identity};
   // Context can advance independently; the physical anchor and its budgets cannot.
   if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<dr.gpsTimestamp)return;
@@ -436,10 +447,11 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       &&coords.every(function(c){return c&&Number.isFinite(c[0])&&Number.isFinite(c[1])&&Math.abs(c[0])<=90&&Math.abs(c[1])<=180});
     if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;if(animFrames[key]&&dr.animationPosition!=null)dr.posicaoNaRota=dr.animationPosition;if(roadIdentityChanged(dr.identity,identity)){dr.identity=identity;dr.lineCoords=null;dr.posicaoNaRota=null;}if(!dr.observedInterpolation)stopAnim(key);return;}
     var contextKey=JSON.stringify(coords);
-    if(dr.routeKey!==contextKey||dr.identity!==identity){
+    if(dr.routeKey!==contextKey||dr.identity!==identity||!dr.lineCoords){
       stopAnim(key);dr.observedInterpolation=false;dr.lineCoords=coords;dr.routeKey=contextKey;dr.identity=identity;dr.comprimentoGraus=null;
       dr.routeMetres=parseNum(p.comprimentoRotaMetros)||comprimentoRotaGraus(coords)*111000;
       dr.posicaoNaRota=Math.min(1,position+(dr.projectedMetres||0)/dr.routeMetres);
+      if(previousRoute===contextKey&&!roadIdentityChanged(previousIdentity,identity)&&previousPosition!=null)dr.posicaoNaRota=Math.max(dr.posicaoNaRota,previousPosition);
       dr.gpsPosition=position;
     }
     if(dr.decelFactor==null)dr.decelFactor=1;
@@ -451,7 +463,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     dr.projectionUntil=Math.min(p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs,timestamp+180000);
     dr.projectionMaxMetres=p.projectionMaxMetres||gpsPolicy.maxProjectionMetres;
     dr.routeMetres=parseNum(p.comprimentoRotaMetros);
-    if(!p.backendMotionEligible){
+    if(!p.backendMotionEligible||!coords||coords.length<2||position==null){
       dr.backendMotionEligible=false;
       if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<=dr.gpsTimestamp)return;
       var priorTime=dr.gpsTimestamp,priorCoordinate=dr.gpsCoordinate;
@@ -460,6 +472,12 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.lineCoords=null;dr.velocidade=0;dr.posicaoNaRota=null;dr.gpsPosition=null;dr.routeKey=null;dr.compensateAge=false;
       var dest={lat:parseNum(p.latitude),lng:parseNum(p.longitude)};
       dr.gpsCoordinate=dest;
+      if((!coords||position==null)&&previousPosition!=null&&previousRoute&&!roadIdentityChanged(previousIdentity,identity)){
+        dr.lineCoords=null;dr.continuityCoords=previousCoords;dr.routeKey=previousRoute;dr.routeMetres=previousRouteMetres;
+        dr.posicaoNaRota=previousPosition;dr.visualAhead=false;dr.visualUncertain=true;dr.observedInterpolation=false;
+        var physicalProgress=roadVisualProgress(previousCoords,dest,previousPosition,previousRouteMetres);
+        dr.gpsPosition=physicalProgress;dr.projectedMetres=physicalProgress==null?dr.projectionMaxMetres:Math.max(0,(previousPosition-physicalProgress)*previousRouteMetres);return;
+      }
       var debt=coords&&position!=null&&previousPosition!=null&&previousRoute===JSON.stringify(coords)&&!roadIdentityChanged(previousIdentity,identity)
         ?(previousPosition-position)*(previousRouteMetres||comprimentoRotaGraus(coords)*111000):0;
       if(Math.abs(debt)<.001)debt=0;
@@ -543,6 +561,9 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     var c=interpolarNaRota(coords,dr.posicaoNaRota),target={lat:c[0],lng:c[1]};
     if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,forwardDuration,sameRoute?previousPosition:null,dr.posicaoNaRota);}
   }else{
+    if(previousPosition!=null&&previousRoute&&!roadIdentityChanged(previousIdentity,identity)){
+      dr.posicaoNaRota=previousPosition;dr.routeKey=previousRoute;dr.continuityCoords=previousCoords;dr.visualUncertain=true;return;
+    }
     dr.posicaoNaRota=null;
     if(!first){roadMovement.linearSyncs++;animateTo(key,marker,dest,1600);}
   }
@@ -587,16 +608,17 @@ function startDR(){
         else if(dr.reconcileTarget!=null&&canReconcile)estimate=dr.reconcileTarget+Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-roadProjectionMetres(dr.velocidade*dr.decelFactor,dr.reconcileTargetAt-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres))/dr.routeMetres;
         var debt=Math.max(0,(dr.posicaoNaRota-estimate)*(dr.routeMetres||0));dr.reconcileDebt=debt;
         if(debt<=5&&canReconcile){dr.visualAhead=false;dr.visualHoldAt=null;dr.reconcileFactor=1;}
-        else if(debt>100||now-dr.visualHoldAt>=(dr.reconcileLimitMs||30000)||!canReconcile){
-          // Exceptional recovery is hidden while reanchoring, never shown as reverse travel.
+        else if(dr.confirmedRouteRegression){
+          // Contradictory physical fixes permit an explicit hidden recovery; age or ineligibility alone do not.
           dr.visualUncertain=true;var el=dr.marker.getElement();el.style.transition='opacity 0.4s';el.style.opacity='0';
           if(!dr.recoveryAt)dr.recoveryAt=now;
           if(now-dr.recoveryAt<500)return;
           var physical=dr.lineCoords&&estimate!=null?interpolarNaRota(dr.lineCoords,estimate):[dr.gpsCoordinate.lat,dr.gpsCoordinate.lng];
           stopAnim(key);dr.marker.setLngLat([physical[1],physical[0]]);dr.posicaoNaRota=estimate;
           dr.projectedMetres=dr.routeMetres?Math.max(0,(estimate-dr.gpsPosition)*dr.routeMetres):0;
-          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualUncertain=!!dr.locationUncertain;dr.recoveryAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
+          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualUncertain=true;dr.recoveryAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
         }else{
+          if(debt>100||now-dr.visualHoldAt>=(dr.reconcileLimitMs||30000))dr.visualUncertain=true;
           var desired=Math.max(.55,1-debt/Math.max(30,dr.velocidade/3.6*4));
           dr.reconcileFactor=(dr.reconcileFactor==null?1:dr.reconcileFactor)+(desired-(dr.reconcileFactor==null?1:dr.reconcileFactor))*(1-Math.exp(-Math.max(0,now-from)/1500));
         }
@@ -608,7 +630,7 @@ function startDR(){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
           delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
         }
-        if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(!dr.observedInterpolation)stopAnim(key);if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
+        if(!dr.backendMotionEligible||now>=dr.projectionUntil){if(!dr.observedInterpolation){if(animFrames[key]&&dr.animationPosition!=null)dr.posicaoNaRota=dr.animationPosition;stopAnim(key);}if(motionTraceOrders.length)traceHybridMotion(key,dr.tracePosition||{},dr,'frozen',true,'stop');return;}
       }
       if(dr.alternative){
         var physicalAgeMs=now-Date.parse(dr.alternative.physicalAt);
