@@ -103,6 +103,7 @@ test('loss of projection eligibility cannot animate a physical fix backwards alo
  f.update({backendMotionEligible:false,longitude:.00005},undefined,f.base+10000,.00005);
  assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
  f.advance(31000);assert.equal(f.marker.pos.lng,.00005);assert.equal(f.c.drState.bus.visualAhead,false);
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
 });
 
 test('legacy road projection also bounds trailing GPS debt and waits for new physical evidence',()=>{
