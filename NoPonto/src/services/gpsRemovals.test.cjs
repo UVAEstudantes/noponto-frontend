@@ -400,7 +400,7 @@ function webViewRuntime(script,clock={now:Date.now()}) {
   const context = vm.createContext({window:{},document:{createElement:element,getElementById:id => domById.get(id)??null,querySelectorAll:() => [],body:element()},
     maplibregl:{Marker,Popup},console,Date:ClockDate,performance:{now:()=>clock.now},setTimeout:() => 0,clearTimeout() {},
     setInterval:fn => {ticks.push(fn);return ticks.length;},clearInterval(){},
-    requestAnimationFrame:fn => {frames.set(++frame,fn);return frame;},cancelAnimationFrame:id => {cancelled.push(id);frames.delete(id);}});
+    requestAnimationFrame:fn => {frames.set(++frame,ts=>{clock.now=Math.max(clock.now,ts);fn(ts);});return frame;},cancelAnimationFrame:id => {cancelled.push(id);frames.delete(id);}});
   new vm.Script(script).runInContext(context);
   const sources = new Map(); let writes = 0;
   context.map = {getLayer:() => null,getSource:key => sources.get(key),addSource(key) {sources.set(key,{setData(){writes++;}});},
@@ -1396,7 +1396,7 @@ test('popup local clock keeps terminal state and labels last speed before the de
   const age={getAttribute:()=>String(ts),closest:()=>root,textContent:''};web.context.document.querySelectorAll=()=>[age];
   web.context.updateTimeAgo();assert.equal(age.textContent,'8 s');
   f.clock.now+=127000;web.context.updateTimeAgo();assert.equal(age.textContent,'2 min 15 s');
-  assert.equal(status.textContent,'No terminal');assert.equal(status.style.color,undefined);assert.equal(speed.textContent,'Última velocidade');assert.equal(warning.textContent,'');
+  assert.equal(status.textContent,'No terminal');assert.equal(status.style.color,'#b7791f');assert.equal(speed.textContent,'Última velocidade');assert.equal(warning.textContent,'');
   f.clock.now+=46000;web.context.updateTimeAgo();assert.equal(warning.textContent,'GPS atrasado');assert.equal(status.style.color,'#b7791f');assert.equal(status.textContent,'No terminal');
   f.clock.now+=120000;web.context.updateTimeAgo();assert.equal(warning.textContent,'Última posição conhecida');assert.equal(age.getAttribute(),String(ts));
  }finally{f.dispose();}

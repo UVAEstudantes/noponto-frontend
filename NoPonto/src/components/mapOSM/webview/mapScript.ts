@@ -455,7 +455,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
         ?(previousPosition-position)*(previousRouteMetres||comprimentoRotaGraus(coords)*111000):0;
       if(Math.abs(debt)<.001)debt=0;
       if(debt>0){
-        if(!dr.visualHoldAt)dr.visualHoldAt=Date.now();
+        if(!dr.visualHoldAt){dr.visualHoldAt=Date.now();dr.reconcileLimitMs=Math.min(60000,30000+debt/Math.max(1,dr.velocidade/3.6)*1000);}
         dr.lineCoords=coords;dr.routeKey=previousRoute;dr.routeMetres=previousRouteMetres;
         dr.posicaoNaRota=previousPosition;dr.gpsPosition=position;dr.projectedMetres=debt;
         dr.visualAhead=true;dr.observedInterpolation=false;return;
@@ -516,7 +516,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     var debt=sameRoute&&previousPosition!==null?(previousPosition-presented)*routeMetres:0;
     if(Math.abs(debt)<.001)debt=0;
     if(debt>0){
-      if(!dr.visualHoldAt)dr.visualHoldAt=Date.now();
+      if(!dr.visualHoldAt){dr.visualHoldAt=Date.now();dr.reconcileLimitMs=Math.min(60000,30000+debt/Math.max(1,dr.velocidade/3.6)*1000);}
       stopAnim(key);dr.posicaoNaRota=previousPosition;dr.projectedMetres=Math.max(0,(previousPosition-position)*routeMetres);dr.visualAhead=true;
       dr.reconcileTarget=presented;dr.reconcileTargetAt=Date.now();
       roadMovement.backwardHeld++;return;
@@ -574,7 +574,7 @@ function startDR(){
         else if(dr.reconcileTarget!=null&&canReconcile)estimate=dr.reconcileTarget+Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-roadProjectionMetres(dr.velocidade*dr.decelFactor,dr.reconcileTargetAt-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres))/dr.routeMetres;
         var debt=Math.max(0,(dr.posicaoNaRota-estimate)*(dr.routeMetres||0));dr.reconcileDebt=debt;
         if(debt<=5&&canReconcile){dr.visualAhead=false;dr.visualHoldAt=null;dr.reconcileFactor=1;}
-        else if(debt>100||now-dr.visualHoldAt>=30000||!canReconcile){
+        else if(debt>100||now-dr.visualHoldAt>=(dr.reconcileLimitMs||30000)||!canReconcile){
           // Exceptional recovery is hidden while reanchoring, never shown as reverse travel.
           dr.visualUncertain=true;dr.freshnessAt=0;var el=dr.marker.getElement();el.style.transition='opacity 0.4s';el.style.opacity='0';
           if(!dr.recoveryAt)dr.recoveryAt=now;
@@ -584,7 +584,7 @@ function startDR(){
           dr.projectedMetres=dr.routeMetres?Math.max(0,(estimate-dr.gpsPosition)*dr.routeMetres):0;
           dr.visualAhead=false;dr.visualHoldAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
         }else{
-          var desired=Math.max(.35,1-debt/Math.max(30,dr.velocidade/3.6*6));
+          var desired=Math.max(.55,1-debt/Math.max(30,dr.velocidade/3.6*4));
           dr.reconcileFactor=(dr.reconcileFactor==null?1:dr.reconcileFactor)+(desired-(dr.reconcileFactor==null?1:dr.reconcileFactor))*(1-Math.exp(-Math.max(0,now-from)/1500));
         }
       }
@@ -708,7 +708,7 @@ function animateTo(key,marker,dest,ms,routeFrom,routeTo){
   if(distanceMeters({lat:start.lat,lng:start.lng},dest)>1500){marker.setLngLat([dest.lng,dest.lat]);return}
   var t0=performance.now();
   function step(ts){
-    var p=Math.min((ts-t0)/ms,1);
+    var p=Math.max(0,Math.min((performance.now()-t0)/ms,1));
     var eased=routeFrom!=null&&routeTo!=null?p+.5*p*(1-p)*(2*p-1):p*p*(3-2*p);
     var lat=start.lat+(dest.lat-start.lat)*eased;
     var lng=start.lng+(dest.lng-start.lng)*eased;
