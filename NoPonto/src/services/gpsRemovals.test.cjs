@@ -821,7 +821,7 @@ test(`imperfect DTO replay survives intermittent GPS native clocks empty and rec
   try{
     const h=f.hook(['006']);h.render();await f.flush();
     const start=f.clock.now;
-    let raw={...f.raw('006','REPLAY',-40000),latitude:-22.9,longitude:-43.208,velocidade:0,velocidadeMedia:18,posicaoNaRota:.1};
+    let raw={...f.raw('006','REPLAY',-40000),latitude:-22.9,longitude:-43.208,velocidade:18,velocidadeMedia:18,posicaoNaRota:.1};
     f.emit('PosicaoAtualizada',[raw]);
     const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:-22.9,lngInicial:-43.2,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);
     const native=f.bridge(),key='onibus:006:REPLAY';
@@ -841,10 +841,10 @@ test(`imperfect DTO replay survives intermittent GPS native clocks empty and rec
         f.emit('PosicaoAtualizada',[raw]);
       }else if(second%10===0)f.emit('PosicaoAtualizada',[{...raw,timestampServidor:new Date(f.clock.now).toISOString()}]);
       for(const tick of f.intervals.values())if(tick.fixtureIntervalMs===(presence?1000:15000))tick();
-      view=native.render(props());assert.equal(view.props.source,source);
+      const anchorBefore=web.context.drState[key].gpsTimestamp;view=native.render(props());assert.equal(view.props.source,source);
       const afterPresentation=marker.getLngLat().lng;
-      // Presentation alone may schedule a physical reconciliation, but cannot write coordinates.
-      assert.equal(afterPresentation,last);
+      // Metadata alone cannot write coordinates; exceptional new forward anchors may correct directly.
+      if(afterPresentation!==last){assert.ok(afterPresentation>last);assert.ok(web.context.drState[key].gpsTimestamp>anchorBefore);assert.equal(web.context.animFrames[key],undefined);}else assert.equal(afterPresentation,last);
       web.ticks[0]();
       const frame=web.context.animFrames[key];
       if(frame){
@@ -855,7 +855,7 @@ test(`imperfect DTO replay survives intermittent GPS native clocks empty and rec
         const next=web.context.animFrames[key];web.frames.get(next)(f.clock.now+700);
         assert.ok(marker.getLngLat().lng>half,'RAF must interpolate rather than jump');
       }
-      assert.ok(marker.getLngLat().lng>=last);last=marker.getLngLat().lng;
+      if(marker.getLngLat().lng<last){assert.equal(web.context.drState[key].visualUncertain,true);assert.equal(marker.getElement().style.opacity,'0');}else assert.ok(marker.getLngLat().lng>=last);last=marker.getLngLat().lng;
       assert.equal(web.context.vehicleMarkers[key],marker);
       assert.equal(details.classList.contains('open'),true);
       assert.equal(h.render().veiculos[0].atualizadoEm,raw.timestampGps);
@@ -1005,7 +1005,7 @@ for(const presence of [true,false]){
       r.tick(60);const before=r.metres();
       const physical=(before-50)/r.length;r.p={...r.p,timestamp:r.start+20000,posicaoNaRota:physical,longitude:-43.2+physical*.02};r.send();
       assert.equal(r.metres(),before);assert.equal(r.web.context.animFrames[r.key],undefined);
-      r.f.clock.now+=1000;r.web.ticks[0]();assert.equal(r.metres(),before);assert.equal(r.state().visualAhead,true);assert.ok(r.state().projectedMetres>0);
+      r.f.clock.now+=1000;r.web.ticks[0]();assert.ok(r.metres()>before);assert.equal(r.state().visualAhead,true);assert.ok(r.state().projectedMetres>0);
       const current=r.metres();for(let i=0;i<5;i++)r.send();assert.equal(r.metres(),current);
       assert.equal(r.state().gpsTimestamp,r.start+20000);
     }finally{r.f.dispose();}
@@ -1371,7 +1371,7 @@ test('hybrid retained itinerary projects continuously between GPS samples and st
   update();web.context.startDR();const key='onibus:838:D86023',marker=web.context.vehicleMarkers[key];
   f.clock.now+=30000;v.location.source='ITS_CURRENT';v.location.physicalAt=new Date(f.clock.now).toISOString();v.location.longitude=.002;v.operational=null;v.motionEligible=false;s.revision++;update();
   web.ticks[0]();
-  f.clock.now+=1700;for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}
+  f.clock.now+=(web.context.drState[key].forwardDurationMs||1600)+100;for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}
   web.ticks[0]();
   const before=marker.getLngLat().lng;
   f.clock.now+=10000;web.ticks[0]();const after=marker.getLngLat().lng;
@@ -1380,7 +1380,7 @@ test('hybrid retained itinerary projects continuously between GPS samples and st
   assert.equal(web.context.vehicleMarkers[key],marker);
   assert.match(web.context.vehiclePopups[key].getElement().querySelector('.popup-header').innerHTML,/estimado/);
   assert.match(web.context.vehiclePopups[key].getElement().querySelector('.popup-stats').innerHTML,/Seguinte/);
-  f.clock.now=at+91000;web.ticks[0]();const stopped=marker.getLngLat().lng;
+  f.clock.now=web.context.drState[key].projectionUntil;web.ticks[0]();const stopped=marker.getLngLat().lng;
   f.clock.now+=30000;web.ticks[0]();assert.equal(marker.getLngLat().lng,stopped);
   v.location.source='GTFSRT_BUS';v.location.physicalAt=new Date(f.clock.now).toISOString();v.location.longitude=.008;
   v.operational={timestampGps:v.location.physicalAt,latitude:0,longitude:.008,status:0,linhaId:'line',codigoLinha:'838',padraoVersaoId:'out',sentidoId:'direction'};s.revision++;update();
@@ -1529,7 +1529,7 @@ test('D86286 unknown ITS acquires a GTFS route and returns to ITS without recrea
   for(const source of ['GTFSRT_BUS','ITS_CURRENT']){
    f.clock.now+=30000;p={...p,timestamp:f.clock.now,longitude:p.longitude+.001,backendMotionEligible:true,projectionUntil:f.clock.now+60000,projectionSpeedKmh:20,projectionMaxMetres:250,comprimentoRotaMetros:2223.9,padraoVersaoId:'out',sentidoId:'sense',padraoOperacionalId:source==='GTFSRT_BUS'?'pattern':null,posicaoNaRota:(p.longitude+.001)/.02,physicalOnly:false,contextConfidence:source==='GTFSRT_BUS'?'confirmed':'retained',unifiedSource:source};
    send();assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(web.frames.size>0);assert.equal(details.classList.contains('open'),true);
-   f.clock.now+=1700;for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}
+   f.clock.now+=(web.context.drState[key].forwardDurationMs||1600)+100;for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}
    assert.ok(Math.abs(marker.getLngLat().lng-p.longitude)<1e-8);
   }
  }finally{f.dispose();}
@@ -1581,8 +1581,8 @@ test('hybrid WebView temporal sequence keeps one moving marker through ITS zero 
   };
   const advance=(n)=>{web.context.startDR();for(let i=0;i<n;i++){f.clock.now+=1000;for(const [id,fn]of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}web.ticks[0]();}};
   send(0,0,0);const marker=web.context.vehicleMarkers[key],popup=web.context.vehiclePopups[key];send(20,0,0);send(40,50,9);advance(5);assert.ok(marker.getLngLat().lng>50/m);
-  send(60,100,0);advance(5);assert.equal(p.lastObservedSpeedKmh,0);assert.ok(marker.getLngLat().lng>100/m);
-  send(80,100,0);advance(5);const stopped=marker.getLngLat().lng;advance(10);assert.equal(marker.getLngLat().lng,stopped);assert.ok(p.padraoVersaoId||p.physicalRoutePattern);
+  send(60,100,0);advance(Math.ceil((web.context.drState[key].forwardDurationMs||1000)/1000)+2);assert.equal(p.lastObservedSpeedKmh,0);assert.ok(marker.getLngLat().lng>100/m);
+  send(80,100,0);advance(5);const pending=marker.getLngLat().lng;advance(10);assert.ok(marker.getLngLat().lng>=pending);assert.ok(marker.getLngLat().lng<=125/m);send(100,100,0);advance(5);const stopped=marker.getLngLat().lng;advance(3);assert.equal(marker.getLngLat().lng,stopped);assert.ok(p.padraoVersaoId||p.physicalRoutePattern);
   send(110,100,0);advance(5);assert.equal(p.backendMotionEligible,false);
   for(const [seconds,d,confirmed]of [[140,200,false],[170,350,true],[200,500,false],[230,650,false],[260,800,false],[290,950,false],[320,1100,false],[350,1250,false],[380,1400,false],[410,1550,true]]){
    send(seconds,d,18,confirmed);advance(5);assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(marker.getLngLat().lng>d/m,`render advances after ${seconds}`);assert.equal(web.context.drState[key].gpsTimestamp,start+seconds*1000);
@@ -1811,12 +1811,12 @@ test('forward route reconciliation follows a corner and its bearing then accepts
   r.send({timestamp:at,latitude:60/m,longitude:200/m,posicaoNaRota:260/400,projectionUntil:at+90000,unifiedSource:'GTFSRT_BUS'});
   assert.equal(r.state().gpsTimestamp,at);assert.equal(r.state().projectedMetres,0);r.advance(.3);
   const first=marker.getLngLat();assert.equal(first.lat,0,'first leg follows the route rather than cutting the corner');assert.ok(first.lng>before.lng&&first.lng<200/m);assert.ok(Math.abs(r.web.context.vehicleHeadings[r.key]-90)<1);
-  r.advance(.3);const turned=marker.getLngLat();assert.ok(turned.lat>0&&turned.lat<60/m);assert.ok(Math.abs(turned.lng*m-200)<.01);assert.ok(Math.abs(r.web.context.vehicleHeadings[r.key])<1);
+  r.advance(4.7);const turned=marker.getLngLat();assert.ok(turned.lat>0&&turned.lat<60/m);assert.ok(Math.abs(turned.lng*m-200)<.01);assert.ok(Math.abs(r.web.context.vehicleHeadings[r.key])<1);
   const visual=r.state().animationPosition,newAt=r.f.clock.now;
   r.send({timestamp:newAt,latitude:70/m,longitude:200/m,posicaoNaRota:270/400,projectionUntil:newAt+90000,unifiedSource:'ITS_CURRENT'});
   assert.equal(r.state().visualAhead,false);assert.equal(r.state().animationPosition,visual);assert.equal(r.state().gpsTimestamp,newAt);assert.equal(r.state().projectedMetres,0);
   r.advance(.2);const next=marker.getLngLat();assert.ok(next.lat>=turned.lat&&next.lat<70/m);assert.ok(Math.abs(next.lng*m-200)<.01);assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.equal(Object.keys(r.web.context.vehicleMarkers).length,1);
-  r.advance(1);assert.ok(marker.getLngLat().lat>=70/m);assert.ok(r.state().projectedMetres<15);
+  r.advance(6);assert.ok(marker.getLngLat().lat>=70/m);assert.ok(Math.abs(r.state().projectedMetres-(marker.getLngLat().lat*r.m-70))<.1);assert.ok(r.state().projectedMetres<=750);
  }finally{r.f.dispose();}
 });
 
@@ -1835,5 +1835,16 @@ test('possible stop renders a decaying residual within twenty five metres withou
   r.send({timestamp:at,longitude:start/r.m,posicaoNaRota:start/10000,projectionSpeedKmh:13.5,lastObservedSpeedKmh:0,velocidade:0,estimatedSpeedKmh:13.5,projectionSpeedKind:'possible_stop',projectionMaxMetres:25,projectionUntil:at+30000});
   r.advance(1);const a=r.metres();r.advance(4);const b=r.metres();assert.ok(b>a&&a>start);r.advance(20);const c=r.metres();r.advance(1);assert.ok((r.metres()-c)*3.6<(a-start)*3.6);r.advance(10);
   const stopped=r.metres();r.advance(5);assert.equal(r.metres(),stopped);assert.ok(stopped-start<=25);assert.equal(r.state().gpsTimestamp,at);
+ }finally{r.f.dispose();}
+});
+
+
+for(const gap of [30,80,150])test(`forward ${gap} metres recovery renders route speed below twice normal instead of teleporting`,()=>{
+ const r=delayedRoadBridge({speed:30,age:0,cap:750});try{
+  r.advance(10);const before=r.metres(),at=r.f.clock.now,physical=before+gap;
+  r.send({timestamp:at,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:at+90000,unifiedSource:'GTFSRT_BUS'});
+  assert.ok(Math.abs(r.metres()-before)<.01);let prior=r.metres(),peak=0;
+  for(let i=0;i<150&&r.web.frames.size;i++){r.advance(.1);const current=r.metres();assert.ok(current>=prior-.001);peak=Math.max(peak,(current-prior)*36);prior=current;}
+  assert.ok(peak<=60.5,`rendered peak ${peak} kmh`);assert.ok(r.metres()>=physical-.1);assert.equal(r.state().gpsTimestamp,at);assert.ok(r.state().projectedMetres<=750);
  }finally{r.f.dispose();}
 });

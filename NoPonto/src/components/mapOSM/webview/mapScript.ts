@@ -510,9 +510,10 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     dr.visualHoldAt=null;dr.visualAhead=false;dr.visualUncertain=false;dr.recoveryAt=null;dr.reconcileFactor=1;dr.posicaoNaRota=presented;
     if(correcting&&sameRoute&&dr.posicaoNaRota>=previousPosition&&(dr.posicaoNaRota-previousPosition)*routeMetres<=150)correcting=false;
     var forwardMetres=sameRoute&&previousPosition!=null?(dr.posicaoNaRota-previousPosition)*routeMetres:0;
-    if(forwardMetres>150)correcting=true;
+    var forwardDuration=Math.max(800,forwardMetres/Math.max(1,dr.velocidade*dr.decelFactor/3.6*1.6)*1000);
+    if(forwardMetres>150||forwardDuration>15000)correcting=true;
     var c=interpolarNaRota(coords,dr.posicaoNaRota),target={lat:c[0],lng:c[1]};
-    if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,Math.min(1200,Math.max(400,forwardMetres*8)),sameRoute?previousPosition:null,dr.posicaoNaRota);}
+    if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,forwardDuration,sameRoute?previousPosition:null,dr.posicaoNaRota);}
   }else{
     dr.posicaoNaRota=null;
     if(!first){roadMovement.linearSyncs++;animateTo(key,marker,dest,1600);}
@@ -683,7 +684,7 @@ function stopAnim(key){if(animFrames[key]){cancelAnimationFrame(animFrames[key])
 
 function animateTo(key,marker,dest,ms,routeFrom,routeTo){
   stopAnim(key);
-  if(drState[key])drState[key].animationPosition=routeFrom!=null?routeFrom:null;
+  if(drState[key]){drState[key].animationPosition=routeFrom!=null?routeFrom:null;drState[key].forwardDurationMs=ms;}
   var start=marker.getLngLat();
   var dx=start.lng-dest.lng,dy=start.lat-dest.lat;
   if(Math.sqrt(dx*dx+dy*dy)<0.000005){marker.setLngLat([dest.lng,dest.lat]);return}
@@ -693,7 +694,7 @@ function animateTo(key,marker,dest,ms,routeFrom,routeTo){
   var t0=performance.now();
   function step(ts){
     var p=Math.min((ts-t0)/ms,1);
-    var eased=p*p*(3-2*p);
+    var eased=routeFrom!=null&&routeTo!=null?p+.5*p*(1-p)*(2*p-1):p*p*(3-2*p);
     var lat=start.lat+(dest.lat-start.lat)*eased;
     var lng=start.lng+(dest.lng-start.lng)*eased;
     var dr=drState[key];
@@ -1259,7 +1260,7 @@ function updateUser(data){
   var duration=pos.snap?0:500;
   function step(ts){
     var p=duration?Math.min(1,Math.max(0,(ts-t0)/duration)):1;
-    var eased=p*p*(3-2*p);
+    var eased=routeFrom!=null&&routeTo!=null?p+.5*p*(1-p)*(2*p-1):p*p*(3-2*p);
     var lng=start.lng+(pos.lng-start.lng)*eased,lat=start.lat+(pos.lat-start.lat)*eased;
     userMarker.setLngLat([lng,lat]);
     // Camera and dot share one clock; gestures can stop follow without stopping GPS.

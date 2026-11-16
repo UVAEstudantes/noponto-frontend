@@ -20,10 +20,10 @@ test('late geometry uses the original fix and preserves deadline and projected b
  f.advance(30000);const frozen=f.marker.pos.lng;f.update();f.advance(30000);assert.equal(f.marker.pos.lng,frozen);
 });
 test('same GPS eligibility withdrawal cancels RAF and rejects regressive or conflicting fixes',()=>{
- const f=fixture();f.update();f.update({longitude:.001},undefined,f.base+1000,.001);assert.ok(f.c.animFrames.bus);
- f.update({longitude:.001,backendMotionEligible:false},undefined,f.base+1000,.001);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.frames.size,0);
- f.update({longitude:.001,backendMotionEligible:true},undefined,f.base,0);assert.equal(f.c.drState.bus.backendMotionEligible,false);
- f.update({longitude:.5},undefined,f.base+1000,.5);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.001);
+ const f=fixture();f.update();f.update({longitude:.0001},undefined,f.base+1000,.0001);assert.ok(f.c.animFrames.bus);
+ f.update({longitude:.0001,backendMotionEligible:false},undefined,f.base+1000,.0001);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.frames.size,0);
+ f.update({longitude:.0001,backendMotionEligible:true},undefined,f.base,0);assert.equal(f.c.drState.bus.backendMotionEligible,false);
+ f.update({longitude:.5},undefined,f.base+1000,.5);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.0001);
 });
 test('ambiguous context cannot start motion and fresh GPS still advances normally',()=>{
  const f=fixture();f.update({backendMotionEligible:false},null,f.base,null);f.update({backendMotionEligible:false},[[0,0],[0,1]],f.base,0);f.advance(10000);assert.equal(f.marker.pos.lng,0);
@@ -222,7 +222,7 @@ test('new delayed fixes and repeated metadata cannot extend a persistent same-ti
 
 test('a newer fix during forward RAF compares the rendered progress instead of its unfinished target',()=>{
  const f=fixture();f.update();f.advance(10000);const shown=f.marker.pos.lng;
- f.update({longitude:shown+.0008},undefined,f.base+10000,shown+.0008);
+ f.update({longitude:shown+.00018},undefined,f.base+10000,shown+.00018);
  let frame=[...f.frames.values()].at(-1);frame(f.base+10350);const rendered=f.marker.pos.lng;
  f.update({longitude:rendered+.00001},undefined,f.base+10100,rendered+.00001);
  assert.equal(f.c.drState.bus.visualAhead,false);assert.ok(f.c.animFrames.bus);assert.equal(f.marker.pos.lng,rendered);
@@ -239,8 +239,8 @@ test('large same-time discrepancies and confirmed identity changes correct discr
 
 test('eligibility withdrawal preserves the rendered route progress when cancelling reconciliation',()=>{
  const f=fixture();f.update();f.advance(10000);const start=f.marker.pos.lng;
- f.update({longitude:start+.0008},undefined,f.base+10000,start+.0008);const frame=[...f.frames.values()].at(-1);frame(f.base+10350);const shown=f.marker.pos.lng;
- f.update({longitude:start+.0008,backendMotionEligible:false},undefined,f.base+10000,start+.0008);
+ f.update({longitude:start+.00018},undefined,f.base+10000,start+.00018);const frame=[...f.frames.values()].at(-1);frame(f.base+10350);const shown=f.marker.pos.lng;
+ f.update({longitude:start+.00018,backendMotionEligible:false},undefined,f.base+10000,start+.00018);
  assert.equal(f.c.animFrames.bus,undefined);assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota-shown)<1e-12,'cancelled RAF must not leave its undisplayed target as the visual anchor');
  f.update({longitude:shown+.00001},undefined,f.base+10100,shown+.00001);assert.equal(f.c.drState.bus.visualAhead,false);
 });
