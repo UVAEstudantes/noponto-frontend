@@ -404,3 +404,15 @@ test("Radar mantém seleção manual e recebe os estados do mesmo hook de consul
   assert.equal(h.output.manual, false);
   h.unmount();
 });
+
+
+test('physical ETA expires at the original contract deadline while refresh stays pending or fails',async()=>{
+ const {h,pedidos}=iniciar();const physicalAt=h.now;
+ const e={...evento('A','physical',600),source:'HybridFixed20',quality:'hipotese_nominal',
+  lastRealtimeEvidenceUtc:new Date(physicalAt).toISOString(),estimatedAt:new Date(physicalAt+600000).toISOString(),predictionValidUntilUtc:new Date(physicalAt+90000).toISOString()};
+ pedidos[0].resolve([e]);await h.flush();await h.avancar(30000);pedidos[1].reject(Error('offline'));await h.flush();
+ assert.equal(h.output.eventos.length,1);assert.equal(h.output.recebidoEm,physicalAt);
+ await h.avancar(60001);assert.equal(h.output.eventos.length,0);assert.equal(h.output.eventosPorId.has('physical'),false);
+ assert.equal(h.output.eventosRecebidos[0].vehicleId,'V1');
+ h.output.atualizar();const request=pedidos.at(-1);request.resolve([e]);await h.flush();assert.equal(h.output.eventos.length,0);h.unmount();
+});

@@ -13,6 +13,7 @@ export interface EventoParadaDto {
   ocorrenciaParadaPadraoId: string; vehicleId?: string | null; railVehicleId?: string | null;
   expectedRunId?: string | null; codigoVeiculo?: string | null; trainCode?: string | null;
   scheduledAt?: string | null; estimatedAt?: string | null; secondsUntilEvent?: number | null;
+  predictionValidUntilUtc?: string | null;
   source: string; quality: string; lastRealtimeEvidenceUtc?: string | null;
   operationalStatus?: string | null; scheduledStopId?: string | null;
   destinationName?: string | null; lineName?: string | null;

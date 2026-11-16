@@ -83,7 +83,27 @@ export function paradaDetalhadaRadar(parada: Parada | null, linhas: readonly Lin
   return contexto ? { ...contexto, parada } : null;
 }
 
-export function instanteEventoRadar(evento: EventoParadaDto, recebidoEm: number): number | null {
+/** Physical forecast validity is independent of HTTP freshness and vehicle retention. */
+export function previsaoRodoviariaValida(evento: EventoParadaDto, agora: number): boolean {
+  if (evento.modal === 'trem' || !['PhysicalCausal','HybridFixed20','HybridRecentEma'].includes(evento.source)) return true;
+  const physicalAt = Date.parse(evento.lastRealtimeEvidenceUtc ?? '');
+  // Legacy APIs did not publish expiry. Conservative compatibility with the audited physical contract.
+  const until = evento.predictionValidUntilUtc == null ? physicalAt + 90_000 : Date.parse(evento.predictionValidUntilUtc);
+  return Number.isFinite(physicalAt) && physicalAt <= agora && Number.isFinite(until)
+    && until >= physicalAt && until <= physicalAt + 300_000 && agora <= until;
+}
+
+export function preservarProgramacaoEvento(evento: EventoParadaDto, agora: number): EventoParadaDto {
+  return !previsaoRodoviariaValida(evento, agora) && Number.isFinite(Date.parse(evento.scheduledAt ?? ''))
+    ? { ...evento, estimatedAt: null, secondsUntilEvent: null, lastRealtimeEvidenceUtc: null,
+        source: 'ScheduledEstimated', quality: 'ScheduleOnly', isEstimated: false } : evento;
+}
+
+export function instanteEventoRadar(evento: EventoParadaDto, recebidoEm: number, agora?: number): number | null {
+  if (agora != null && !previsaoRodoviariaValida(evento, agora)) {
+    const scheduled = Date.parse(evento.scheduledAt ?? '');
+    return Number.isFinite(scheduled) ? scheduled : null;
+  }
   const data = evento.estimatedAt ?? evento.scheduledAt;
   if (data) {
     const instante = Date.parse(data);
@@ -97,7 +117,7 @@ export function eventosValidosRadar(eventos: readonly EventoParadaDto[], parada:
   recebidoEm: number, agora: number): EventoParadaDto[] {
   if (!parada) return [];
   const ids = new Set<string>();
-  return eventos.filter((evento) => {
+  return eventos.map(evento => preservarProgramacaoEvento(evento, agora)).filter((evento) => {
     if (motivoExclusaoEventoRadar(evento, parada, recebidoEm, agora) || ids.has(evento.eventId)) return false;
     ids.add(evento.eventId);
     return true;
@@ -110,6 +130,7 @@ export function motivoExclusaoEventoRadar(evento: EventoParadaDto, parada: Parad
   recebidoEm: number, agora: number): string | null {
   if (!parada || evento.paradaId !== parada.parada.paradaId) return 'parada_incompativel';
   if (!Number.isFinite(recebidoEm) || !Number.isFinite(agora) || recebidoEm > agora || agora - recebidoEm > RADAR_PHYSICAL_MAX_MS) return 'consulta_vencida_ou_invalida';
+  if (!previsaoRodoviariaValida(evento, agora)) return 'previsao_fisica_vencida_ou_invalida';
   if (evento.lastRealtimeEvidenceUtc != null) {
     const evidencia = Date.parse(evento.lastRealtimeEvidenceUtc);
     if (!Number.isFinite(evidencia) || evidencia > agora || agora - evidencia > RADAR_PHYSICAL_MAX_MS) return 'gps_vencido_ou_invalido';

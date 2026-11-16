@@ -1,6 +1,6 @@
 import { filtrarEventosPorContexto, type EventoParadaDto } from './eventosParada';
 import { chegadasDoRadar } from './apresentacaoRadar';
-import { instanteEventoRadar } from './radarParada';
+import { instanteEventoRadar, previsaoRodoviariaValida, preservarProgramacaoEvento } from './radarParada';
 import { passengerRadar, RADAR_PHYSICAL_MAX_MS } from './radarPassenger';
 import type { TerminalRadarVehicle } from './terminalTracking';
 
@@ -62,7 +62,7 @@ export function filtrarCandidatosNotificacao(eventos: readonly EventoParadaDto[]
   eventos.filter(e => contexto.vinculos.some(v => v.linhaId === e.linhaId)
     && !contexto.vinculos.some(v => v.linhaId === e.linhaId && v.padraoVersaoId === e.padraoVersaoId))
     .forEach(e => reportar(e, 'versao_incompativel'));
-  const selecionados = filtrarEventosPorContexto([...eventos], { linhas:
+  const selecionados = filtrarEventosPorContexto(eventos.map(e=>preservarProgramacaoEvento(e,agora)), { linhas:
     [...new Set(contexto.vinculos.map(v => v.linhaId))].map(linhaId => ({ linhaId,
       padraoVersaoIds: contexto.vinculos.filter(v => v.linhaId === linhaId).map(v => v.padraoVersaoId) })) });
   const ids = new Set<string>();
@@ -72,6 +72,7 @@ export function filtrarCandidatosNotificacao(eventos: readonly EventoParadaDto[]
       && (v.padraoOperacionalId == null || v.padraoOperacionalId === e.padraoOperacionalId))) {
         reportar(e, e.paradaId !== contexto.paradaId ? 'parada_incompativel' : !contexto.vinculos.some(v => v.linhaId === e.linhaId && v.sentidoId === e.sentidoId) ? 'sentido_incompativel' : 'padrao_operacional_incompativel'); return false;
       }
+    if (!previsaoRodoviariaValida(e,agora)) { reportar(e,'previsao_fisica_vencida_ou_invalida'); return false; }
     if (e.lastRealtimeEvidenceUtc != null) {
       const evidencia = Date.parse(e.lastRealtimeEvidenceUtc);
       if (!Number.isFinite(evidencia) || evidencia > agora || agora - evidencia > idade) { reportar(e, 'gps_vencido_ou_invalido'); return false; }
@@ -90,7 +91,7 @@ export function filtrarCandidatosNotificacao(eventos: readonly EventoParadaDto[]
       && v.order.trim().toUpperCase() === veiculo.trim().toUpperCase()
       && agora >= v.physicalAt && agora - v.physicalAt <= RADAR_PHYSICAL_MAX_MS
       && agora <= v.validUntil && !v.operationalConfirmed)) { reportar(evento, 'viagem_nao_confirmada'); return []; }
-    const previstoEm = instanteEventoRadar(evento, recebidoEm);
+    const previstoEm = instanteEventoRadar(evento, recebidoEm, agora);
     const motivo = previstoEm == null ? 'eta_indisponivel' : previstoEm < agora ? 'previsao_passada'
       : ids.has(evento.eventId) ? 'evento_duplicado' : previstoEm - agora > positivo(politica.janelaSegundos, 600) * 1000 ? 'fora_da_janela' : null;
     if (motivo) { reportar(evento, motivo); return []; }

@@ -23,7 +23,7 @@ export function chegadasDoRadar(eventos: readonly EventoParadaDto[], parada: Par
   road: readonly VeiculoMapaRodoviario[], rail: readonly RailVehicleForMap[]): ChegadaParadaInfo[] {
   return eventos.map((evento) => {
     const linha = linhas.find((item) => item.linhaId === evento.linhaId);
-    const instante = instanteEventoRadar(evento, recebidoEm);
+    const instante = instanteEventoRadar(evento, recebidoEm, agora);
     const trem = rail.find((item) => (evento.railVehicleId && item.railVehicleId === evento.railVehicleId)
       || (evento.expectedRunId && item.railRunId === evento.expectedRunId));
     return {

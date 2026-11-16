@@ -132,3 +132,31 @@ test("compacto prioriza tempos válidos e representa outra linha quando possíve
   assert.deepEqual(doisEventosRadar([evento, segunda, { ...outra, secondsUntilEvent: null }], now)
     .map((item) => item.eventId), ["e1", "e2"]);
 });
+
+
+for (const source of ['PhysicalCausal','HybridFixed20','HybridRecentEma']) {
+ test(`road prediction expires from GPS during refresh failure for ${source}`,()=>{
+  const parada=paradasElegiveisRadar([linha], 'brt', itinerarios, local)[0];
+  const e={...evento,source,quality:'estimativa_fisica',lastRealtimeEvidenceUtc:new Date(now).toISOString(),estimatedAt:new Date(now+600000).toISOString()};
+  assert.equal(eventosValidosRadar([e],parada,now,now+89999).length,1);
+  assert.equal(eventosValidosRadar([e],parada,now+90000,now+90000).length,1);
+  assert.equal(eventosValidosRadar([e],parada,now+90001,now+90001).length,0);
+  assert.equal(eventosValidosRadar([e],parada,now+120000,now+120000).length,0);
+ });
+}
+test('configured prediction expiry remains absolute and can differ from legacy fallback',()=>{
+ const parada=paradasElegiveisRadar([linha], 'brt', itinerarios, local)[0];
+ const e={...evento,source:'PhysicalCausal',quality:'estimativa_fisica',lastRealtimeEvidenceUtc:new Date(now).toISOString(),estimatedAt:new Date(now+600000).toISOString(),predictionValidUntilUtc:new Date(now+120000).toISOString()};
+ assert.equal(eventosValidosRadar([e],parada,now+100000,now+100000).length,1);
+ assert.equal(eventosValidosRadar([e],parada,now+120001,now+120001).length,0);
+ assert.equal(eventosValidosRadar([{...e,predictionValidUntilUtc:'bad'}],parada,now,now).length,0);
+});
+test('expired road prediction preserves a genuine schedule and rail keeps its own model',()=>{
+ const parada=paradasElegiveisRadar([linha], 'brt', itinerarios, local)[0];
+ const e={...evento,source:'PhysicalCausal',quality:'estimativa_fisica',lastRealtimeEvidenceUtc:new Date(now).toISOString(),estimatedAt:new Date(now+600000).toISOString()};
+ assert.equal(instanteEventoRadar(e,now,now+120000),null);
+ const scheduled={...e,scheduledAt:new Date(now+300000).toISOString()};
+ const kept=eventosValidosRadar([scheduled],parada,now,now+120000);
+ assert.equal(kept.length,1);assert.equal(kept[0].estimatedAt,null);assert.equal(kept[0].quality,'ScheduleOnly');assert.equal(instanteEventoRadar(kept[0],now,now+120000),now+300000);
+ assert.equal(eventosValidosRadar([{...e,modal:'trem',tipoRota:'trem',source:'RealtimeEstimated',quality:'ScheduleAnchored',operationalStatus:'Estimated'}],parada,now,now+120000).length,1);
+});

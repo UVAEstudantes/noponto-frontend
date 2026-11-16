@@ -34,7 +34,7 @@ export function compararSnapshotsRadar(compacto: SnapshotDiagnosticoRadar | null
         ? { tipo: 'presenca_fisica', id: r.vehicle.key, veiculoId: r.vehicle.order, estado: r.vehicle.state, gpsEm: r.vehicle.physicalAt }
         : { tipo: 'evento_operacional', id: r.arrival.id, veiculoId: r.arrival.vehicleId, etaSeg: r.arrival.etaSeg }),
       eventos: originais.slice(0, 12).map(e => {
-        const previstoEm = instanteEventoRadar(e, s.recebidoEm);
+        const previstoEm = instanteEventoRadar(e, s.recebidoEm, s.agora);
         const exibido = chegadas.find(c => c.id === e.eventId);
         return { eventId: e.eventId, vehicleId: e.vehicleId ?? e.codigoVeiculo ?? e.railVehicleId ?? null,
           viagemId: e.expectedRunId ?? null, ocorrenciaId: e.ocorrenciaParadaPadraoId,
