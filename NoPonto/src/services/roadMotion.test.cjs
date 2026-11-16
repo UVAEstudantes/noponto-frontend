@@ -119,3 +119,10 @@ test('physical progress catches visual debt before timeout and repeated snapshot
  f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.visualHoldAt,deadline);assert.equal(f.c.drState.bus.projectedMetres,used);
  f.update({longitude:shown+.0001},undefined,f.base+11000,shown+.0001);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.drState.bus.projectedMetres,0);assert.ok(f.c.animFrames.bus);
 });
+
+test('legacy zero cannot keep projecting an old average but distinct route progress can estimate movement',()=>{
+ const f=fixture();f.update({backendUnified:false,velocidade:0,velocidadeMedia:40});f.advance(10000);assert.equal(f.marker.pos.lng,0);assert.equal(f.c.drState.bus.velocidade,0);
+ f.update({backendUnified:false,velocidade:0,velocidadeMedia:40,longitude:.0002},undefined,f.base+10000,.0002);
+ assert.ok(f.c.drState.bus.velocidade>0&&f.c.drState.bus.velocidade<10);
+ f.update({backendUnified:false,velocidade:0,velocidadeMedia:40,longitude:.0002},undefined,f.base+20000,.0002);assert.equal(f.c.drState.bus.velocidade,0);
+});

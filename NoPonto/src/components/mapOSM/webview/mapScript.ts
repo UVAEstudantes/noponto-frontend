@@ -464,6 +464,12 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   var terminalStopped=!p.backendUnified&&(p.presencaEstado==='fim_percurso'||p.presencaEstado==='aguardando_saida')&&parseNum(p.velocidade)===0&&!movingSample;
   // Restore the speed source used before Road Presence, rather than requiring an instantaneous fix.
   var speed=parseNum(p.backendUnified?(p.projectionSpeedKmh!=null?p.projectionSpeedKmh:p.velocidade):(p.velocidadeMedia!=null?p.velocidadeMedia:p.velocidade));
+  if(!p.backendUnified&&parseNum(p.velocidade)===0){
+    var seconds=(timestamp-dr.gpsTimestamp)/1000;
+    var moved=dr.gpsCoordinate?distanceMeters(dr.gpsCoordinate,dest):0;
+    var continuous=!first&&previousRoute===JSON.stringify(coords)&&!roadIdentityChanged(previousIdentity,identity);
+    speed=continuous&&seconds>=5&&seconds<=120&&moved>=10&&moved/seconds<=33?moved*3.6/seconds:0;
+  }
   var stop=parseNum(p.distanciaProximaParadaMetros);
   dr.decelFactor=stop!==null&&stop<300?Math.max(.72,.95-(300-stop)/1200):1;
   dr.velocidade=terminalStopped?0:Math.max(0,speed||0);
