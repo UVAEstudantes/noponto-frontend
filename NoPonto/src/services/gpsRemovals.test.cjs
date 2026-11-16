@@ -1991,3 +1991,17 @@ test('road marker never fades or recreates during source updates and exceptional
   assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.notEqual(el.style.display,'none');assert.notEqual(el.style.visibility,'hidden');
  }finally{r.f.dispose();}
 });
+
+test('forward recovery follows rendered route frames across delayed GPS and source changes',()=>{
+ const r=delayedRoadBridge({speed:30,age:25,cap:1000,horizon:120});try{
+  r.advance(5);const marker=r.web.context.vehicleMarkers[r.key];let previous=r.metres();
+  const at=r.f.clock.now-25000;
+  r.send({timestamp:at,longitude:(previous+100)/r.m,posicaoNaRota:(previous+100)/10000,projectionUntil:at+120000,unifiedSource:'GTFSRT_BUS'});
+  assert.ok(Math.abs(r.metres()-previous)<.01,'GPS update must not teleport before RAF');
+  for(let i=0;i<60;i++){
+   if(i===20){const timestamp=r.f.clock.now-20000;r.send({timestamp,longitude:(r.metres()+100)/r.m,posicaoNaRota:(r.metres()+100)/10000,projectionUntil:timestamp+120000,unifiedSource:'ITS_CURRENT'});assert.ok(Math.abs(r.metres()-previous)<.01);}
+   r.advance(.1);const current=r.metres();assert.ok(current>=previous-.001);assert.ok((current-previous)*36<=61,`visual speed ${(current-previous)*36}`);previous=current;
+  }
+  assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.ok(r.web.frames.size>0);
+ }finally{r.f.dispose();}
+});

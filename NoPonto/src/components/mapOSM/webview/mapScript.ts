@@ -559,7 +559,6 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     if(correcting&&sameRoute&&dr.posicaoNaRota>=previousPosition&&(dr.posicaoNaRota-previousPosition)*routeMetres<=150)correcting=false;
     var forwardMetres=sameRoute&&previousPosition!=null?(dr.posicaoNaRota-previousPosition)*routeMetres:0;
     var forwardDuration=Math.max(800,forwardMetres/Math.max(1,dr.velocidade*dr.decelFactor/3.6*1.6)*1000);
-    if(forwardMetres>150||forwardDuration>15000)correcting=true;
     var c=interpolarNaRota(coords,dr.posicaoNaRota),target={lat:c[0],lng:c[1]};
     if(first||correcting||terminalStopped){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,forwardDuration,sameRoute?previousPosition:null,dr.posicaoNaRota);}
   }else{
@@ -740,7 +739,7 @@ function animateTo(key,marker,dest,ms,routeFrom,routeTo){
   if(Math.sqrt(dx*dx+dy*dy)<0.000005){marker.setLngLat([dest.lng,dest.lat]);return}
   // Saltos incompatíveis com movimento contínuo devem corrigir posição, não
   // atravessar visualmente bairros inteiros entre duas amostras.
-  if(distanceMeters({lat:start.lat,lng:start.lng},dest)>1500){marker.setLngLat([dest.lng,dest.lat]);return}
+  if(routeFrom==null&&distanceMeters({lat:start.lat,lng:start.lng},dest)>1500){marker.setLngLat([dest.lng,dest.lat]);return}
   var t0=performance.now();
   function step(ts){
     var p=Math.max(0,Math.min((performance.now()-t0)/ms,1));
