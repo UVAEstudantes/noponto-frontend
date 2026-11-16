@@ -1743,3 +1743,24 @@ test('ITS without context and confirmed zero never extrapolate real WebView mark
 test('rendered projection never crosses the confirmed route end',()=>{
  const r=delayedRoadBridge({speed:40,age:30,cap:1000,remaining:350});try{r.advance(60);assert.ok(r.metres()<=350.1);assert.equal(r.state().posicaoNaRota,1);}finally{r.f.dispose();}
 });
+
+test('one validated GTFS fix then ITS fixes drive actual WebView markers and two stationary fixes stop them',()=>{
+ const f=fixture({presence:false});try{
+  const m=111195,base=f.clock.now-25000,compose=f.load('hybridContext.ts').createHybridComposer();
+  const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);
+  const line={nome:'855',linhaId:'line',modal:'onibus',segmentos:[[[0,0],[0,20000/m]]],itinerarioSegmentoMap:{out:0},itinerarioSentidoMap:{out:'Destino'},paradasPorPadrao:{out:[{paradaId:'next',nome:'Próxima',ordem:1,latitude:0,longitude:10000/m,posicaoLinha:.5}]}};
+  const v={key:'D86000',order:'D86000',line:{lineId:'line',serviceCode:'855',state:1},location:{latitude:0,longitude:2000/m,physicalAt:new Date(base).toISOString(),validUntil:new Date(base+480000).toISOString(),source:'GTFSRT_BUS',provider:'GTFS',speedKmh:30,uncertain:false,reason:'valid'},operational:{timestampGps:new Date(base).toISOString(),status:0,linhaId:'line',codigoLinha:'855',padraoVersaoId:'out',sentidoId:'direction',latitude:0,longitude:2000/m},spatial:{facilityStopId:null,state:'Outside'},motionEligible:true};
+  const snapshot={schemaVersion:1,enabled:true,lineCode:'855',revision:1,composedAt:new Date(f.clock.now).toISOString(),vehicles:[v]};
+  const send=()=>{snapshot.revision++;const result=compose([line],[snapshot],f.clock.now);web.context.window.updateMap({unifiedCodes:['855'],linhas:result});return result[0].posicoes[0];};
+  const advance=seconds=>{const until=f.clock.now+seconds*1000;while(f.clock.now<until){f.clock.now+=100;for(const tick of web.ticks)tick();for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now);}}};
+  const key='onibus:855:D86000';const first=send();web.context.startDR();const marker=web.context.vehicleMarkers[key];
+  assert.equal(first.projectionMaxMetres,750);const before=marker.getLngLat().lng*m;advance(30);const after=marker.getLngLat().lng*m;
+  assert.ok(Math.abs(after-before-250)<1,'real marker sustains 30 kmh from age25 to55');
+  v.location.source='ITS_CURRENT';v.motionEligible=false;v.location.physicalAt=new Date(base+30000).toISOString();v.location.longitude=2250/m;const its=send();
+  assert.equal(its.contextValidatedAt,base);assert.equal(its.backendMotionEligible,true);advance(2);assert.ok(Math.abs(marker.getLngLat().lng*m-after-30/3.6*2)<2);
+  assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(Object.keys(web.context.vehicleMarkers).length,1);
+  const used=web.context.drState[key].projectedMetres;send();assert.equal(web.context.drState[key].projectedMetres,used);
+  v.location.speedKmh=0;for(const sec of [60,80]){f.clock.now=base+(sec+25)*1000;v.location.physicalAt=new Date(base+sec*1000).toISOString();const p=send();if(sec===80)assert.equal(p.physicalMotionState,'stopped');advance(2);}
+  const stopped=marker.getLngLat().lng;advance(8);assert.equal(marker.getLngLat().lng,stopped);assert.equal(web.context.drState[key].backendMotionEligible,false);
+ }finally{f.dispose();}
+});
