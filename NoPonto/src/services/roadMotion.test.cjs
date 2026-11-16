@@ -201,3 +201,45 @@ test('delayed new anchor compares current presentation before deciding a backwar
  f.advance(11000);assert.equal(f.c.drState.bus.visualAhead,false,'new anchor catches visual debt without requiring another GPS');
  const caught=f.marker.pos.lng;f.advance(1000);assert.ok((f.marker.pos.lng-caught)*111000*3.6>25,'normal speed resumes');
 });
+
+
+for(const age of [25000,35000])test(`delayed ${age/1000}s fix behind historical anchor reconciles forward at the current instant`,()=>{
+ const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});
+ f.advance(30000);const shown=f.marker.pos.lng,at=f.base+60000-age;
+ const physical=shown-200/111000;
+ f.update({longitude:physical,projectionUntil:at+90000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'},undefined,at,physical);
+ assert.ok(f.c.drState.bus.posicaoNaRota>shown);assert.equal(f.c.drState.bus.visualAhead,false);assert.ok(f.c.animFrames.bus);
+ assert.equal(f.marker.pos.lng,shown);const frame=[...f.frames.values()].at(-1);frame(f.base+60700);
+ assert.ok(f.marker.pos.lng>shown);assert.equal(f.c.drState.bus.gpsPosition,physical);
+ assert.ok(Math.abs(f.c.drState.bus.projectedMetres-40/3.6*age/1000)<.1);
+});
+
+test('new delayed fixes and repeated metadata cannot extend a persistent same-time debt beyond thirty seconds',()=>{
+ const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+90000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
+ const shown=f.marker.pos.lng,physical=shown-300/111000;
+ const data={longitude:physical,projectionUntil:f.base+120000,projectionSpeedKmh:30,projectionMaxMetres:750,contextConfidence:'retained'};
+ f.update(data,undefined,f.base+30000,physical);const start=f.c.drState.bus.visualHoldAt;
+ assert.equal(start,f.base+60000);f.advance(1000);f.update(data,undefined,f.base+30000,physical);assert.equal(f.c.drState.bus.visualHoldAt,start);
+ f.advance(4000);const nextPhysical=shown-140/111000;
+ const next={longitude:nextPhysical,projectionUntil:f.base+125000,projectionSpeedKmh:6,projectionMaxMetres:300,contextConfidence:'retained'};
+ f.update(next,undefined,f.base+35000,nextPhysical);assert.equal(f.c.drState.bus.visualHoldAt,start);assert.equal(f.marker.pos.lng,shown);
+ f.advance(25100);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
+ assert.ok(f.marker.pos.lng>nextPhysical,'timeout corrects to bounded current estimate, not historical anchor');assert.ok(f.marker.pos.lng<shown);
+ const corrected=f.marker.pos.lng;f.update(next,undefined,f.base+35000,nextPhysical);f.advance(1000);assert.equal(f.marker.pos.lng,corrected);assert.equal(f.c.drState.bus.backendMotionEligible,false);
+});
+
+test('a newer fix during forward RAF compares the rendered progress instead of its unfinished target',()=>{
+ const f=fixture();f.update();f.advance(10000);const shown=f.marker.pos.lng;
+ f.update({longitude:shown+.0008},undefined,f.base+10000,shown+.0008);
+ let frame=[...f.frames.values()].at(-1);frame(f.base+10350);const rendered=f.marker.pos.lng;
+ f.update({longitude:rendered+.00001},undefined,f.base+10100,rendered+.00001);
+ assert.equal(f.c.drState.bus.visualAhead,false);assert.ok(f.c.animFrames.bus);assert.equal(f.marker.pos.lng,rendered);
+});
+
+test('large same-time discrepancies and confirmed identity changes correct discretely without reverse RAF',()=>{
+ const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
+ const shown=f.marker.pos.lng;
+ f.update({longitude:0,projectionUntil:f.base+120000,projectionSpeedKmh:10,projectionMaxMetres:300,contextConfidence:'retained'},undefined,f.base+30000,0);
+ assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
+ f.update({longitude:.001},[[0,0],[0,.5]],f.base+31000,.002,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.identity,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
+});
