@@ -156,3 +156,24 @@ for(const speed of [30,40])test(`coherent delayed ${speed} kmh projection compen
  const used=f.c.drState.bus.projectedMetres;f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);assert.equal(f.c.drState.bus.projectedMetres,used);
  f.advance(130000);assert.ok(f.c.drState.bus.projectedMetres<=cap);
 });
+
+test('unrouted heading preserves trusted orientation and uses distinct plausible physical displacement',()=>{
+ const f=fixture();f.update();f.c.updateRoadHeading('bus',f.marker,180);assert.equal(f.c.vehicleHeadings.bus,90);
+ f.advance(10000);f.update({backendMotionEligible:false,longitude:.0002},null,f.base+10000,null,'line|||');
+ f.c.updateRoadHeading('bus',f.marker,15);assert.ok(Math.abs(f.c.vehicleHeadings.bus-90)<1);assert.equal(f.c.drState.bus.headingKind,'physical');
+ f.c.updateRoadHeading('bus',f.marker,160);assert.equal(f.c.drState.bus.headingKind,'preserved');assert.ok(Math.abs(f.c.vehicleHeadings.bus-90)<1);
+ f.advance(10000);f.update({backendMotionEligible:false,longitude:.0002},null,f.base+20000,null,'line|||');f.c.updateRoadHeading('bus',f.marker,220);
+ assert.ok(Math.abs(f.c.vehicleHeadings.bus-90)<1);assert.equal(f.c.drState.bus.headingKind,'preserved');
+ f.update({backendMotionEligible:false,longitude:.0002},null,f.base+21000,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,45);
+ assert.equal(f.c.drState.bus.headingKind,'unavailable');assert.equal(f.c.vehicleHeadings.bus,undefined);
+});
+test('unknown stationary vehicle cannot adopt a random single-fix bearing',()=>{
+ const f=fixture();f.update({backendMotionEligible:false},null,f.base,null,'line|||');f.c.updateRoadHeading('bus',f.marker,123);
+ assert.equal(f.c.vehicleHeadings.bus,undefined);assert.equal(f.c.drState.bus.headingKind,'unavailable');
+});
+
+test('same physical fix with a confirmed direction conflict invalidates preserved heading',()=>{
+ const f=fixture();f.update();f.c.updateRoadHeading('bus',f.marker,90);
+ f.update({backendMotionEligible:false},null,f.base,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,270);
+ assert.equal(f.c.drState.bus.gpsTimestamp,f.base);assert.equal(f.c.drState.bus.headingKind,'unavailable');assert.equal(f.c.vehicleHeadings.bus,undefined);
+});
