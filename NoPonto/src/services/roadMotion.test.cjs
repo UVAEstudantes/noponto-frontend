@@ -255,3 +255,11 @@ test('dynamic reconciliation continues forward while paying delayed GPS debt wit
  f.update({longitude:physical,projectionUntil:f.base+120000,projectionSpeedKmh:30,projectionMaxMetres:750,contextConfidence:'retained'},undefined,f.base+30000,physical);assert.equal(f.c.drState.bus.visualHoldAt,started);
  const before=f.marker.pos.lng;f.advance(1000);const speed=(f.marker.pos.lng-before)*111000*3.6;assert.ok(speed>=10&&speed<30);
 });
+
+
+test('absolute physical age ceiling never projects past180 even if a longer snapshot deadline arrives',()=>{
+ const f=fixture();f.update({projectionUntil:f.base+300000,projectionMaxMetres:1000,projectionSpeedKmh:6,contextConfidence:'retained'});
+ assert.equal(f.c.drState.bus.projectionUntil,f.base+180000);
+ for(const age of [30,60,90,120,180]){f.advance(age*1000-(f.c.Date.now()-f.base));assert.ok(Number.isFinite(f.marker.pos.lng));assert.ok(f.c.drState.bus.projectedMetres<=1000);}
+ const stopped=f.marker.pos.lng;f.update({projectionUntil:f.base+600000,projectionMaxMetres:2000});f.advance(20000);assert.equal(f.marker.pos.lng,stopped);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);assert.equal(f.c.drState.bus.projectionUntil,f.base+180000);
+});

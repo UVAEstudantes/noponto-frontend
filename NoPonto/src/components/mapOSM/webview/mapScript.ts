@@ -405,7 +405,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.projectionMaxMetres=gpsPolicy.maxProjectionMetres;dr.projectedMetres=dr.projectionMaxMetres;return;
     }
     dr.backendValidUntil=Math.min(dr.backendValidUntil,p.backendValidUntil);
-    dr.projectionUntil=Math.min(dr.projectionUntil,p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs);
+    dr.projectionUntil=Math.min(dr.projectionUntil,p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs,timestamp+180000);
     dr.projectionMaxMetres=Math.min(dr.projectionMaxMetres,p.projectionMaxMetres||gpsPolicy.maxProjectionMetres);
     dr.backendMotionEligible=!!p.backendMotionEligible&&dr.visualCorrectionAt!==timestamp&&Date.now()<dr.projectionUntil&&Date.now()<dr.backendValidUntil;
     dr.tracePosition=motionTraceOrders.length?p:null;
@@ -425,7 +425,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   }
   if(p.backendUnified){
     dr.tracePosition=motionTraceOrders.length?p:null;dr.alternative=null;dr.backendUnified=true;dr.backendValidUntil=p.backendValidUntil;
-    dr.projectionUntil=p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs;
+    dr.projectionUntil=Math.min(p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs,timestamp+180000);
     dr.projectionMaxMetres=p.projectionMaxMetres||gpsPolicy.maxProjectionMetres;
     dr.routeMetres=parseNum(p.comprimentoRotaMetros);
     if(!p.backendMotionEligible){
