@@ -395,6 +395,20 @@ function updateRoadHeading(key,marker,fallback){
   dr.headingIdentity=dr.identity;dr.headingMetres=metres;dr.headingAt=Date.now();
   vehicleHeadings[key]=heading;setHeading(marker,heading);
 }
+// Recover only a visual anchor on an already validated shape, never an itinerary association.
+function roadVisualProgress(coords,coordinate,physicalPosition,routeMetres){
+  var total=comprimentoRotaGraus(coords),walked=0,best=null,ambiguous=false;
+  for(var i=1;i<coords.length;i++){
+    var a=coords[i-1],b=coords[i],dx=b[1]-a[1],dy=b[0]-a[0],length=Math.hypot(dx,dy);if(!length)continue;
+    var t=Math.max(0,Math.min(1,((coordinate.lng-a[1])*dx+(coordinate.lat-a[0])*dy)/(length*length)));
+    var progress=(walked+t*length)/total;walked+=length;
+    if(Math.abs(progress-physicalPosition)*routeMetres>150)continue;
+    var gap=distanceMeters(coordinate,{lat:a[0]+t*dy,lng:a[1]+t*dx});
+    if(best&&Math.abs(best.progress-progress)*routeMetres>30&&Math.abs(best.gap-gap)<3)ambiguous=true;
+    if(!best||gap<best.gap)best={progress:progress,gap:gap};
+  }
+  return best&&best.gap<=10&&!ambiguous?best.progress:null;
+}
 function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   var dr=drState[key],first=!dr;
   var previousPosition=dr&&(animFrames[key]&&dr.animationPosition!=null?dr.animationPosition:dr.posicaoNaRota),previousIdentity=dr&&dr.identity;
@@ -503,6 +517,10 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   if(valid){
     var sameRoute=!routeChanged&&!roadIdentityChanged(previousIdentity,identity);
     var routeMetres=dr.routeMetres||comprimentoRotaGraus(coords)*111000;dr.routeMetres=routeMetres;
+    if(p.backendUnified&&p.backendMotionEligible&&previousPosition==null&&!first&&!roadIdentityChanged(previousIdentity,identity)){
+      var visual=roadVisualProgress(coords,marker.getLngLat(),position,routeMetres);
+      if(visual!=null){previousPosition=visual;sameRoute=true;}
+    }
     // Compare presentations at the same instant, after compensating the new physical anchor.
     dr.compensateAge=!!(p.backendUnified&&dr.backendMotionEligible&&p.contextConfidence&&dr.projectionMaxMetres>gpsPolicy.maxProjectionMetres);
     if(dr.compensateAge)dr.projectedMetres=roadProjectionMetres(dr.velocidade*dr.decelFactor,Date.now()-timestamp,dr.projectionUntil-timestamp,dr.projectionMaxMetres);
@@ -515,7 +533,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.reconcileTarget=presented;dr.reconcileTargetAt=Date.now();
       roadMovement.backwardHeld++;return;
     }
-    var correcting=debt>0||!sameRoute&&!first&&previousPosition!=null;
+    var correcting=debt>0||!sameRoute&&!first;
     dr.visualHoldAt=null;dr.visualAhead=false;dr.visualUncertain=false;dr.recoveryAt=null;dr.reconcileFactor=1;dr.posicaoNaRota=presented;
     if(correcting&&sameRoute&&dr.posicaoNaRota>=previousPosition&&(dr.posicaoNaRota-previousPosition)*routeMetres<=150)correcting=false;
     var forwardMetres=sameRoute&&previousPosition!=null?(dr.posicaoNaRota-previousPosition)*routeMetres:0;

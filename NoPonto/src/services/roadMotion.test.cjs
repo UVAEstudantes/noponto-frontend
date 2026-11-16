@@ -5,7 +5,7 @@ function fixture(){
  const extract=name=>{const m=source.match(new RegExp('function '+name+'\\([^]*?\\n}'));assert.ok(m,name);return m[0];};
  const base=Date.parse('2026-11-15T12:00:00Z');let now=base,tick;const frames=new Map();let frameId=0;
  const c={Date:{now:()=>now},performance:{now:()=>now},drState:{},vehicleMarkers:{},vehiclePopups:{},vehicleHeadings:{},animFrames:{},window:{},motionTraceOrders:[],gpsPolicy:{baseProjectionMs:60000,maxProjectionMetres:250,delayedMs:180000,publicMs:480000},roadMovement:{accepted:0,repeated:0,routeSyncs:0,linearSyncs:0,positionWrites:0},drInterval:null,movementDiagnostics:false,roadMotionHorizonMs:60000,parseNum:x=>x==null?null:Number(x),distanceMeters:(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)*111000,interpolarNaRota:(coords,p)=>[0,p],headingNaRota:()=>90,setHeading:()=>{},reportRoadMovement:()=>{},updateRoadFreshness:()=>{},setInterval:f=>{tick=f;return 1;},gpsMarkerOpacity:()=>1,requestAnimationFrame:f=>{frames.set(++frameId,ts=>{now=Math.max(now,ts);f(ts);});return frameId;},cancelAnimationFrame:id=>frames.delete(id)};
- vm.createContext(c);vm.runInContext(['roadIdentityChanged','roadProjectionMetres','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
+ vm.createContext(c);vm.runInContext(['roadIdentityChanged','roadVisualProgress','roadProjectionMetres','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
  const marker={element:{style:{}},pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return this.element;},remove(){}};
  const p={backendUnified:true,backendValidUntil:base+480000,backendMotionEligible:true,projectionUntil:base+60000,projectionMaxMetres:250,comprimentoRotaMetros:111000,projectionSpeedKmh:6,latitude:0,longitude:0};
  const update=(over={},coords=[[0,0],[0,1]],timestamp=base,position=0,identity='line|direction|pattern|version')=>c.updateRoadMotion('bus',marker,{...p,...over},coords,timestamp,position,identity);
@@ -27,7 +27,7 @@ test('same GPS eligibility withdrawal cancels RAF and rejects regressive or conf
 });
 test('ambiguous context cannot start motion and fresh GPS still advances normally',()=>{
  const f=fixture();f.update({backendMotionEligible:false},null,f.base,null);f.update({backendMotionEligible:false},[[0,0],[0,1]],f.base,0);f.advance(10000);assert.equal(f.marker.pos.lng,0);
- f.update({},undefined,f.base+10000,.001);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.ok(f.c.animFrames.bus);
+ f.update({longitude:.0001},undefined,f.base+10000,.0001);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.ok(f.c.animFrames.bus);
 });
 test('same GPS route refresh preserves consumed distance and eligibility can resume before expiry',()=>{
  const f=fixture();f.update();f.advance(10000);const used=f.c.drState.bus.projectedMetres;f.update({backendMotionEligible:false});f.advance(10000);f.update();assert.equal(f.c.drState.bus.projectedMetres,used);f.advance(1000);assert.ok(f.c.drState.bus.projectedMetres>used);
@@ -232,7 +232,7 @@ test('large same-time discrepancies and confirmed identity changes correct discr
  const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
  const shown=f.marker.pos.lng;
  f.update({longitude:0,projectionUntil:f.base+120000,projectionSpeedKmh:10,projectionMaxMetres:300,contextConfidence:'retained'},undefined,f.base+30000,0);
- assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.drState.bus.visualUncertain,true);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
+ assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.drState.bus.visualUncertain,false);assert.equal(f.c.drState.bus.visualCorrectionAt,f.c.drState.bus.gpsTimestamp);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
  f.update({longitude:.001},[[0,0],[0,.5]],f.base+31000,.002,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.identity,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
 });
 
@@ -270,4 +270,13 @@ test('route recovery uses actual render time rather than an advanced RAF timesta
  f.update({longitude:shown+20/111000},undefined,f.base+10000,shown+20/111000);const frame=[...f.frames.values()].at(-1);
  actual+=100;frame(f.base+10300);const moved=(f.marker.pos.lng-shown)*111000;
  assert.ok(moved>0&&moved<=6/3.6*.1*2+.001,`actual 100ms renders ${moved}m`);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
+});
+
+
+test('rendered anchor recovery refuses off-route ambiguous or distant points',()=>{
+ const f=fixture(),project=f.c.roadVisualProgress;
+ assert.equal(project([[0,0],[0,.002]],{lat:0,lng:.001},.5,222),.5);
+ assert.equal(project([[0,0],[0,.002]],{lat:.001,lng:.001},.5,222),null);
+ assert.equal(project([[0,0],[0,.002],[0,0]],{lat:0,lng:.001},.5,444),null);
+ assert.equal(project([[0,0],[0,1]],{lat:0,lng:.005},.001,111000),null);
 });
