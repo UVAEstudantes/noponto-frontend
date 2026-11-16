@@ -439,7 +439,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       var debt=coords&&position!=null&&previousPosition!=null&&previousRoute===JSON.stringify(coords)&&!roadIdentityChanged(previousIdentity,identity)
         ?(previousPosition-position)*(previousRouteMetres||comprimentoRotaGraus(coords)*111000):0;
       if(Math.abs(debt)<.001)debt=0;
-      if(debt>0&&debt<=100&&(!dr.visualHoldAt||Date.now()-dr.visualHoldAt<30000)){
+      if(debt>0){
         if(!dr.visualHoldAt)dr.visualHoldAt=Date.now();
         dr.lineCoords=coords;dr.routeKey=previousRoute;dr.routeMetres=previousRouteMetres;
         dr.posicaoNaRota=previousPosition;dr.gpsPosition=position;dr.projectedMetres=debt;
@@ -493,20 +493,21 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   if(routeChanged)dr.comprimentoGraus=null;
   if(valid){
     var sameRoute=!routeChanged&&!roadIdentityChanged(previousIdentity,identity);
-    var routeMetres=dr.routeMetres||comprimentoRotaGraus(coords)*111000;
+    var routeMetres=dr.routeMetres||comprimentoRotaGraus(coords)*111000;dr.routeMetres=routeMetres;
     // Compare presentations at the same instant, after compensating the new physical anchor.
     dr.compensateAge=!!(p.backendUnified&&dr.backendMotionEligible&&p.contextConfidence&&dr.projectionMaxMetres>gpsPolicy.maxProjectionMetres);
     if(dr.compensateAge)dr.projectedMetres=roadProjectionMetres(dr.velocidade*dr.decelFactor,Date.now()-timestamp,dr.projectionUntil-timestamp,dr.projectionMaxMetres);
     var presented=Math.min(1,position+dr.projectedMetres/routeMetres);
     var debt=sameRoute&&previousPosition!==null?(previousPosition-presented)*routeMetres:0;
     if(Math.abs(debt)<.001)debt=0;
-    if(debt>0&&debt<=100&&(!dr.visualHoldAt||Date.now()-dr.visualHoldAt<30000)){
+    if(debt>0){
       if(!dr.visualHoldAt)dr.visualHoldAt=Date.now();
       stopAnim(key);dr.posicaoNaRota=previousPosition;dr.projectedMetres=Math.max(0,(previousPosition-position)*routeMetres);dr.visualAhead=true;
+      dr.reconcileTarget=presented;dr.reconcileTargetAt=Date.now();
       roadMovement.backwardHeld++;return;
     }
     var correcting=debt>0||!sameRoute&&!first&&previousPosition!=null;
-    dr.visualHoldAt=null;dr.visualAhead=false;dr.posicaoNaRota=presented;
+    dr.visualHoldAt=null;dr.visualAhead=false;dr.visualUncertain=false;dr.recoveryAt=null;dr.reconcileFactor=1;dr.posicaoNaRota=presented;
     if(correcting&&sameRoute&&dr.posicaoNaRota>=previousPosition&&(dr.posicaoNaRota-previousPosition)*routeMetres<=150)correcting=false;
     var forwardMetres=sameRoute&&previousPosition!=null?(dr.posicaoNaRota-previousPosition)*routeMetres:0;
     if(forwardMetres>150)correcting=true;
@@ -551,22 +552,29 @@ function startDR(){
     Object.keys(drState).forEach(function(key){
       var dr=drState[key];
       if(dr.visualAhead){
-        var estimate=dr.gpsPosition;
-        if(dr.compensateAge&&dr.backendMotionEligible)estimate=Math.min(1,estimate+roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,dr.projectionUntil-dr.gpsTimestamp,dr.projectionMaxMetres)/dr.routeMetres);
-        if(dr.compensateAge&&dr.backendMotionEligible&&estimate>=dr.posicaoNaRota){
-          dr.visualAhead=false;dr.visualHoldAt=null;return;
-        }
-        if(now-dr.visualHoldAt>=30000){
-          stopAnim(key);
+        var estimate=dr.gpsPosition,canReconcile=dr.backendUnified?dr.backendMotionEligible:dr.velocidade>2;
+        var reconcileUntil=dr.projectionUntil||dr.gpsTimestamp+Math.min(120000,Math.max(90000,roadMotionHorizonMs));
+        if(dr.compensateAge&&canReconcile)estimate=Math.min(1,estimate+roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)/dr.routeMetres);
+        else if(dr.reconcileTarget!=null&&canReconcile)estimate=dr.reconcileTarget+Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-roadProjectionMetres(dr.velocidade*dr.decelFactor,dr.reconcileTargetAt-dr.gpsTimestamp,reconcileUntil-dr.gpsTimestamp,dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres))/dr.routeMetres;
+        var debt=Math.max(0,(dr.posicaoNaRota-estimate)*(dr.routeMetres||0));dr.reconcileDebt=debt;
+        if(debt<=5&&canReconcile){dr.visualAhead=false;dr.visualHoldAt=null;dr.reconcileFactor=1;}
+        else if(debt>100||now-dr.visualHoldAt>=30000||!canReconcile){
+          // Exceptional recovery is hidden while reanchoring, never shown as reverse travel.
+          dr.visualUncertain=true;var el=dr.marker.getElement();el.style.transition='opacity 0.4s';el.style.opacity='0';
+          if(!dr.recoveryAt)dr.recoveryAt=now;
+          if(now-dr.recoveryAt<500)return;
           var physical=dr.lineCoords&&estimate!=null?interpolarNaRota(dr.lineCoords,estimate):[dr.gpsCoordinate.lat,dr.gpsCoordinate.lng];
-          dr.marker.setLngLat([physical[1],physical[0]]);dr.posicaoNaRota=estimate;
+          stopAnim(key);dr.marker.setLngLat([physical[1],physical[0]]);dr.posicaoNaRota=estimate;
           dr.projectedMetres=dr.routeMetres?Math.max(0,(estimate-dr.gpsPosition)*dr.routeMetres):0;
-          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;
+          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
+        }else{
+          var desired=Math.max(.35,1-debt/Math.max(30,dr.velocidade/3.6*6));
+          dr.reconcileFactor=(dr.reconcileFactor==null?1:dr.reconcileFactor)+(desired-(dr.reconcileFactor==null?1:dr.reconcileFactor))*(1-Math.exp(-Math.max(0,now-from)/1500));
         }
       }
       if(dr.backendUnified){
         var backendAge=now-dr.gpsTimestamp;
-        dr.marker.getElement().style.opacity=now>=dr.backendValidUntil?'0':gpsMarkerOpacity(dr.gpsTimestamp);
+        dr.marker.getElement().style.opacity=now>=dr.backendValidUntil?'0':dr.visualUncertain?'0.55':gpsMarkerOpacity(dr.gpsTimestamp);
         if(backendAge>gpsPolicy.publicMs||now>=dr.backendValidUntil){
           stopAnim(key);dr.marker.remove();if(vehiclePopups[key])vehiclePopups[key].remove();
           delete vehicleMarkers[key];delete vehiclePopups[key];delete vehicleHeadings[key];delete drState[key];if(tutorialNativeHighlight())tutorialSchedule();return;
@@ -578,7 +586,7 @@ function startDR(){
         dr.marker.getElement().style.opacity=physicalAgeMs>gpsPolicy.publicMs?'0':physicalAgeMs>=300000?'0.55':'1';
         return;
       }
-      if(dr.visualAhead||dr.visualCorrectionAt===dr.gpsTimestamp)return;
+      if(dr.visualCorrectionAt===dr.gpsTimestamp)return;
       if(!dr.lineCoords||dr.posicaoNaRota==null||!dr.velocidade||dr.velocidade<1||animFrames[key])return;
       var until=dr.gpsTimestamp===null?from:dr.gpsTimestamp+(dr.backendUnified?Math.max(0,dr.projectionUntil-dr.gpsTimestamp):Math.min(120000,Math.max(90000,roadMotionHorizonMs)));
       if(now>=until)return;
@@ -590,6 +598,7 @@ function startDR(){
       var duration=until-dr.gpsTimestamp,cap=dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres;
       var requested=Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,duration,Infinity)
         -roadProjectionMetres(dr.velocidade*dr.decelFactor,from-dr.gpsTimestamp,duration,Infinity));
+      if(dr.visualAhead)requested*=dr.reconcileFactor;
       // Spatial confidence spends the actual ledger, never an unrendered arrival delay.
       var taper=Math.min(50,cap),free=Math.max(0,remaining-taper);
       var metres=requested<=free?requested:free+Math.min(remaining,taper)*(1-Math.exp(-(requested-free)/Math.max(1,taper)));

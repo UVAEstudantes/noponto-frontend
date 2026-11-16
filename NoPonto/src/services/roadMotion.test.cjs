@@ -6,7 +6,7 @@ function fixture(){
  const base=Date.parse('2026-11-15T12:00:00Z');let now=base,tick;const frames=new Map();let frameId=0;
  const c={Date:{now:()=>now},performance:{now:()=>now},drState:{},vehicleMarkers:{},vehiclePopups:{},vehicleHeadings:{},animFrames:{},window:{},motionTraceOrders:[],gpsPolicy:{baseProjectionMs:60000,maxProjectionMetres:250,delayedMs:180000,publicMs:480000},roadMovement:{accepted:0,repeated:0,routeSyncs:0,linearSyncs:0,positionWrites:0},drInterval:null,movementDiagnostics:false,roadMotionHorizonMs:60000,parseNum:x=>x==null?null:Number(x),distanceMeters:(a,b)=>Math.hypot(a.lat-b.lat,a.lng-b.lng)*111000,interpolarNaRota:(coords,p)=>[0,p],headingNaRota:()=>90,setHeading:()=>{},reportRoadMovement:()=>{},setInterval:f=>{tick=f;return 1;},gpsMarkerOpacity:()=>1,requestAnimationFrame:f=>{frames.set(++frameId,f);return frameId;},cancelAnimationFrame:id=>frames.delete(id)};
  vm.createContext(c);vm.runInContext(['roadIdentityChanged','roadProjectionMetres','updateRoadHeading','updateRoadMotion','comprimentoRotaGraus','kmhParaGrausPorSeg','startDR','stopAnim','animateTo'].map(extract).join('\n'),c);
- const marker={pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return {style:{}};},remove(){}};
+ const marker={element:{style:{}},pos:{lng:0,lat:0},setLngLat(p){this.pos={lng:p[0],lat:p[1]};},getLngLat(){return this.pos;},getElement(){return this.element;},remove(){}};
  const p={backendUnified:true,backendValidUntil:base+480000,backendMotionEligible:true,projectionUntil:base+60000,projectionMaxMetres:250,comprimentoRotaMetros:111000,projectionSpeedKmh:6,latitude:0,longitude:0};
  const update=(over={},coords=[[0,0],[0,1]],timestamp=base,position=0,identity='line|direction|pattern|version')=>c.updateRoadMotion('bus',marker,{...p,...over},coords,timestamp,position,identity);
  const advance=ms=>{const until=now+ms;while(now<until){now+=100;tick?.();}};
@@ -58,21 +58,16 @@ test('projection cutoff does not cancel interpolation toward a genuinely new phy
 });
 
 
-test('new physical fix behind projection holds bounded debt without backwards RAF',()=>{
- const f=fixture();f.update();f.advance(10000);const visual=f.c.drState.bus.posicaoNaRota;
- f.update({longitude:.00005},undefined,f.base+10000,.00005);
- assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.00005);
- assert.equal(f.c.drState.bus.posicaoNaRota,visual);assert.equal(f.c.animFrames.bus,undefined);
- assert.ok(f.c.drState.bus.projectedMetres>0);f.advance(10000);assert.equal(f.c.drState.bus.posicaoNaRota,visual);
- f.update({longitude:.0001},undefined,f.base+20000,.0001);f.advance(21000);
- assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.drState.bus.posicaoNaRota,.0001);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+20000);
- f.update({longitude:.00011},undefined,f.base+41000,.00011);assert.equal(f.c.drState.bus.posicaoNaRota,.00011);
+test('new physical fix behind projection slows continuously without a backwards RAF',()=>{
+ const f=fixture();f.update();f.advance(10000);const visual=f.marker.pos.lng;
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.00005);assert.equal(f.c.animFrames.bus,undefined);
+ f.advance(10000);assert.ok(f.marker.pos.lng>visual);const next=f.marker.pos.lng;
+ f.update({longitude:.0001},undefined,f.base+20000,.0001);assert.equal(f.marker.pos.lng,next);f.advance(10000);assert.ok(f.marker.pos.lng>=next);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+20000);
 });
-test('large backwards discrepancy or changed directed route corrects without reverse animation',()=>{
- const f=fixture();f.update({},undefined,f.base,.01);f.update({longitude:0},undefined,f.base+1000,0);
- assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,0);
- f.update({longitude:.002},undefined,f.base+2000,.002,'line|return|pattern2|version');
- assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.identity,'line|return|pattern2|version');
+test('large backwards discrepancy is hidden before reanchoring while a changed directed route remains legitimate',()=>{
+ const f=fixture();f.update({},undefined,f.base,.01);const shown=f.marker.pos.lng;f.update({longitude:0},undefined,f.base+1000,0);
+ assert.equal(f.marker.pos.lng,shown);f.advance(100);assert.equal(f.marker.getElement().style.opacity,'0');f.advance(600);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,0);
+ f.update({longitude:.002},undefined,f.base+2000,.002,'line|return|pattern2|version');assert.equal(f.c.drState.bus.identity,'line|return|pattern2|version');assert.equal(f.c.drState.bus.visualAhead,false);
 });
 
 test('projection fades across sixty seconds and approaches spatial cap without a hard cut',()=>{
@@ -106,12 +101,9 @@ test('loss of projection eligibility cannot animate a physical fix backwards alo
  f.update({longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.c.drState.bus.backendMotionEligible,false);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
 });
 
-test('legacy road projection also bounds trailing GPS debt and waits for new physical evidence',()=>{
- const f=fixture();f.update({backendUnified:false,velocidadeMedia:6});f.advance(10000);
- const shown=f.marker.pos.lng;f.update({backendUnified:false,velocidadeMedia:6,longitude:.00005},undefined,f.base+10000,.00005);
- assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.animFrames.bus,undefined);
- f.advance(31000);assert.equal(f.marker.pos.lng,.00005);f.advance(10000);assert.equal(f.marker.pos.lng,.00005);
- f.update({backendUnified:false,velocidadeMedia:6,longitude:.0002},undefined,f.base+51000,.0002);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+51000);assert.ok(f.c.animFrames.bus);
+test('legacy road projection reconciles trailing GPS continuously without renewing the physical timestamp',()=>{
+ const f=fixture();f.update({backendUnified:false,velocidadeMedia:6});f.advance(10000);const shown=f.marker.pos.lng;
+ f.update({backendUnified:false,velocidadeMedia:6,longitude:.00005},undefined,f.base+10000,.00005);assert.equal(f.marker.pos.lng,shown);f.advance(10000);assert.ok(f.marker.pos.lng>shown);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.ok(f.c.drState.bus.projectedMetres<=250);
 });
 
 test('physical progress catches visual debt before timeout and repeated snapshots cannot restart it',()=>{
@@ -198,7 +190,7 @@ test('delayed new anchor compares current presentation before deciding a backwar
  assert.equal(f.c.drState.bus.gpsCoordinate.lng,physical);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+30000);
  assert.equal(f.marker.pos.lng,before,'same-time discrepancy under 100 m holds instead of snapping backwards');
  assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.animFrames.bus,undefined);
- f.advance(11000);assert.equal(f.c.drState.bus.visualAhead,false,'new anchor catches visual debt without requiring another GPS');
+ f.advance(25000);assert.equal(f.c.drState.bus.visualAhead,false,'new anchor catches visual debt without requiring another GPS');
  const caught=f.marker.pos.lng;f.advance(1000);assert.ok((f.marker.pos.lng-caught)*111000*3.6>25,'normal speed resumes');
 });
 
@@ -222,8 +214,8 @@ test('new delayed fixes and repeated metadata cannot extend a persistent same-ti
  assert.equal(start,f.base+60000);f.advance(1000);f.update(data,undefined,f.base+30000,physical);assert.equal(f.c.drState.bus.visualHoldAt,start);
  f.advance(4000);const nextPhysical=shown-140/111000;
  const next={longitude:nextPhysical,projectionUntil:f.base+125000,projectionSpeedKmh:6,projectionMaxMetres:300,contextConfidence:'retained'};
- f.update(next,undefined,f.base+35000,nextPhysical);assert.equal(f.c.drState.bus.visualHoldAt,start);assert.equal(f.marker.pos.lng,shown);
- f.advance(25100);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
+ f.update(next,undefined,f.base+35000,nextPhysical);assert.equal(f.c.drState.bus.visualHoldAt,start);assert.ok(f.marker.pos.lng>=shown);
+ f.advance(25700);assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
  assert.ok(f.marker.pos.lng>nextPhysical,'timeout corrects to bounded current estimate, not historical anchor');assert.ok(f.marker.pos.lng<shown);
  const corrected=f.marker.pos.lng;f.update(next,undefined,f.base+35000,nextPhysical);f.advance(1000);assert.equal(f.marker.pos.lng,corrected);assert.equal(f.c.drState.bus.backendMotionEligible,false);
 });
@@ -240,7 +232,7 @@ test('large same-time discrepancies and confirmed identity changes correct discr
  const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
  const shown=f.marker.pos.lng;
  f.update({longitude:0,projectionUntil:f.base+120000,projectionSpeedKmh:10,projectionMaxMetres:300,contextConfidence:'retained'},undefined,f.base+30000,0);
- assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
+ assert.equal(f.marker.pos.lng,shown);f.advance(700);assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.drState.bus.visualUncertain,true);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
  f.update({longitude:.001},[[0,0],[0,.5]],f.base+31000,.002,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.identity,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
 });
 
@@ -251,4 +243,15 @@ test('eligibility withdrawal preserves the rendered route progress when cancelli
  f.update({longitude:start+.0008,backendMotionEligible:false},undefined,f.base+10000,start+.0008);
  assert.equal(f.c.animFrames.bus,undefined);assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota-shown)<1e-12,'cancelled RAF must not leave its undisplayed target as the visual anchor');
  f.update({longitude:shown+.00001},undefined,f.base+10100,shown+.00001);assert.equal(f.c.drState.bus.visualAhead,false);
+});
+
+
+test('dynamic reconciliation continues forward while paying delayed GPS debt without a stationary hold',()=>{
+ const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+90000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});f.advance(30000);
+ const shown=f.marker.pos.lng,physical=40/3.6*30/111000;
+ f.update({longitude:physical,projectionUntil:f.base+120000,projectionSpeedKmh:30,projectionMaxMetres:750,contextConfidence:'retained'},undefined,f.base+30000,physical);
+ const started=f.c.drState.bus.visualHoldAt;f.advance(5000);
+ assert.ok(f.marker.pos.lng>shown+10/111000,'positive evidence keeps actual marker moving');assert.equal(f.c.drState.bus.gpsTimestamp,f.base+30000);
+ f.update({longitude:physical,projectionUntil:f.base+120000,projectionSpeedKmh:30,projectionMaxMetres:750,contextConfidence:'retained'},undefined,f.base+30000,physical);assert.equal(f.c.drState.bus.visualHoldAt,started);
+ const before=f.marker.pos.lng;f.advance(1000);const speed=(f.marker.pos.lng-before)*111000*3.6;assert.ok(speed>=10&&speed<30);
 });

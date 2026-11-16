@@ -1766,14 +1766,14 @@ test('one validated GTFS fix then ITS fixes drive actual WebView markers and two
 });
 
 
-test('real WebView holds a moderate current-time debt from delayed GPS then resumes natural speed',t=>{
+test('real WebView dynamically reconciles moderate delayed GPS debt then resumes natural speed',t=>{
  const r=delayedRoadBridge({speed:40,age:30,cap:1000});try{
   r.advance(30);const before=r.metres(),newAt=r.f.clock.now-30000,physical=40/3.6*30;
   r.send({timestamp:newAt,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:newAt+90000,projectionSpeedKmh:30,projectionMaxMetres:750});
   assert.ok(Math.abs(r.metres()-before)<.001);assert.equal(r.state().visualAhead,true);assert.equal(r.web.frames.size,0);
   assert.equal(r.state().gpsTimestamp,newAt);assert.ok(Math.abs(r.state().gpsPosition*10000-physical)<.001);
   const holdAt=r.state().visualHoldAt,used=r.state().projectedMetres;r.send();assert.equal(r.state().visualHoldAt,holdAt);assert.equal(r.state().projectedMetres,used);
-  r.advance(5);assert.ok(Math.abs(r.metres()-before)<.001);r.advance(6);assert.equal(r.state().visualAhead,false);
+  r.advance(5);assert.ok(r.metres()>before+10,'marker remains alive while paying debt');r.advance(20);assert.equal(r.state().visualAhead,false);
   const caught=r.metres();r.advance(2);const rendered=(r.metres()-caught)/2*3.6;assert.ok(rendered>28&&rendered<31);
   assert.ok(Math.abs(r.state().projectedMetres-(r.metres()-physical))<.1,'held distance is paid exactly once by new anchor');
   t.diagnostic(JSON.stringify({historicalGapMetres:physical-before,currentGapMetres:physical+250-before,renderedAfterHoldKmh:rendered}));
