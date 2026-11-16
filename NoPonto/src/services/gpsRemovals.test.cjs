@@ -1864,3 +1864,34 @@ test('GPS freshness matches native and WebView clocks without promising spatial 
   assert.match(fresh.textContent,/Sem atualização confiável/);assert.match(fresh.textContent,/Localização incerta/);assert.equal(r.state().gpsTimestamp,r.at);
  }finally{r.f.dispose();}
 });
+
+
+test('recent stopped GPS regains full DOM opacity after exceptional visual reanchoring',()=>{
+ const r=delayedRoadBridge({speed:30,age:0,cap:750});try{
+  r.advance(10);const at=r.f.clock.now,physical=r.metres()-20;
+  r.send({timestamp:at,longitude:physical/r.m,posicaoNaRota:physical/10000,backendMotionEligible:false,projectionSpeedKmh:0,velocidade:0,lastObservedSpeedKmh:0,physicalMotionState:'stopped',locationUncertain:false});
+  r.advance(2);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');assert.equal(r.state().visualUncertain,false);assert.equal(r.state().gpsTimestamp,at);assert.equal(r.state().backendMotionEligible,false);
+ }finally{r.f.dispose();}
+});
+
+for(const speed of [0,30])for(const age of [0,310])test(`DOM opacity depends on physical age not speed ${speed} at ${age}s`,()=>{
+ const r=delayedRoadBridge({speed,age,cap:750});try{r.send({backendMotionEligible:false});r.advance(2);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,age>=300?'0.55':'1');}finally{r.f.dispose();}
+});
+
+test('three distinct stationary fixes and ITS GTFS signal changes remain fully visible with recent GPS',()=>{
+ const r=delayedRoadBridge({speed:0,age:0,cap:250});try{
+  for(const [sec,source] of [[10,'ITS_CURRENT'],[20,'GTFSRT_BUS'],[30,'ITS_CURRENT']]){
+   r.advance(sec-(r.f.clock.now-r.at)/1000);r.send({timestamp:r.f.clock.now,unifiedSource:source,backendMotionEligible:false,velocidade:0,lastObservedSpeedKmh:0,physicalMotionState:'stopped',presencaRotulo:source==='ITS_CURRENT'?'SemSinal':'No terminal'});r.advance(1);
+   assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');assert.equal(r.metres(),0);
+  }
+  r.send({backendMotionEligible:true,projectionSpeedKmh:20,velocidade:20,timestamp:r.f.clock.now+1});r.advance(2);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');assert.ok(r.metres()>0);
+ }finally{r.f.dispose();}
+});
+
+
+test('fresh validated zero clears an earlier uncertain location without changing physical evidence',()=>{
+ const r=delayedRoadBridge({speed:0,age:0,cap:250});try{
+  r.advance(1);r.send({timestamp:r.f.clock.now,locationUncertain:true,backendMotionEligible:false});r.advance(1);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'0.55');
+  r.advance(10);const at=r.f.clock.now;r.send({timestamp:at,locationUncertain:false,backendMotionEligible:false,unifiedSource:'GTFSRT_BUS'});r.advance(1);assert.equal(r.web.context.vehicleMarkers[r.key].getElement().style.opacity,'1');assert.equal(r.state().gpsTimestamp,at);
+ }finally{r.f.dispose();}
+});

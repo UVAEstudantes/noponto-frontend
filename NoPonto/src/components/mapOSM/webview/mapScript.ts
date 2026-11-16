@@ -447,6 +447,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
       dr.backendMotionEligible=false;
       if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<=dr.gpsTimestamp)return;
       var priorTime=dr.gpsTimestamp,priorCoordinate=dr.gpsCoordinate;
+      if(!dr.visualAhead){dr.visualUncertain=!!p.locationUncertain;dr.recoveryAt=null;}
       stopAnim(key);dr.observedInterpolation=true;dr.backendMotionEligible=false;dr.gpsTimestamp=timestamp;dr.identity=identity;
       dr.lineCoords=null;dr.velocidade=0;dr.posicaoNaRota=null;dr.gpsPosition=null;dr.routeKey=null;dr.compensateAge=false;
       var dest={lat:parseNum(p.latitude),lng:parseNum(p.longitude)};
@@ -582,7 +583,7 @@ function startDR(){
           var physical=dr.lineCoords&&estimate!=null?interpolarNaRota(dr.lineCoords,estimate):[dr.gpsCoordinate.lat,dr.gpsCoordinate.lng];
           stopAnim(key);dr.marker.setLngLat([physical[1],physical[0]]);dr.posicaoNaRota=estimate;
           dr.projectedMetres=dr.routeMetres?Math.max(0,(estimate-dr.gpsPosition)*dr.routeMetres):0;
-          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
+          dr.visualAhead=false;dr.visualHoldAt=null;dr.visualUncertain=!!dr.locationUncertain;dr.recoveryAt=null;dr.freshnessAt=0;dr.visualCorrectionAt=dr.gpsTimestamp;dr.backendMotionEligible=false;return;
         }else{
           var desired=Math.max(.55,1-debt/Math.max(30,dr.velocidade/3.6*4));
           dr.reconcileFactor=(dr.reconcileFactor==null?1:dr.reconcileFactor)+(desired-(dr.reconcileFactor==null?1:dr.reconcileFactor))*(1-Math.exp(-Math.max(0,now-from)/1500));
