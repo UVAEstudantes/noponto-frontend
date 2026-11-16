@@ -398,6 +398,7 @@ function updateRoadHeading(key,marker,fallback){
 }
 // Recover only a visual anchor on an already validated shape, never an itinerary association.
 function roadVisualProgress(coords,coordinate,physicalPosition,routeMetres){
+  if(!coords||coords.length<2||!(routeMetres>0))return null;
   var total=comprimentoRotaGraus(coords),walked=0,best=null,ambiguous=false;
   for(var i=1;i<coords.length;i++){
     var a=coords[i-1],b=coords[i],dx=b[1]-a[1],dy=b[0]-a[0],length=Math.hypot(dx,dy);if(!length)continue;
@@ -504,7 +505,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     dr.observedInterpolation=false;dr.backendMotionEligible=true;
   }else{dr.backendUnified=false;}
   if(dr.alternative && (timestamp===null || timestamp<Date.parse(dr.alternative.physicalAt))){
-    stopAnim(key);marker.setLngLat([dr.alternative.longitude,dr.alternative.latitude]);return;
+    stopAnim(key);return;
   }
   dr.alternative=null;
   if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<=dr.gpsTimestamp){roadMovement.repeated++;return;}
@@ -1696,8 +1697,15 @@ window.updatePhysicalPresence=function(vehicles){
         && (lastMapData.linhas||[]).some(function(l){return l.linhaId===v.lineId && l.modal===v.modal && opKey.indexOf(v.modal+':'+l.nome+':')===0})
         && Date.parse(v.physicalAt)>dr.gpsTimestamp
         && (!dr.alternative||Date.parse(v.physicalAt)>=Date.parse(dr.alternative.physicalAt))){
+        if(animFrames[opKey]&&dr.animationPosition!=null)dr.posicaoNaRota=dr.animationPosition;
         dr.alternative=v;stopAnim(opKey);
-        opMarker.setLngLat([v.longitude,v.latitude]);
+        var alternativeProgress=dr.posicaoNaRota!=null?roadVisualProgress(dr.lineCoords,{lat:v.latitude,lng:v.longitude},dr.posicaoNaRota,dr.routeMetres):null;
+        if(dr.lineCoords&&dr.posicaoNaRota!=null&&(alternativeProgress==null||alternativeProgress<dr.posicaoNaRota)){dr.visualUncertain=true;}
+        else{
+          opMarker.setLngLat([v.longitude,v.latitude]);
+          dr.posicaoNaRota=alternativeProgress;
+          if(alternativeProgress==null){dr.lineCoords=null;dr.routeKey=null;dr.visualUncertain=true;}
+        }
         opMarker.getElement().style.opacity=age>=300?'0.55':'1';
         opMarker._tutorial={lineId:v.lineId,modal:v.modal,timestamp:Date.parse(v.physicalAt),ambiguousPhysical:true,statusText:'Última posição conhecida'};
         var opPopup=vehiclePopups[opKey];

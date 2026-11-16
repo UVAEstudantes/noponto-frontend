@@ -1952,3 +1952,16 @@ test('real WebView delayed GPS sequence never reverses at source handoff zero or
   assert.equal(Object.keys(r.web.context.vehicleMarkers).length,1);
  }finally{r.f.dispose();}
 });
+
+test('legacy physical presence cannot silently roll a routed marker back or replay its anchor',()=>{
+ const r=delayedRoadBridge({speed:30,age:25,cap:1000,horizon:120});try{
+  r.send({backendUnified:false});r.web.context.unifiedCodes=[];r.advance(10);const marker=r.web.context.vehicleMarkers[r.key],shown=r.metres(),writes=[],set=marker.setLngLat;
+  marker.setLngLat=function(coord){writes.push(coord[0]*r.m);return set.call(this,coord);};
+  const physical={key:'ITS:bus',modal:'onibus',originalVehicleId:'D86000',serviceCode:'855',lineId:'line',lineState:'Informed',latitude:0,longitude:(shown-80)/r.m,physicalAt:new Date(r.f.clock.now-10000).toISOString()};
+  r.web.context.window.updatePhysicalPresence([physical]);assert.ok(r.metres()>=shown-.001,'legacy ITS must not overwrite the projected route anchor');
+  r.send({timestamp:r.at+1000});assert.ok(r.metres()>=shown-.001,'older operational refresh must not replay the alternative coordinate');
+  r.web.context.unifiedCodes=[];const farther={...physical,longitude:(shown-250)/r.m,physicalAt:new Date(r.f.clock.now-5000).toISOString()};r.web.context.window.updatePhysicalPresence([farther]);assert.ok(r.metres()>=shown-.001,'unresolved legacy geometry cannot silently invalidate route continuity');
+  for(const m of writes)assert.ok(m>=shown-.001);
+  assert.equal(r.state().alternative.physicalAt,farther.physicalAt);assert.equal(Object.keys(r.web.context.physicalMarkers).length,0);
+ }finally{r.f.dispose();}
+});
