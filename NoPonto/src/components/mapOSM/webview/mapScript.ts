@@ -971,6 +971,7 @@ function toggleDetails(btn,event){
 function resetPopupDetails(popup){
   var root=(popup.getElement&&popup.getElement())||popup.roadElement;
   if(!root)return;
+  var freshness=root.querySelector('.gps-freshness');if(freshness)freshness.open=false;
   var details=root.querySelector('.popup-details'),btn=root.querySelector('.popup-toggle');
   if(details)details.classList.remove('open');
   if(btn){btn.classList.remove('open');var label=btn.querySelector('.toggle-label');if(label)label.textContent='Mais detalhes';}
@@ -988,9 +989,16 @@ function setPopupHTMLPreservingDetails(popup,html){
     var next=document.createElement('div');next.innerHTML=html;
     var card=root.querySelector('.popup-card'),nextCard=next.querySelector('.popup-card');
     if(card&&nextCard)card.setAttribute('data-empty-details',nextCard.getAttribute('data-empty-details')||'false');
-    ['.popup-header','.popup-meta','.popup-stats'].forEach(function(selector){
+    // Keep details/summary mounted so its open state and keyboard focus survive refreshes.
+    var freshness=root.querySelector('.gps-freshness'),nextFreshness=next.querySelector('.gps-freshness');
+    if(freshness&&nextFreshness){
+      ['data-key','data-uncertain','data-route-unknown','aria-label','title','style'].forEach(function(name){freshness.setAttribute(name,nextFreshness.getAttribute(name)||'');});
+    }
+    var sections=freshness&&nextFreshness?['.popup-indicator','.popup-title','.popup-vehicle','.popup-sub','.popup-meta','.popup-stats']:['.popup-header','.popup-meta','.popup-stats'];
+    sections.forEach(function(selector){
       var current=root.querySelector(selector),replacement=next.querySelector(selector);
       if(current&&replacement&&current.innerHTML!==replacement.innerHTML)current.innerHTML=replacement.innerHTML;
+      if(current&&replacement&&selector==='.popup-vehicle')current.setAttribute('style',replacement.getAttribute('style')||'');
     });
   }else {
     // Fallback/rail DOM replacement must preserve this open popup's expansion.

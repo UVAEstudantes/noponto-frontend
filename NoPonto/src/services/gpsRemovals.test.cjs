@@ -356,8 +356,8 @@ function webViewRuntime(script,clock={now:Date.now()}) {
   // Small DOM fixture for the popup card, retaining node identities across patches.
   function card(html,register=false){
     const nodes={};
-    for(const cls of ['popup-card','popup-header','popup-sub','popup-meta','popup-stats','popup-details','popup-toggle','toggle-label']){
-      const start=new RegExp('<(div|span)[^>]*class="'+cls+'"[^>]*>').exec(html);
+    for(const cls of ['popup-card','popup-header','popup-sub','popup-meta','popup-stats','popup-details','popup-toggle','toggle-label','popup-indicator','popup-title','popup-vehicle','gps-freshness','gps-freshness-help']){
+      const start=new RegExp('<(div|span|details)[^>]*class="'+cls+'"[^>]*>').exec(html);
       if(!start)continue;
       const offset=start.index+start[0].length;
       const tags=new RegExp('</?'+start[1]+'\\b[^>]*>','g');tags.lastIndex=offset;
@@ -2017,5 +2017,21 @@ test('WebView five bar signal and help panel reflect physical age without uncert
   const html=r.web.context.buildPopup({nome:'855',modal:'onibus'},{id:'D86000',timestamp:r.at,backendUnified:true,locationUncertain:true},'D86000',0);
   assert.match(html,/<details class="gps-freshness"/);assert.doesNotMatch(html,/<details class="gps-freshness"[^>]* open/);assert.match(html,/Atualização da localização/);assert.match(html,/GPS há 0 segundos/);assert.match(html,/Localização operacional incerta/);assert.match(html,/Não indica sinal de internet/);
   const css=r.f.load('../components/mapOSM/webview/mapStyles.ts').MAP_WEBVIEW_STYLES;assert.match(css,/background:var\(--popup-surface\);color:var\(--popup-fg\)/);assert.match(css,/left:10px;right:10px/);assert.match(css,/summary svg\{[^}]*width:22px;height:22px/);
+ }finally{r.f.dispose();}
+});
+
+
+test('GPS freshness panel stays open across clock ticks and physical GPS refresh without replacing header',()=>{
+ const r=delayedRoadBridge({speed:0,age:44});try{
+  const popup=r.web.context.vehiclePopups[r.key];popup.open=true;popup.events.open();
+  const root=popup.getElement(),header=root.querySelector('.popup-header'),signal=root.querySelector('.gps-freshness');signal.open=true;
+  const summary={innerHTML:''},query=signal.querySelector;signal.querySelector=selector=>selector==='summary'?summary:query(selector);
+  let headerWrites=0,headerHTML=header.innerHTML;Object.defineProperty(header,'innerHTML',{get:()=>headerHTML,set:html=>{headerWrites++;headerHTML=html;signal.open=false;}});
+  const age={getAttribute:()=>String(r.at),textContent:'',closest:()=>root};r.web.context.document.querySelectorAll=()=>[age];
+  for(let i=1;i<=6;i++){r.f.clock.now+=1000;r.web.context.updateTimeAgo();r.send();assert.equal(signal.open,true,'clock refresh must keep panel open');assert.equal(root.querySelector('.gps-freshness'),signal);}
+  assert.match(age.textContent,/50/);assert.equal(headerWrites,0);assert.match(summary.innerHTML,/data-bars="4"/);
+  r.send({timestamp:r.f.clock.now,unifiedSource:'GTFSRT_BUS'});assert.equal(signal.open,true);assert.equal(headerWrites,0);
+  signal.open=false;r.send();assert.equal(signal.open,false);
+  signal.open=true;popup.events.close();assert.equal(signal.open,false);
  }finally{r.f.dispose();}
 });
