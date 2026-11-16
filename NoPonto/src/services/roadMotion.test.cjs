@@ -206,7 +206,7 @@ test('delayed new anchor compares current presentation before deciding a backwar
 for(const age of [25000,35000])test(`delayed ${age/1000}s fix behind historical anchor reconciles forward at the current instant`,()=>{
  const f=fixture();f.advance(30000);f.update({projectionUntil:f.base+120000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'});
  f.advance(30000);const shown=f.marker.pos.lng,at=f.base+60000-age;
- const physical=shown-200/111000;
+ const physical=shown-250/111000;
  f.update({longitude:physical,projectionUntil:at+90000,projectionSpeedKmh:40,projectionMaxMetres:1000,contextConfidence:'retained'},undefined,at,physical);
  assert.ok(f.c.drState.bus.posicaoNaRota>shown);assert.equal(f.c.drState.bus.visualAhead,false);assert.ok(f.c.animFrames.bus);
  assert.equal(f.marker.pos.lng,shown);const frame=[...f.frames.values()].at(-1);frame(f.base+60700);

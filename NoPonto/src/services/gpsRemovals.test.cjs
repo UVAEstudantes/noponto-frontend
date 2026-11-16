@@ -837,7 +837,7 @@ test(`imperfect DTO replay survives intermittent GPS native clocks empty and rec
     for(let second=1;second<=120;second++){
       f.clock.now=start+second*1000;
       if([30,60,120].includes(second)){
-        raw={...raw,posicaoNaRota:.1+second*.003,longitude:-43.21+.02*(.1+second*.003),timestampGps:new Date(f.clock.now-40000).toISOString()};
+        raw={...raw,posicaoNaRota:.1+second*.001,longitude:-43.21+.02*(.1+second*.001),timestampGps:new Date(f.clock.now-40000).toISOString()};
         f.emit('PosicaoAtualizada',[raw]);
       }else if(second%10===0)f.emit('PosicaoAtualizada',[{...raw,timestampServidor:new Date(f.clock.now).toISOString()}]);
       for(const tick of f.intervals.values())if(tick.fixtureIntervalMs===(presence?1000:15000))tick();
@@ -1092,7 +1092,7 @@ test('terminal remains stationary and confirmed direction reanchors correct geom
 test('new confirmed stationary terminal sample cancels interpolation and anchors the physical position',()=>{
   const r=roadScenario();
   try{
-    r.p={...r.p,timestamp:r.f.clock.now,posicaoNaRota:.2,longitude:-43.196};r.send();
+    r.p={...r.p,timestamp:r.f.clock.now,posicaoNaRota:.15,longitude:-43.197};r.send();
     const frame=r.web.context.animFrames[r.key];assert.ok(frame);
     r.web.frames.get(frame)(r.f.clock.now+350);
     r.f.clock.now+=1000;r.p={...r.p,timestamp:r.f.clock.now,velocidade:0,velocidadeMedia:35,presencaEstado:'fim_percurso'};r.send();
@@ -1587,7 +1587,7 @@ test('hybrid WebView temporal sequence keeps one moving marker through ITS zero 
   for(const [seconds,d,confirmed]of [[140,200,false],[170,350,true],[200,500,false],[230,650,false],[260,800,false],[290,950,false],[320,1100,false],[350,1250,false],[380,1400,false],[410,1550,true]]){
    send(seconds,d,18,confirmed);advance(5);assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(web.context.vehiclePopups[key],popup);assert.ok(marker.getLngLat().lng>d/m,`render advances after ${seconds}`);assert.equal(web.context.drState[key].gpsTimestamp,start+seconds*1000);
   }
-  const last=marker.getLngLat().lng;advance(100);assert.ok(marker.getLngLat().lng>=last);const frozen=marker.getLngLat().lng;advance(30);assert.equal(marker.getLngLat().lng,frozen);
+  const last=marker.getLngLat().lng;advance(100);assert.ok(marker.getLngLat().lng>=last);advance(Math.max(0,Math.ceil((web.context.drState[key].projectionUntil-f.clock.now)/1000))+1);const frozen=marker.getLngLat().lng;advance(30);assert.equal(marker.getLngLat().lng,frozen);
  }finally{f.dispose();}
 });
 
@@ -1698,11 +1698,11 @@ test('hybrid GTFS ITS continuity reaches real WebView with one identity and boun
  }finally{f.dispose();}
 });
 
-function delayedRoadBridge({speed=30,age=25,cap=250,horizon=90,context='retained',remaining=10000}={}){
+function delayedRoadBridge({speed=30,age=25,cap=250,horizon=90,context='retained',remaining=10000,coords}={}){
  const f=fixture({presence:false}),at=f.clock.now-age*1000,m=111195;
  const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);
  let p={id:'D86000',ordem:'D86000',linhaId:'line',latitude:0,longitude:0,timestamp:at,backendUnified:true,backendMotionEligible:!!context,backendValidUntil:at+480000,projectionUntil:at+horizon*1000,projectionSpeedKmh:speed,projectionMaxMetres:cap,comprimentoRotaMetros:remaining,posicaoNaRota:context?0:null,padraoVersaoId:context?'out':null,sentidoId:context?'direction':null,contextConfidence:context,velocidade:speed,lastObservedSpeedKmh:speed,physicalOnly:!context,unifiedSource:'ITS_CURRENT'};
- const line={nome:'855',linhaId:'line',modal:'onibus',segmentos:[[[0,0],[0,remaining/m]]],itinerarioSegmentoMap:{out:0}};
+ const line={nome:'855',linhaId:'line',modal:'onibus',segmentos:[coords??[[0,0],[0,remaining/m]]],itinerarioSegmentoMap:{out:0}};
  const key='onibus:855:D86000';const send=over=>{p={...p,...over};web.context.window.updateMap({unifiedCodes:['855'],linhas:[{...line,posicoes:[p]}]});};
  send();web.context.startDR();const marker=web.context.vehicleMarkers[key];
  const metres=()=>marker.getLngLat().lng*m;
@@ -1763,4 +1763,67 @@ test('one validated GTFS fix then ITS fixes drive actual WebView markers and two
   v.location.speedKmh=0;for(const sec of [60,80]){f.clock.now=base+(sec+25)*1000;v.location.physicalAt=new Date(base+sec*1000).toISOString();const p=send();if(sec===80)assert.equal(p.physicalMotionState,'stopped');advance(2);}
   const stopped=marker.getLngLat().lng;advance(8);assert.equal(marker.getLngLat().lng,stopped);assert.equal(web.context.drState[key].backendMotionEligible,false);
  }finally{f.dispose();}
+});
+
+
+test('real WebView holds a moderate current-time debt from delayed GPS then resumes natural speed',t=>{
+ const r=delayedRoadBridge({speed:40,age:30,cap:1000});try{
+  r.advance(30);const before=r.metres(),newAt=r.f.clock.now-30000,physical=40/3.6*30;
+  r.send({timestamp:newAt,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:newAt+90000,projectionSpeedKmh:30,projectionMaxMetres:750});
+  assert.ok(Math.abs(r.metres()-before)<.001);assert.equal(r.state().visualAhead,true);assert.equal(r.web.frames.size,0);
+  assert.equal(r.state().gpsTimestamp,newAt);assert.ok(Math.abs(r.state().gpsPosition*10000-physical)<.001);
+  const holdAt=r.state().visualHoldAt,used=r.state().projectedMetres;r.send();assert.equal(r.state().visualHoldAt,holdAt);assert.equal(r.state().projectedMetres,used);
+  r.advance(5);assert.ok(Math.abs(r.metres()-before)<.001);r.advance(6);assert.equal(r.state().visualAhead,false);
+  const caught=r.metres();r.advance(2);const rendered=(r.metres()-caught)/2*3.6;assert.ok(rendered>28&&rendered<31);
+  assert.ok(Math.abs(r.state().projectedMetres-(r.metres()-physical))<.1,'held distance is paid exactly once by new anchor');
+  t.diagnostic(JSON.stringify({historicalGapMetres:physical-before,currentGapMetres:physical+250-before,renderedAfterHoldKmh:rendered}));
+ }finally{r.f.dispose();}
+});
+
+test('real WebView forward reconciliation uses a stable marker and rendered RAF progress for intervening fixes',()=>{
+ const r=delayedRoadBridge({speed:40,age:30,cap:1000});try{
+  r.advance(30);const before=r.metres(),newAt=r.f.clock.now-30000,physical=before-200;
+  r.send({timestamp:newAt,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:newAt+90000});
+  assert.ok(Math.abs(r.metres()-before)<.001);r.advance(.3);const part=r.metres();assert.ok(part>before&&part<physical+40/3.6*30);
+  const nextAt=newAt+100,physicalNext=physical+.7;
+  r.send({timestamp:nextAt,longitude:physicalNext/r.m,posicaoNaRota:physicalNext/10000,projectionUntil:nextAt+90000});
+  assert.equal(r.state().visualAhead,false);assert.ok(r.metres()>=part-.01);r.advance(1);assert.ok(r.metres()>part);
+  assert.equal(Object.keys(r.web.context.vehicleMarkers).length,1);assert.ok(r.state().projectedMetres<=1000);
+ }finally{r.f.dispose();}
+});
+
+test('restarted routed RAF starts its next reconciliation from the current marker rather than an old frame',()=>{
+ const r=delayedRoadBridge({speed:30,age:25,cap:750});try{
+  r.advance(10);let at=r.f.clock.now-25000,physical=30/3.6*10+30;
+  r.send({timestamp:at,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:at+90000});
+  r.advance(.7);r.advance(2);const before=r.metres();at+=3000;physical+=30;
+  r.send({timestamp:at,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:at+90000});
+  r.send({timestamp:at+1,longitude:(physical+.01)/r.m,posicaoNaRota:(physical+.01)/10000,projectionUntil:at+90001});
+  assert.equal(r.state().visualAhead,false);assert.ok(Math.abs(r.metres()-before)<.01);r.advance(1);assert.ok(r.metres()>before);
+ }finally{r.f.dispose();}
+});
+
+
+test('forward route reconciliation follows a corner and its bearing then accepts ITS during the turn',()=>{
+ const m=111195,r=delayedRoadBridge({speed:30,age:0,cap:750,remaining:400,coords:[[0,0],[0,200/m],[200/m,200/m]]});try{
+  r.advance(18);const marker=r.web.context.vehicleMarkers[r.key],before=marker.getLngLat(),at=r.f.clock.now;
+  assert.ok(Math.abs(before.lng*m-150)<.1);assert.equal(before.lat,0);
+  r.send({timestamp:at,latitude:60/m,longitude:200/m,posicaoNaRota:260/400,projectionUntil:at+90000,unifiedSource:'GTFSRT_BUS'});
+  assert.equal(r.state().gpsTimestamp,at);assert.equal(r.state().projectedMetres,0);r.advance(.3);
+  const first=marker.getLngLat();assert.equal(first.lat,0,'first leg follows the route rather than cutting the corner');assert.ok(first.lng>before.lng&&first.lng<200/m);assert.ok(Math.abs(r.web.context.vehicleHeadings[r.key]-90)<1);
+  r.advance(.3);const turned=marker.getLngLat();assert.ok(turned.lat>0&&turned.lat<60/m);assert.ok(Math.abs(turned.lng*m-200)<.01);assert.ok(Math.abs(r.web.context.vehicleHeadings[r.key])<1);
+  const visual=r.state().animationPosition,newAt=r.f.clock.now;
+  r.send({timestamp:newAt,latitude:70/m,longitude:200/m,posicaoNaRota:270/400,projectionUntil:newAt+90000,unifiedSource:'ITS_CURRENT'});
+  assert.equal(r.state().visualAhead,false);assert.equal(r.state().animationPosition,visual);assert.equal(r.state().gpsTimestamp,newAt);assert.equal(r.state().projectedMetres,0);
+  r.advance(.2);const next=marker.getLngLat();assert.ok(next.lat>=turned.lat&&next.lat<70/m);assert.ok(Math.abs(next.lng*m-200)<.01);assert.equal(r.web.context.vehicleMarkers[r.key],marker);assert.equal(Object.keys(r.web.context.vehicleMarkers).length,1);
+  r.advance(1);assert.ok(marker.getLngLat().lat>=70/m);assert.ok(r.state().projectedMetres<15);
+ }finally{r.f.dispose();}
+});
+
+test('large forward correction repositions without a long route animation or a fabricated physical fix',()=>{
+ const r=delayedRoadBridge({speed:30,age:0,cap:750});try{
+  r.advance(10);const at=r.f.clock.now,physical=600;
+  r.send({timestamp:at,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:at+90000});
+  assert.ok(Math.abs(r.metres()-physical)<.1);assert.equal(r.web.frames.size,0);assert.equal(r.state().gpsTimestamp,at);assert.equal(r.state().gpsCoordinate.lng,physical/r.m);assert.equal(r.state().projectedMetres,0);
+ }finally{r.f.dispose();}
 });
