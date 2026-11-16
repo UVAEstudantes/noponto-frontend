@@ -6,7 +6,7 @@ import { createTerminalTracker,lineTerminals,type TerminalDiagnostics } from './
 
 type Sample = { lat:number; lon:number; at:number };
 type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred'; operationalDirection?:string|null };
-type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;movingSpeed?:number;movingAt?:number;zeroAt?:number;zeroFixes?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
+type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;movingSpeed?:number;movingAt?:number;zeroAt?:number;zeroFixes?:number;derivedSpeed?:number;derivedAt?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
 const distance=(a:Sample,b:Sample)=>Math.hypot(a.lat-b.lat,(a.lon-b.lon)*Math.cos(a.lat*Math.PI/180))*111195;
 
 /** Mount-scoped physical evidence. No persistence, operational writes, or ITS renewal. */
@@ -43,7 +43,8 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       }
       const dt=last?(sample.at-last.at)/1000:0;
       const moved=last?distance(last,sample):0;
-      const derived=dt>=5&&dt<=120&&moved>=10&&moved/dt<=33?moved*3.6/dt:undefined;
+      const derived=dt>=5&&dt<=120&&moved>=10&&moved/dt<=33?moved*3.6/dt:dt===0&&sample.at===track.derivedAt?track.derivedSpeed:undefined;
+      if(!last||dt>0){track.derivedSpeed=derived;track.derivedAt=sample.at;}
       p.projectionSpeedKind='observed';
       // A current displacement may contradict a zero provider speed. This is
       // an estimate from two real fixes, never a renewed old speed reading.

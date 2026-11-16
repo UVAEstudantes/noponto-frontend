@@ -199,3 +199,10 @@ test('widely separated zeros do not manufacture a short continuous stop or renew
  const f=fixture();f.v.location.speedKmh=30;f.tick(0,.001);f.v.location.speedKmh=0;
  for(const t of [30,120,210]){const p=f.tick(t,.001);assert.notEqual(p.physicalMotionState,'stopped');if(t>=120)assert.equal(p.backendMotionEligible,false);}
 });
+
+
+test('repeated physical zero with confirmed displacement preserves its bounded speed estimate without a new stop vote',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.speedKmh=0;const moved=f.tick(30,.003);
+ assert.equal(moved.projectionSpeedKind,'displacement');assert.equal(moved.backendMotionEligible,true);const deadline=moved.projectionUntil;
+ for(let i=0;i<3;i++){const same=f.tick(30,.003);assert.equal(same.backendMotionEligible,true);assert.equal(same.projectionSpeedKind,'displacement');assert.equal(same.projectionUntil,deadline);assert.equal(same.physicalMotionState,'moving');assert.equal(same.lastObservedSpeedKmh,0);}
+});
