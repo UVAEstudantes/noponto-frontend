@@ -71,3 +71,13 @@ for(const state of ['Em viagem','Em movimento','Parado','GPS atrasado','Localiza
  const p=state==='GPS atrasado'?f.compose([f.line],[f.s],base+180000)[0].posicoes![0]:f.tick(0,.001);
  assert.equal(p.presencaRotulo,state);
 });
+
+
+test('zero speed requires distinct physical evidence and estimates never replace observed zero',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.speedKmh=0;f.v.operational=null;
+ const moving=f.tick(20,.002);assert.equal(moving.lastObservedSpeedKmh,0);assert.equal(moving.projectionSpeedKind,'displacement');assert.ok(moving.estimatedSpeedKmh!>0);assert.equal(moving.physicalMotionState,'moving');
+ const pause=f.tick(40,.002);assert.equal(pause.physicalMotionState,'pause_pending');assert.equal(pause.backendMotionEligible,false);
+ for(let i=0;i<3;i++)assert.equal(f.tick(40,.002).physicalMotionState,'pause_pending');
+ const stopped=f.tick(60,.002);assert.equal(stopped.physicalMotionState,'stopped');assert.equal(stopped.backendMotionEligible,false);assert.equal(stopped.estimatedSpeedKmh,undefined);
+ assert.equal(f.tick(80,.003).physicalMotionState,'moving');
+});
