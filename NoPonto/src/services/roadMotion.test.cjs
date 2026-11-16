@@ -33,3 +33,10 @@ test('same GPS route refresh preserves consumed distance and eligibility can res
  const f=fixture();f.update();f.advance(10000);const used=f.c.drState.bus.projectedMetres;f.update({backendMotionEligible:false});f.advance(10000);f.update();assert.equal(f.c.drState.bus.projectedMetres,used);f.advance(1000);assert.ok(f.c.drState.bus.projectedMetres>used);
  const old=f.c.drState.bus.posicaoNaRota;f.update({},[[0,0],[0,.5],[0,1]]);assert.ok(f.c.drState.bus.posicaoNaRota>=old);assert.equal(f.c.drState.bus.gpsTimestamp,f.base);
 });
+
+test('legacy to unified handoff cannot reset an untracked projection budget',()=>{
+ const f=fixture();f.update({backendUnified:false});f.advance(10000);f.update();
+ const physical=f.c.drState.bus.gpsTimestamp;assert.equal(physical,f.base);assert.equal(f.c.drState.bus.backendMotionEligible,false);
+ f.update();const current=f.marker.pos.lng;f.advance(1000);assert.equal(f.marker.pos.lng,current);
+ f.update({},undefined,f.base+11000,.001);assert.equal(f.c.drState.bus.projectedMetres,0);
+});

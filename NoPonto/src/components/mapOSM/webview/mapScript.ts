@@ -371,6 +371,12 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   if(sameGps&&p.backendUnified){
     var lat=parseNum(p.latitude),lng=parseNum(p.longitude);
     if(!dr.gpsCoordinate||lat!==dr.gpsCoordinate.lat||lng!==dr.gpsCoordinate.lng)return;
+    if(!dr.backendUnified){
+      // A legacy DR handoff has no trusted consumed-distance ledger. Wait for a new fix.
+      stopAnim(key);dr.backendUnified=true;dr.backendMotionEligible=false;
+      dr.backendValidUntil=p.backendValidUntil;dr.projectionUntil=timestamp+gpsPolicy.baseProjectionMs;
+      dr.projectionMaxMetres=gpsPolicy.maxProjectionMetres;dr.projectedMetres=dr.projectionMaxMetres;return;
+    }
     dr.backendValidUntil=Math.min(dr.backendValidUntil,p.backendValidUntil);
     dr.projectionUntil=Math.min(dr.projectionUntil,p.projectionUntil||timestamp+gpsPolicy.baseProjectionMs);
     dr.projectionMaxMetres=Math.min(dr.projectionMaxMetres,p.projectionMaxMetres||gpsPolicy.maxProjectionMetres);
