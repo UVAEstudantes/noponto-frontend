@@ -187,3 +187,17 @@ test('new physical displacement can establish heading after a confirmed directio
  f.advance(10000);f.update({backendMotionEligible:false,longitude:0},null,f.base+20000,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,0);
  assert.equal(f.c.drState.bus.headingKind,'physical');assert.equal(f.c.vehicleHeadings.bus,270);
 });
+
+
+test('delayed new anchor compares current presentation before deciding a backward hold',()=>{
+ const f=fixture(),speed=40,metres=speed/3.6;
+ f.advance(30000);f.update({projectionUntil:f.base+90000,projectionSpeedKmh:speed,projectionMaxMetres:1000,contextConfidence:'retained'});
+ f.advance(30000);const before=f.marker.pos.lng;
+ const physical=metres*30/111000;
+ f.update({longitude:physical,projectionUntil:f.base+120000,projectionSpeedKmh:30,projectionMaxMetres:750,contextConfidence:'retained'},undefined,f.base+30000,physical);
+ assert.equal(f.c.drState.bus.gpsCoordinate.lng,physical);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+30000);
+ assert.equal(f.marker.pos.lng,before,'same-time discrepancy under 100 m holds instead of snapping backwards');
+ assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.animFrames.bus,undefined);
+ f.advance(11000);assert.equal(f.c.drState.bus.visualAhead,false,'new anchor catches visual debt without requiring another GPS');
+ const caught=f.marker.pos.lng;f.advance(1000);assert.ok((f.marker.pos.lng-caught)*111000*3.6>25,'normal speed resumes');
+});
