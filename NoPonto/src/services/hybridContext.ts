@@ -60,7 +60,7 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         if(effectiveSpeed!=null&&effectiveSpeed>2&&(!last||moved>3)){track.movingSpeed=effectiveSpeed;track.movingAt=sample.at;}
       }
       if(dt>0){
-        if(dt>=5&&moved<=12&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){
+        if(dt>=5&&moved<=12&&derived==null&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){
           if(!track.stationary||dt>45){track.stationaryAt=track.zeroAt??sample.at;track.stationary=0;}
           track.stationary=(track.stationary??0)+1;
         }else{track.stationary=0;track.stationaryAt=undefined;}

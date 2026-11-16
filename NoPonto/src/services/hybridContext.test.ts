@@ -206,3 +206,9 @@ test('repeated physical zero with confirmed displacement preserves its bounded s
  assert.equal(moved.projectionSpeedKind,'displacement');assert.equal(moved.backendMotionEligible,true);const deadline=moved.projectionUntil;
  for(let i=0;i<3;i++){const same=f.tick(30,.003);assert.equal(same.backendMotionEligible,true);assert.equal(same.projectionSpeedKind,'displacement');assert.equal(same.projectionUntil,deadline);assert.equal(same.physicalMotionState,'moving');assert.equal(same.lastObservedSpeedKmh,0);}
 });
+
+
+test('distinct zero readings with ten metre directed progress cannot simultaneously confirm a stop',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.speedKmh=0;
+ for(const t of [30,60,90]){const p=f.tick(t,.001+(t/30)*11/111195);assert.equal(p.physicalMotionState,'moving');assert.equal(p.lastObservedSpeedKmh,0);assert.equal(p.projectionSpeedKind,'displacement');assert.ok(p.projectionMaxMetres!<=40);}
+});
