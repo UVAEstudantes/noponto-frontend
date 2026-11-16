@@ -411,7 +411,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
     dr.tracePosition=motionTraceOrders.length?p:null;
     var validContext=coords&&coords.length>=2&&position!==null&&position>=0&&position<=1
       &&coords.every(function(c){return c&&Number.isFinite(c[0])&&Number.isFinite(c[1])&&Math.abs(c[0])<=90&&Math.abs(c[1])<=180});
-    if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;if(roadIdentityChanged(dr.identity,identity)){dr.identity=identity;dr.lineCoords=null;dr.posicaoNaRota=null;}if(!dr.observedInterpolation)stopAnim(key);return;}
+    if(!dr.backendMotionEligible||!validContext){dr.backendMotionEligible=false;if(animFrames[key]&&dr.animationPosition!=null)dr.posicaoNaRota=dr.animationPosition;if(roadIdentityChanged(dr.identity,identity)){dr.identity=identity;dr.lineCoords=null;dr.posicaoNaRota=null;}if(!dr.observedInterpolation)stopAnim(key);return;}
     var contextKey=JSON.stringify(coords);
     if(dr.routeKey!==contextKey||dr.identity!==identity){
       stopAnim(key);dr.observedInterpolation=false;dr.lineCoords=coords;dr.routeKey=contextKey;dr.identity=identity;dr.comprimentoGraus=null;

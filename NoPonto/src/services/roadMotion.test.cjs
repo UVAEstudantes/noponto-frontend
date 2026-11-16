@@ -243,3 +243,12 @@ test('large same-time discrepancies and confirmed identity changes correct discr
  assert.ok(f.marker.pos.lng<shown);assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.visualAhead,false);
  f.update({longitude:.001},[[0,0],[0,.5]],f.base+31000,.002,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.identity,'new-line|reverse|new-pattern|v2');assert.equal(f.c.drState.bus.visualAhead,false);assert.equal(f.c.animFrames.bus,undefined);
 });
+
+
+test('eligibility withdrawal preserves the rendered route progress when cancelling reconciliation',()=>{
+ const f=fixture();f.update();f.advance(10000);const start=f.marker.pos.lng;
+ f.update({longitude:start+.0008},undefined,f.base+10000,start+.0008);const frame=[...f.frames.values()].at(-1);frame(f.base+10350);const shown=f.marker.pos.lng;
+ f.update({longitude:start+.0008,backendMotionEligible:false},undefined,f.base+10000,start+.0008);
+ assert.equal(f.c.animFrames.bus,undefined);assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota-shown)<1e-12,'cancelled RAF must not leave its undisplayed target as the visual anchor');
+ f.update({longitude:shown+.00001},undefined,f.base+10100,shown+.00001);assert.equal(f.c.drState.bus.visualAhead,false);
+});
