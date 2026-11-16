@@ -1,3 +1,4 @@
+import { diagnosticoEventosRadar } from "./diagnosticoEventosRadar";
 import { api } from "./api";
 import type { RailVehicleForMap } from "./railRealtime";
 import type { VeiculoMapaRodoviario } from "./veiculosMapa";
@@ -44,12 +45,22 @@ const consultasEventos = new Map<string, Promise<EventoParadaDto[]>>();
 export function buscarEventosParada(paradaId: string): Promise<EventoParadaDto[]> {
   const pendente = consultasEventos.get(paradaId);
   if (pendente) return pendente;
+  const dev = typeof __DEV__ !== "undefined" && __DEV__;
+  const ticket = dev ? diagnosticoEventosRadar.ticket(paradaId) : -1;
+  const started = Date.now();
+  let recorded = false;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   const consulta = api.get<EventoParadaDto[]>(`/paradas/${paradaId}/eventos`, { signal: controller.signal })
     .then((result) => {
+      const events = result.ok ? ordenarEventosParada(result.data ?? []) : [];
+      if (dev) diagnosticoEventosRadar.response(paradaId, ticket, started, Date.now(), result.status, result.ok, events);
+      recorded = true;
       if (!result.ok) throw new Error(result.error ?? "Falha ao carregar eventos da parada");
-      return ordenarEventosParada(result.data ?? []);
+      return events;
+    }).catch(error => {
+      if (dev && !recorded) diagnosticoEventosRadar.response(paradaId, ticket, started, Date.now(), 0, false, []);
+      throw error;
     }).finally(() => {
       clearTimeout(timeout);
       consultasEventos.delete(paradaId);

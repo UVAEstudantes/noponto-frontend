@@ -1,3 +1,4 @@
+import { diagnosticoEventosRadar } from "../services/diagnosticoEventosRadar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { buscarEventosParada, type EventoParadaDto } from "../services/eventosParada";
@@ -31,6 +32,7 @@ export function useConsultaEventosParada(parada: ParadaRadar | null, modal: stri
   }, []);
 
   useEffect(() => {
+    if (typeof __DEV__ !== "undefined" && __DEV__) diagnosticoEventosRadar.select(chave, paradaId ?? "");
     const atual = ++geracao.current;
     if (!enabled || !foreground || !chave) setConsulta(null);
     if (!enabled || !foreground || !chave || !paradaId) return;

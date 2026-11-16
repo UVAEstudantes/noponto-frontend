@@ -1,10 +1,12 @@
+import { diagnosticoEventosRadar } from "@/src/services/diagnosticoEventosRadar";
+import { instanteEventoRadar, motivoExclusaoEventoRadar } from "@/src/services/radarParada";
 import TutorialTarget from "../tutorial/TutorialTarget";
 import TutorialOverlay from "../tutorial/TutorialOverlay";
 import { useTutorial } from "../tutorial/TutorialProvider";
 import {passengerRadar} from '@/src/services/radarPassenger';
 import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
 import React, { useEffect, useReducer, useRef, useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Alert, Clipboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, X } from "lucide-react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
@@ -50,6 +52,7 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   const tutorial = useTutorial();
   const invalidateTutorialTargets = tutorial.invalidateTargets;
   const tutorialRadar = Boolean(tutorial.step) && tutorial.chapter === 5;
+  const [copiado, setCopiado] = useState(false);
   const [configAberta, setConfigAberta] = useState(false);
   const tutorialOwned = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -63,7 +66,28 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
 
   const chegadas = chegadasDoRadar(radar.eventos, radar.parada, linhas, radar.recebidoEm, radar.agora, [], []);
   const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],chegadas,radar.agora);
+  const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const temEventos = radar.eventos.length > 0 || terminalVehicles.length > 0;
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__ || !visivel || recolhido || !conteudoMontado || bloqueadoPeloTutorial) return;
+    const rows = compactos;
+    diagnosticoEventosRadar.selection(radar.contextoConsulta, radar.eventosRecebidos, {
+      at: radar.agora,
+      displayed: rows.flatMap(r => r.kind === 'arrival' ? [r.arrival.id] : []),
+      physical: rows.flatMap(r => r.kind === 'physical' ? [r.vehicle.key] : []),
+      presences: terminalVehicles.map(v => ({ id: v.key, vehicle: v.order, line: v.lineId, state: v.state,
+        physicalAt: v.physicalAt, validUntil: v.validUntil, pattern: v.knownPattern, confirmed: v.operationalConfirmed })),
+      events: radar.eventosRecebidos.map(e => {
+        const at = instanteEventoRadar(e, radar.recebidoEm, radar.agora);
+        const eta = at == null || at < radar.agora ? null : Math.ceil((at-radar.agora)/1000);
+        return { id: e.eventId, eta, reason: motivoExclusaoEventoRadar(e, radar.parada, radar.recebidoEm, radar.agora)
+          ?? (eta == null ? 'eta_indisponivel_ou_passado' : !radar.eventos.some(v => v.eventId === e.eventId)
+            ? 'excluido_da_consulta' : !rows.some(r => r.kind === 'arrival' && r.arrival.id === e.eventId)
+              ? 'reconciliacao_fisica_ou_limite_de_vagas' : null) };
+      }),
+    });
+  });
+
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
   useEffect(() => {
@@ -126,7 +150,6 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   const abaStyle = useAnimatedStyle(() => ({ opacity: progress.value,
     transform: [{ translateX: (1 - progress.value) * 65 * (ladoAba === "right" ? 1 : -1) }] }));
   if ((!visivel && !configAberta) || bloqueadoPeloTutorial) return null;
-  const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const quantidade = radar.foraContexto ? 0 : new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []).size;
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;
@@ -209,6 +232,14 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
         <Text accessibilityLiveRegion="polite" style={{ flex: 1, fontSize: 11, color: corConsulta }}>
           {resumoConsultaParada(radar.statusConsulta, radar.atualizadoEm)}
         </Text>
+        {typeof __DEV__ !== 'undefined' && __DEV__ && <Pressable
+          accessibilityRole="button" accessibilityLabel="Copiar diagnóstico do Radar"
+          onPress={() => {
+            try { Clipboard.setString(diagnosticoEventosRadar.json()); setCopiado(true); }
+            catch { Alert.alert('Diagnóstico', 'Não foi possível copiar. Tente novamente.'); }
+          }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 6 }}>
+          <Text style={{ color: cores.textoPrimario, fontSize: 10 }}>{copiado ? 'Copiar novamente' : 'Copiar diagnóstico'}</Text>
+        </Pressable>}
         <Pressable onPress={radar.atualizar} disabled={radar.carregando || !radar.contextoConsulta}
           accessibilityRole="button" accessibilityLabel={radar.erro ? "Tentar atualizar novamente" : "Atualizar próximos veículos"}
           accessibilityState={{ disabled: radar.carregando || !radar.contextoConsulta, busy: radar.carregando }}
