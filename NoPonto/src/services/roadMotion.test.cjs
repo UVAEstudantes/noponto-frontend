@@ -56,3 +56,21 @@ test('projection cutoff does not cancel interpolation toward a genuinely new phy
  const frame=[...f.frames.values()].at(-1);frame(f.base+2700);
  assert.equal(f.marker.pos.lng,.0001);assert.equal(f.c.animFrames.bus,undefined);
 });
+
+
+test('new physical fix behind projection holds bounded debt without backwards RAF',()=>{
+ const f=fixture();f.update();f.advance(10000);const visual=f.c.drState.bus.posicaoNaRota;
+ f.update({longitude:.00005},undefined,f.base+10000,.00005);
+ assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);assert.equal(f.c.drState.bus.gpsCoordinate.lng,.00005);
+ assert.equal(f.c.drState.bus.posicaoNaRota,visual);assert.equal(f.c.animFrames.bus,undefined);
+ assert.ok(f.c.drState.bus.projectedMetres>0);f.advance(10000);assert.equal(f.c.drState.bus.posicaoNaRota,visual);
+ f.update({longitude:.0001},undefined,f.base+20000,.0001);f.advance(21000);
+ f.update({longitude:.00011},undefined,f.base+41000,.00011);
+ assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,.00011);
+});
+test('large backwards discrepancy or changed directed route corrects without reverse animation',()=>{
+ const f=fixture();f.update({},undefined,f.base,.01);f.update({longitude:0},undefined,f.base+1000,0);
+ assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.posicaoNaRota,0);
+ f.update({longitude:.002},undefined,f.base+2000,.002,'line|return|pattern2|version');
+ assert.equal(f.c.animFrames.bus,undefined);assert.equal(f.c.drState.bus.identity,'line|return|pattern2|version');
+});

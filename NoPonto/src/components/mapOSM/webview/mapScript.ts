@@ -364,6 +364,7 @@ function roadIdentityChanged(previous,next){
 }
 function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   var dr=drState[key],first=!dr;
+  var previousPosition=dr&&dr.posicaoNaRota,previousIdentity=dr&&dr.identity;
   if(first)dr=drState[key]={marker:marker,posicaoNaRota:null,gpsTimestamp:null,identity:identity};
   // Context can advance independently; the physical anchor and its budgets cannot.
   if(!first&&timestamp!==null&&dr.gpsTimestamp!==null&&timestamp<dr.gpsTimestamp)return;
@@ -451,9 +452,18 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   if(valid){
     var accepted=p.backendUnified||dr.posicaoNaRota===null||routeChanged||position>=dr.posicaoNaRota;
     if(accepted){
-      dr.posicaoNaRota=position;
+      var sameRoute=!routeChanged&&!roadIdentityChanged(previousIdentity,identity);
+      var routeMetres=dr.routeMetres||comprimentoRotaGraus(coords)*111000;
+      var debt=sameRoute&&previousPosition!==null?(previousPosition-position)*routeMetres:0;
+      if(debt>0&&debt<=100&&(!dr.visualHoldAt||Date.now()-dr.visualHoldAt<30000)){
+        if(!dr.visualHoldAt)dr.visualHoldAt=Date.now();
+        stopAnim(key);dr.posicaoNaRota=previousPosition;dr.projectedMetres=debt;dr.visualAhead=true;
+        roadMovement.backwardHeld++;return;
+      }
+      var correcting=debt>0||!sameRoute&&!first&&previousPosition!=null;
+      dr.visualHoldAt=null;dr.visualAhead=false;dr.posicaoNaRota=position;
       var c=interpolarNaRota(coords,position),target={lat:c[0],lng:c[1]};
-      if(first)marker.setLngLat([target.lng,target.lat]);else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
+      if(first||correcting){stopAnim(key);marker.setLngLat([target.lng,target.lat]);}else{roadMovement.routeSyncs++;animateTo(key,marker,target,700);}
     }else roadMovement.backwardHeld++;
   }else{
     dr.posicaoNaRota=null;
@@ -500,6 +510,7 @@ function startDR(){
         dr.marker.getElement().style.opacity=physicalAgeMs>gpsPolicy.publicMs?'0':physicalAgeMs>=300000?'0.55':'1';
         return;
       }
+      if(dr.visualAhead)return;
       if(!dr.lineCoords||dr.posicaoNaRota==null||!dr.velocidade||dr.velocidade<1||animFrames[key])return;
       var until=dr.gpsTimestamp===null?from:dr.gpsTimestamp+(dr.backendUnified?Math.max(0,dr.projectionUntil-dr.gpsTimestamp):roadMotionHorizonMs);
       var dt=Math.max(0,Math.min(now,until)-from)/1000;
