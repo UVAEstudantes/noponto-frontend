@@ -1926,7 +1926,7 @@ test('GPS age changes signal bars without recoloring the vehicle status',()=>{
    assert.doesNotMatch(html,/<details class="gps-freshness"[^>]*\bopen/);
   }
   const styles=r.f.load('../components/mapOSM/webview/mapStyles.ts').MAP_WEBVIEW_STYLES;
-  assert.match(styles,/summary svg\{[^}]*width:28px;height:28px/);
+  assert.match(styles,/summary svg\{[^}]*width:22px;height:22px/);
   assert.match(styles,/gps-bars-off\{color:#a3a3a3/);
   assert.match(styles,/gps-freshness-help\{[^}]*background:var\(--popup-surface\);color:var\(--popup-fg\)/);
  }finally{r.f.dispose();}
