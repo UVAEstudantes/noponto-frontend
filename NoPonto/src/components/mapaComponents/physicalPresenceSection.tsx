@@ -1,3 +1,4 @@
+import {gpsFreshness} from '@/src/services/gpsPresentationPolicy';
 import React from "react";
 import { Text, View } from "react-native";
 import { physicalAge, physicalFacilityName, physicalLocationLabel, type PhysicalVehicle } from "@/src/services/physicalPresenceContract";
@@ -19,7 +20,7 @@ export function renderPhysicalPresenceSection(vehicles: PhysicalVehicle[], now: 
         <Text style={{ color: cores.textoSecundario, fontSize: 10 }}>
           {vehicle.lineState === "Inherited" ? "Linha herdada" : vehicle.lineState === "Informed" ? "Linha informada" : "Linha não confirmada"}
           {` · GPS há ${Math.floor(age.seconds / 60)} min`}
-          {age.delayed ? " · GPS atrasado" : ""}
+          {` · ${gpsFreshness(Date.parse(vehicle.physicalAt),now).label}`}
           {` · ${physicalLocationLabel(vehicle)} · ${physicalFacilityName(vehicle.facilityStopId)}`}
         </Text>
       </View>;

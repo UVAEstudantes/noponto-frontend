@@ -46,3 +46,19 @@ export function gpsPresentation(physicalAt:number,now:number,policy:Readonly<Gps
     delayed:age>=policy.delayedMs,opacity:age>=policy.attenuatedMs ? .55 : 1,
     warning:age>=policy.attenuatedMs?'Última posição conhecida':age>=policy.delayedMs?'GPS atrasado':null};
 }
+
+
+// Temporal freshness is not spatial confidence or ETA accuracy.
+export const GPS_FRESHNESS_LEVELS=[
+  {until:60000,label:'Recente',color:'#3b82f6'},
+  {until:90000,label:'Atrasado',color:'#d97706'},
+  {until:120000,label:'Muito atrasado',color:'#c2410c'},
+  {until:180000,label:'Última localização estimada',color:'#a16207'},
+  {until:Number.MAX_SAFE_INTEGER,label:'Sem atualização confiável',color:'#737373'},
+];
+export function gpsFreshness(physicalAt:number,now:number,uncertain=false){
+  const age=now-physicalAt;
+  if(!Number.isFinite(physicalAt)||!Number.isFinite(age)||age<0)return {label:'Atualização indisponível',color:'#737373',uncertain:true};
+  const level=GPS_FRESHNESS_LEVELS.find(l=>age<l.until)??GPS_FRESHNESS_LEVELS.at(-1)!;
+  return {label:level.label,color:uncertain?'#d97706':level.color,uncertain};
+}
