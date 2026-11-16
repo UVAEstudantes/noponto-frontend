@@ -134,3 +134,11 @@ test('confirmed legacy terminal stop cannot retain an extrapolated position inde
  assert.equal(f.marker.pos.lng,shown);assert.equal(f.c.drState.bus.visualAhead,true);assert.equal(f.c.drState.bus.velocidade,0);
  f.advance(31000);assert.equal(f.marker.pos.lng,0);assert.equal(f.c.drState.bus.gpsTimestamp,f.base+10000);
 });
+
+for(const speed of [30,40])test(`delayed ${speed} kmh fix retains temporal speed through 55 seconds`,()=>{
+ const f=fixture();f.advance(25000);f.update({projectionUntil:f.base+90000,projectionSpeedKmh:speed,projectionMaxMetres:1000});
+ f.advance(15000);const a=f.c.drState.bus.projectedMetres;f.advance(1000);const b=f.c.drState.bus.projectedMetres;
+ assert.ok((b-a)*3.6>speed*.9,'no temporal penalty at age 40');
+ f.advance(14000);const before=f.c.drState.bus.projectedMetres;f.advance(1000);
+ assert.ok((f.c.drState.bus.projectedMetres-before)*3.6>speed*.85,'no early compounded slowdown');
+});

@@ -555,7 +555,8 @@ function startDR(){
       if(!dr.comprimentoGraus)return;
       var remaining=Math.max(0,(dr.projectionMaxMetres||gpsPolicy.maxProjectionMetres)-(dr.projectedMetres||0));
       var duration=until-dr.gpsTimestamp;
-      var confidence=Math.pow(Math.min(1,Math.max(0,until-now)/Math.max(1,duration-30000)),2);
+      var fade=Math.min(1,Math.max(0,(now-dr.gpsTimestamp-55000)/Math.max(1,duration-55000)));
+      var confidence=1-fade*fade*(3-2*fade);
       var spatial=Math.min(1,remaining/100);
       var metres=Math.min(remaining,dr.velocidade*dr.decelFactor/3.6*dt*confidence*spatial);
       dr.projectedMetres=(dr.projectedMetres||0)+metres;
