@@ -81,3 +81,15 @@ test('zero speed requires distinct physical evidence and estimates never replace
  const stopped=f.tick(60,.002);assert.equal(stopped.physicalMotionState,'stopped');assert.equal(stopped.backendMotionEligible,false);assert.equal(stopped.estimatedSpeedKmh,undefined);
  assert.equal(f.tick(80,.003).physicalMotionState,'moving');
 });
+test('partial operational metadata retains validated context without renewing its age',()=>{
+ const f=fixture();f.tick(0,.001);
+ f.v.operational={...f.v.operational!,timestampGps:new Date(base+30000).toISOString(),padraoVersaoId:null,sentidoId:null,latitude:undefined,longitude:undefined};
+ const p=f.tick(30,.002);assert.equal(p.padraoVersaoId,'out');assert.equal(p.contextValidatedAt,base);assert.equal(p.sentidoNome,'Destino');assert.equal(p.backendMotionEligible,true);
+ const expired=f.compose([f.line],[f.s],base+180000)[0].posicoes![0];assert.equal(expired.contextValidatedAt,undefined);assert.equal(expired.backendMotionEligible,false);
+});
+
+for(const conflict of ['line','direction','status'])test(`partial context is revoked on explicit ${conflict} conflict`,()=>{
+ const f=fixture();f.tick(0,.001);
+ f.v.operational={...f.v.operational!,timestampGps:new Date(base+30000).toISOString(),padraoVersaoId:null,sentidoId:conflict==='direction'?'opposite':null,linhaId:conflict==='line'?'other':'line',status:conflict==='status'?1:0};
+ const p=f.tick(30,.002);assert.equal(p.padraoVersaoId,null);assert.equal(p.backendMotionEligible,false);
+});
