@@ -234,12 +234,15 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         p.proximaParadaNome=next?.stop.nome??null;
         p.distanciaProximaParadaMetros=next?next.point!.metres-point.metres:null;
       }
-      // Extra distance requires individual coherence and a clear full-route corridor, never a shared prefix.
-      const adaptive=coherent&&effectiveSpeed!=null&&effectiveSpeed>2&&selected.kind==='retained'&&p.physicalMotionState==='moving'
-        &&departure?.state!=='No terminal'&&departure?.state!=='Saindo do terminal'
-        ?Math.max(policy.maxProjectionMetres,Math.min(600,observed!/3.6*60)):policy.maxProjectionMetres;
-      if(next?.point&&next.point.metres-point.metres>adaptive+30&&point.totalMetres-point.metres>adaptive+30)
-        p.projectionMaxMetres=adaptive;
+      // A validated route and current physical speed suffice; nearby ordinary stops do not prove a halt.
+      const reliable=effectiveSpeed!=null&&effectiveSpeed>2&&selected.kind==='retained'&&p.physicalMotionState==='moving'
+        &&departure?.state!=='No terminal'&&departure?.state!=='Saindo do terminal';
+      const seconds=Math.min(90,Math.max(0,(p.projectionUntil!-sample.at)/1000));
+      const budget=reliable?Math.max(policy.maxProjectionMetres,Math.min(1000,observed!/3.6*seconds)):policy.maxProjectionMetres;
+      const terminalAhead=next&&lineTerminals(line,policy).some(e=>e.stop.paradaId===next.stop.paradaId);
+      p.projectionMaxMetres=Math.min(budget,point.totalMetres-point.metres,
+        terminalAhead?Math.max(0,next!.point!.metres-point.metres-10):Infinity);
+      if(p.projectionMaxMetres<=0)p.backendMotionEligible=false;
       // A restart can recover initial-corridor presence through the same
       // validated GTFS / multi-observation physical context, never proximity.
       if(!p.terminalPresence&&point.metres>10){

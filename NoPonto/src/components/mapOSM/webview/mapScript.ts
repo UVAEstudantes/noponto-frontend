@@ -535,7 +535,7 @@ function kmhParaGrausPorSeg(kmh){
 
 // Original incremental DR. RAF owns a marker during reconciliation; DR waits.
 function roadProjectionMetres(speed,age,duration,cap){
-  var seconds=Math.max(0,Math.min(age,duration))/1000,start=Math.min(55,duration/1000),span=Math.max(.001,duration/1000-start);
+  var seconds=Math.max(0,Math.min(age,duration))/1000,start=Math.min(65,duration/1000),span=Math.max(.001,duration/1000-start);
   var u=Math.min(1,Math.max(0,(seconds-start)/span));
   var travelled=Math.max(0,speed)/3.6*(Math.min(seconds,start)+span*(u-u*u*u+u*u*u*u/2));
   var taper=Math.min(50,cap),free=Math.max(0,cap-taper);

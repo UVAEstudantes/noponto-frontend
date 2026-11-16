@@ -101,18 +101,18 @@ test('default visual horizon crosses 60 seconds but ends at 90 and coherent fixe
  const c=fixture();c.tick(0,.001);c.tick(20,.002);const coherent=c.tick(40,.003);assert.equal(coherent.projectionUntil,base+40000+120000);
 });
 
-for(const speed of [30,40])test(`adaptive budget ${speed} requires coherent individual progress and room before a stop`,()=>{
+for(const speed of [30,40])test(`validated budget ${speed} is available immediately and zero removes the extension`,()=>{
  const f=fixture();f.line.paradasPorPadrao!.out[0].longitude=.015;f.line.paradasPorPadrao!.out[0].posicaoLinha=.75;f.v.location.speedKmh=speed;const step=speed/3.6*20/111195;
- assert.equal(f.tick(0,.001).projectionMaxMetres,250);f.tick(20,.001+step);
- const p=f.tick(40,.001+step*2);assert.ok(p.projectionMaxMetres!>250);assert.ok(p.projectionMaxMetres!<=600);
+ assert.ok(f.tick(0,.001).projectionMaxMetres!>250);f.tick(20,.001+step);
+ const p=f.tick(40,.001+step*2);assert.ok(p.projectionMaxMetres!>250);assert.ok(p.projectionMaxMetres!<=1000);
  f.v.location.speedKmh=0;const stopped=f.tick(60,.001+step*2);assert.equal(stopped.backendMotionEligible,false);assert.equal(stopped.projectionMaxMetres,250);
 });
 
-test('adaptive budget stays basic near a stop or without known next stop',()=>{
+test('ordinary stop proximity or missing stop list cannot manufacture a physical halt',()=>{
  for(const near of [true,false]){
   const f=fixture();f.v.location.speedKmh=40;if(!near)f.line.paradasPorPadrao={};
   const step=40/3.6*20/111195;f.tick(0,.001);f.tick(20,.001+step);
-  assert.equal(f.tick(40,.001+step*2).projectionMaxMetres,250);
+  assert.equal(f.tick(40,.001+step*2).projectionMaxMetres,1000);
  }
 });
 
@@ -142,4 +142,18 @@ test('observed zero cannot unlock extra budget even when displacement estimates 
 test('stale GTFS signal cannot renew context at expiration without a new distinct physical sample',()=>{
  const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=1;f.tick(30,.002);
  const p=f.compose([f.line],[f.s],base+180000)[0].posicoes![0];assert.equal(p.contextValidatedAt,undefined);assert.equal(p.backendMotionEligible,false);assert.equal(p.padraoVersaoId,null);
+});
+
+for(const speed of [30,40])test(`one two and three validated fixes provide time-compatible ${speed} kmh road budget`,()=>{
+ const f=fixture();f.v.location.speedKmh=speed;const step=speed/3.6*20/111195;
+ for(const t of [0,20,40]){
+  const p=f.tick(t,.001+step*t/20);assert.ok(Math.abs(p.projectionMaxMetres!-speed/3.6*90)<.01);assert.equal(p.backendMotionEligible,true);
+ }
+});
+
+test('time-compatible budget ends before a known terminal and cannot cross route end',()=>{
+ const f=fixture();f.v.location.speedKmh=30;f.v.operational!.longitude=.016;
+ f.line.terminaisOficiais=['Terminal A','Terminal B'];
+ f.line.paradasPorPadrao={out:[{paradaId:'origin',nome:'Terminal A',ordem:1,latitude:0,longitude:0,posicaoLinha:0},{paradaId:'end',nome:'Terminal B',ordem:2,latitude:0,longitude:.02,posicaoLinha:1}]};
+ const p=f.tick(0,.016);assert.ok(p.projectionMaxMetres!>0);assert.ok(p.projectionMaxMetres!<=p.distanciaProximaParadaMetros!-9);assert.ok(p.projectionMaxMetres!<750);
 });

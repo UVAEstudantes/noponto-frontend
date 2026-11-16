@@ -1718,3 +1718,28 @@ for(const [speed,age] of [[30,25],[40,30]])test(`delayed basic ${speed} kmh GPS 
   r.advance(70);assert.ok(r.state().projectedMetres<=250);assert.ok(r.metres()<=250.1);
  }finally{r.f.dispose();}
 });
+
+for(const [speed,age,cap] of [[30,25,750],[40,30,1000]])test(`validated ${speed} kmh delayed route renders plausible speed through ages 55 65 and 75`,()=>{
+ const r=delayedRoadBridge({speed,age,cap});try{
+  assert.ok(Math.abs(r.metres()-speed/3.6*age)<1);const p=r.state();assert.equal(p.gpsTimestamp,r.at);
+  for(const target of [55,65,75]){
+   r.advance(target-(r.f.clock.now-r.at)/1000-1);const before=r.metres();r.advance(1);const actual=(r.metres()-before)*3.6;
+   assert.ok(actual>=speed*(target<=65?.95:.6),`age ${target}: ${actual} vs ${speed}`);
+   assert.ok(actual<=speed*1.01);assert.ok(p.projectedMetres<=cap);assert.ok(Math.abs(r.metres()-p.projectedMetres)<.1);
+  }
+  const old=r.metres(),newAt=r.f.clock.now-25000,physical=speed/3.6*(newAt-r.at)/1000;
+  r.send({timestamp:newAt,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:newAt+90000});
+  assert.equal(r.state().gpsTimestamp,newAt);assert.ok(r.metres()>=old-.1,'no direct reverse');
+  r.advance(1);assert.ok(r.metres()>=old-.1);assert.ok(r.state().projectedMetres<=cap);
+  const used=r.state().projectedMetres;r.send();assert.equal(r.state().projectedMetres,used);
+  r.advance(100);const stopped=r.metres();r.advance(5);assert.equal(r.metres(),stopped);
+ }finally{r.f.dispose();}
+});
+test('ITS without context and confirmed zero never extrapolate real WebView markers',()=>{
+ for(const options of [{context:null,speed:30},{speed:0}]){
+  const r=delayedRoadBridge(options);try{const before=r.metres();r.advance(50);assert.equal(r.metres(),before);assert.equal(r.state().gpsTimestamp,r.at);}finally{r.f.dispose();}
+ }
+});
+test('rendered projection never crosses the confirmed route end',()=>{
+ const r=delayedRoadBridge({speed:40,age:30,cap:1000,remaining:350});try{r.advance(60);assert.ok(r.metres()<=350.1);assert.equal(r.state().posicaoNaRota,1);}finally{r.f.dispose();}
+});
