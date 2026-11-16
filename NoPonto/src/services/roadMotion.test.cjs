@@ -149,7 +149,10 @@ for(const speed of [30,40])test(`coherent delayed ${speed} kmh projection compen
  const initial=f.c.drState.bus.projectedMetres;assert.ok(Math.abs(initial-speed/3.6*25)<1,'initial age is physical, not receipt time');
  f.advance(15000);const a=f.c.drState.bus.projectedMetres;f.advance(1000);assert.ok((f.c.drState.bus.projectedMetres-a)*3.6>speed*.9);
  f.advance(14000);const b=f.c.drState.bus.projectedMetres;f.advance(1000);assert.ok((f.c.drState.bus.projectedMetres-b)*3.6>Math.max(8,speed*.2));
- f.advance(9000);const old=f.c.drState.bus.projectedMetres;assert.ok(old<cap);const gps=speed/3.6*40/111000;
+ f.advance(9000);const old=f.c.drState.bus.projectedMetres;assert.ok(old<cap);
+ let previous=0;for(let age=25100;age<=65000;age+=100){const temporal=Math.min(1,Math.max(0,90000-age)/60000)**2;previous+=Math.min(250-previous,speed/3.6*.1*temporal*Math.min(1,(250-previous)/100));}
+ assert.ok(Math.abs(old-speed/3.6*65)<Math.abs(previous-speed/3.6*65),'less presentation lag than stage 2A');
+ const gps=speed/3.6*40/111000;
  f.update({projectionUntil:f.base+160000,projectionSpeedKmh:speed,projectionMaxMetres:cap,contextConfidence:'retained',longitude:gps},undefined,f.base+40000,gps);
  assert.equal(f.c.drState.bus.gpsTimestamp,f.base+40000);assert.ok(f.c.drState.bus.projectedMetres<=cap);
  assert.ok(Math.abs(f.c.drState.bus.posicaoNaRota*111000-speed/3.6*65)<speed/3.6*12,'normal reconciliation remains close to current progress');
@@ -176,4 +179,11 @@ test('same physical fix with a confirmed direction conflict invalidates preserve
  const f=fixture();f.update();f.c.updateRoadHeading('bus',f.marker,90);
  f.update({backendMotionEligible:false},null,f.base,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,270);
  assert.equal(f.c.drState.bus.gpsTimestamp,f.base);assert.equal(f.c.drState.bus.headingKind,'unavailable');assert.equal(f.c.vehicleHeadings.bus,undefined);
+});
+
+test('new physical displacement can establish heading after a confirmed direction change',()=>{
+ const f=fixture();f.update();f.c.updateRoadHeading('bus',f.marker,90);f.advance(10000);
+ f.update({backendMotionEligible:false,longitude:.0002},null,f.base+10000,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,0);assert.equal(f.c.drState.bus.headingKind,'unavailable');
+ f.advance(10000);f.update({backendMotionEligible:false,longitude:0},null,f.base+20000,null,'line|reverse||');f.c.updateRoadHeading('bus',f.marker,0);
+ assert.equal(f.c.drState.bus.headingKind,'physical');assert.equal(f.c.vehicleHeadings.bus,270);
 });

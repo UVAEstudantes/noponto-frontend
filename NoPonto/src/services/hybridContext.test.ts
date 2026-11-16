@@ -133,3 +133,13 @@ for(const conflict of ['line','direction','inactive','same-fix'])test(`ITS canno
  const p=f.tick(conflict==='same-fix'?0:30,conflict==='same-fix'?.001:.002);
  assert.equal(p.backendMotionEligible,false);assert.equal(p.padraoVersaoId,null);
 });
+
+test('observed zero cannot unlock extra budget even when displacement estimates a moving speed',()=>{
+ const f=fixture();f.line.paradasPorPadrao!.out[0].longitude=.015;f.v.location.speedKmh=30;
+ const step=30/3.6*20/111195;f.tick(0,.001);f.tick(20,.001+step);assert.ok(f.tick(40,.001+step*2).projectionMaxMetres!>250);
+ f.v.location.speedKmh=0;const p=f.tick(60,.001+step*3);assert.ok(p.estimatedSpeedKmh!>0);assert.equal(p.lastObservedSpeedKmh,0);assert.equal(p.projectionMaxMetres,250);
+});
+test('stale GTFS signal cannot renew context at expiration without a new distinct physical sample',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=1;f.tick(30,.002);
+ const p=f.compose([f.line],[f.s],base+180000)[0].posicoes![0];assert.equal(p.contextValidatedAt,undefined);assert.equal(p.backendMotionEligible,false);assert.equal(p.padraoVersaoId,null);
+});

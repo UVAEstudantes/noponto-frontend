@@ -1673,3 +1673,27 @@ test('intentional GPS stop without owners does not report gateway failure', asyn
   assert.equal(f.hub.state, 'Disconnected'); assert.equal(f.gatewayFailures(), 0);
   f.dispose();
 });
+
+test('hybrid GTFS ITS continuity reaches real WebView with one identity and bounded physical-age budget',()=>{
+ const f=fixture({presence:false});try{
+  const web=webViewRuntime(f.load('../components/mapOSM/webview/mapScript.ts').buildMapWebViewScript({latInicial:0,lngInicial:0,estilosJS:'',filtrosMapaJS:'',estiloMapaPadrao:'fixture'}),f.clock);
+  const compose=f.load('hybridContext.ts').createHybridComposer(),origin=f.clock.now-25000;
+  const line={nome:'855',linhaId:'line',modal:'onibus',segmentos:[[[0,0],[0,.1]],[[0,.1],[0,0]]],itinerarioSegmentoMap:{out:0,back:1},itinerarioSentidoMap:{out:'Destino'},paradasPorPadrao:{out:[{paradaId:'next',nome:'Seguinte',ordem:1,latitude:0,longitude:.05,posicaoLinha:.5}]}};
+  const op={timestampGps:new Date(origin).toISOString(),status:0,linhaId:'line',codigoLinha:'855',padraoVersaoId:'out',sentidoId:'out',latitude:0,longitude:.001};
+  const v={key:'D86000',order:'D86000',line:{lineId:'line',serviceCode:'855',state:1},location:{latitude:0,longitude:.001,physicalAt:new Date(origin).toISOString(),validUntil:new Date(origin+480000).toISOString(),source:'GTFSRT_BUS',provider:'GTFS',speedKmh:30,uncertain:false,reason:'valid'},operational:op,spatial:{facilityStopId:null,state:'Outside'},motionEligible:true};
+  const snapshot={schemaVersion:1,enabled:true,lineCode:'855',revision:1,composedAt:new Date(f.clock.now).toISOString(),vehicles:[v]};
+  const send=()=>{const output=compose([line],[snapshot],f.clock.now);web.context.window.updateMap({unifiedCodes:['855'],linhas:output});return output[0].posicoes[0];};
+  send();const key='onibus:855:D86000',marker=web.context.vehicleMarkers[key];
+  v.location.source='ITS_CURRENT';v.motionEligible=false;op.status=1;
+  for(const seconds of [20,40,60]){
+   f.clock.now=origin+seconds*1000+25000;v.location.physicalAt=new Date(origin+seconds*1000).toISOString();v.location.longitude=.001+30/3.6*seconds/111195;snapshot.revision++;
+   const p=send(),dr=web.context.drState[key];assert.equal(p.contextValidatedAt,origin);assert.equal(p.physicalOnly,false);assert.equal(p.backendMotionEligible,true);assert.equal(p.proximaParadaNome,'Seguinte');
+   assert.equal(dr.gpsTimestamp,origin+seconds*1000);assert.equal(web.context.vehicleMarkers[key],marker);assert.equal(Object.keys(web.context.vehicleMarkers).length,1);assert.ok(dr.projectedMetres<=p.projectionMaxMetres);
+   for(const [id,fn] of [...web.frames]){web.frames.delete(id);fn(f.clock.now+2000);}
+   assert.ok(Math.abs(web.context.vehicleHeadings[key]-90)<1);assert.ok(marker.getLngLat().lng>=v.location.longitude-1e-6);
+   const used=dr.projectedMetres;send();assert.equal(dr.projectedMetres,used);
+  }
+  f.clock.now=origin+105000;v.operational={...op,status:0,timestampGps:new Date(origin+80000).toISOString(),longitude:.001+30/3.6*80/111195};v.location.physicalAt=v.operational.timestampGps;v.location.longitude=v.operational.longitude;v.location.source='GTFSRT_BUS';snapshot.revision++;
+  const restored=send();assert.equal(restored.contextConfidence,'confirmed');assert.equal(web.context.vehicleMarkers[key],marker);
+ }finally{f.dispose();}
+});

@@ -375,7 +375,7 @@ function updateRoadHeading(key,marker,fallback){
       heading=(Math.atan2((current.lng-sample.lng)*Math.cos(current.lat*Math.PI/180),current.lat-sample.lat)*180/Math.PI+360)%360;
       dr.headingKind='physical';
     }else if(same&&typeof previous==='number'&&Date.now()-(dr.headingAt||0)<90000){dr.headingKind='preserved';return;}
-    else{dr.headingKind='unavailable';delete vehicleHeadings[key];setHeading(marker,0);return;}
+    else{dr.headingKind='unavailable';dr.headingIdentity=dr.identity;delete vehicleHeadings[key];setHeading(marker,0);return;}
   }else dr.headingKind='route';
   if(typeof heading!=='number'||!isFinite(heading))return;
   var metres=routed?dr.posicaoNaRota*(dr.routeMetres||comprimentoRotaGraus(dr.lineCoords)*111000):null;
