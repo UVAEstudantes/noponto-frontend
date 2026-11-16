@@ -28,7 +28,7 @@ test('one zero speed during real ITS displacement preserves departure route and 
 });
 test('a real multi-fix stop pauses projection keeps itinerary and resumes on displacement',()=>{
  const f=fixture();f.tick(0,0,0);f.tick(20,0,0);f.tick(40,50,9);f.tick(60,100,9);
- assert.equal(f.tick(80,100,0).backendMotionEligible,false);const stopped=f.tick(100,100,0);assert.equal(stopped.padraoVersaoId,'out');assert.equal(stopped.backendMotionEligible,false);
+ const pending=f.tick(80,100,0);assert.equal(pending.backendMotionEligible,true);assert.ok(pending.projectionMaxMetres!<=25);const stopped=f.tick(100,100,0);assert.equal(stopped.padraoVersaoId,'out');assert.equal(stopped.backendMotionEligible,false);
  assert.equal(f.tick(120,150,9).backendMotionEligible,true);
 });
 test('positive reported speed without real displacement cannot renew visual movement or assert a physical stop',()=>{

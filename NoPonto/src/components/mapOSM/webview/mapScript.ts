@@ -482,7 +482,7 @@ function updateRoadMotion(key,marker,p,coords,timestamp,position,identity){
   }
   var stop=parseNum(p.distanciaProximaParadaMetros);
   dr.decelFactor=stop!==null&&stop<300?Math.max(.72,.95-(300-stop)/1200):1;
-  dr.velocidade=terminalStopped?0:Math.max(0,speed||0);
+  dr.velocidade=terminalStopped?0:Math.max(0,speed||0);dr.zeroDecayMs=p.projectionSpeedKind==='possible_stop'?30000:p.projectionSpeedKind==='displacement'&&p.lastObservedSpeedKmh===0?45000:0;
   dr.gpsTimestamp=timestamp;dr.gpsPosition=position;dr.gpsCoordinate=dest;dr.projectedMetres=0;
   if(terminalStopped)roadMovement.terminalStops++;
   if(terminalStopped&&!first)stopAnim(key);
@@ -599,6 +599,7 @@ function startDR(){
       var requested=Math.max(0,roadProjectionMetres(dr.velocidade*dr.decelFactor,now-dr.gpsTimestamp,duration,Infinity)
         -roadProjectionMetres(dr.velocidade*dr.decelFactor,from-dr.gpsTimestamp,duration,Infinity));
       if(dr.visualAhead)requested*=dr.reconcileFactor;
+      if(dr.zeroDecayMs)requested*=Math.max(0,1-(now-dr.gpsTimestamp)/dr.zeroDecayMs);
       // Spatial confidence spends the actual ledger, never an unrendered arrival delay.
       var taper=Math.min(50,cap),free=Math.max(0,remaining-taper);
       var metres=requested<=free?requested:free+Math.min(remaining,taper)*(1-Math.exp(-(requested-free)/Math.max(1,taper)));

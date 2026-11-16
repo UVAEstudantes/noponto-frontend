@@ -6,7 +6,7 @@ import { createTerminalTracker,lineTerminals,type TerminalDiagnostics } from './
 
 type Sample = { lat:number; lon:number; at:number };
 type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred'; operationalDirection?:string|null };
-type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
+type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;movingSpeed?:number;movingAt?:number;zeroAt?:number;zeroFixes?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
 const distance=(a:Sample,b:Sample)=>Math.hypot(a.lat-b.lat,(a.lon-b.lon)*Math.cos(a.lat*Math.PI/180))*111195;
 
 /** Mount-scoped physical evidence. No persistence, operational writes, or ITS renewal. */
@@ -52,14 +52,26 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       const stationaryContradiction=dt>=5&&moved<=3&&effectiveSpeed!=null&&effectiveSpeed>2;
       if(stationaryContradiction)motionSpeed=undefined;
       if(effectiveSpeed===0&&derived!=null)p.projectionSpeedKind='displacement';
+      if(!last||dt>0){
+        if(effectiveSpeed===0&&derived==null){
+          if(track.zeroAt==null||dt>45){track.zeroAt=sample.at;track.zeroFixes=1;}else track.zeroFixes=(track.zeroFixes??0)+1;
+        }else{track.zeroAt=undefined;track.zeroFixes=0;}
+        if(effectiveSpeed!=null&&effectiveSpeed>2&&(!last||moved>3)){track.movingSpeed=effectiveSpeed;track.movingAt=sample.at;}
+      }
       if(dt>0){
-        if(dt>=5&&moved<=12&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){if(!track.stationary)track.stationaryAt=last!.at;track.stationary=(track.stationary??0)+1;}else{track.stationary=0;track.stationaryAt=undefined;}
+        if(dt>=5&&moved<=12&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){
+          if(!track.stationary||dt>45){track.stationaryAt=track.zeroAt??sample.at;track.stationary=0;}
+          track.stationary=(track.stationary??0)+1;
+        }else{track.stationary=0;track.stationaryAt=undefined;}
       }
       p.physicalMotionState=(track.stationary??0)>=2&&sample.at-(track.stationaryAt??sample.at)>=15000&&(effectiveSpeed==null||effectiveSpeed<=2)?'stopped':(track.stationary??0)>0?'pause_pending':'moving';
       const invalid=vehicle.location.uncertain||now-sample.at>policy.publicMs||
         !!last&&(dt>120||dt===0&&distance(last,sample)>1||dt>0&&distance(last,sample)>Math.max(35,dt*33));
       let restriction=invalid?(vehicle.location.uncertain?'physical_uncertain':now-sample.at>policy.publicMs?'gps_expired':'gap_or_displacement_invalid'):undefined;
-      p.estimatedSpeedKmh=!invalid&&effectiveSpeed===0?derived:undefined;
+      const residual=!invalid&&effectiveSpeed===0&&derived==null&&track.zeroFixes===1&&track.movingAt!=null
+        &&sample.at-track.movingAt<=45000&&now-track.movingAt<=75000&&now-sample.at<30000?track.movingSpeed!*0.45:undefined;
+      if(residual!=null){motionSpeed=residual;p.projectionSpeedKind='possible_stop';}
+      p.estimatedSpeedKmh=!invalid&&effectiveSpeed===0?(derived??residual):undefined;
       if(!invalid&&last&&dt>0&&distance(last,sample)>=10){
         p.direcao=(Math.atan2((sample.lon-last.lon)*Math.cos(sample.lat*Math.PI/180),sample.lat-last.lat)*180/Math.PI+360)%360;
       }
@@ -105,6 +117,7 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         return coords?projectPhysical(coords,sample.lat,sample.lon,prior?.pattern===pattern&&elapsed>=0&&elapsed<=120?{min:Math.max(0,prior.point.metres-30),max:prior.point.metres+Math.max(35,elapsed*33)}:undefined):null;
       };
       const departure=p.terminalPresence;
+      if(departure?.state==='No terminal'&&p.projectionSpeedKind==='possible_stop'){motionSpeed=0;p.estimatedSpeedKmh=undefined;p.projectionSpeedKind='observed';}
       const context=track.context;
       if(context) {
         const coords=shape(context.pattern);
@@ -242,6 +255,16 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       const terminalAhead=next&&lineTerminals(line,policy).some(e=>e.stop.paradaId===next.stop.paradaId);
       p.projectionMaxMetres=Math.min(budget,point.totalMetres-point.metres,
         terminalAhead?Math.max(0,next!.point!.metres-point.metres-10):Infinity);
+      if(p.projectionSpeedKind==='possible_stop'){
+        p.projectionUntil=Math.min(p.projectionUntil!,sample.at+30000,track.movingAt!+75000);
+        p.projectionMaxMetres=Math.min(p.projectionMaxMetres!,25,next?Math.max(0,next.point!.metres-point.metres-5):Infinity);
+        p.backendMotionEligible=p.backendMotionEligible&&now<p.projectionUntil&&p.projectionMaxMetres>0;
+      }
+      if(effectiveSpeed===0&&derived!=null){
+        p.projectionUntil=Math.min(p.projectionUntil!,sample.at+45000);
+        p.projectionMaxMetres=Math.min(p.projectionMaxMetres!,40,next?Math.max(0,next.point!.metres-point.metres-5):Infinity);
+        p.backendMotionEligible=p.backendMotionEligible&&now<p.projectionUntil&&p.projectionMaxMetres>0;
+      }
       if(p.projectionMaxMetres<=0)p.backendMotionEligible=false;
       // A restart can recover initial-corridor presence through the same
       // validated GTFS / multi-observation physical context, never proximity.
@@ -287,6 +310,7 @@ export function createHybridComposer(options:{enabled?:boolean;metrics?:HybridMe
     }
     for(const line of result)for(const p of line.posicoes??[]){
       if(p.contextValidatedAt)boundary(p.contextValidatedAt+policy.contextMs);
+      if(p.projectionUntil)boundary(p.projectionUntil);
       if(p.speedObservedAt)boundary(p.speedObservedAt+policy.publicMs+1);
     }
     if(metrics){metrics.processing++;metrics.lastMs=performance.now()-start;metrics.maxMs=Math.max(metrics.maxMs,metrics.lastMs);}

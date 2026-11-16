@@ -1827,3 +1827,13 @@ test('large forward correction repositions without a long route animation or a f
   assert.ok(Math.abs(r.metres()-physical)<.1);assert.equal(r.web.frames.size,0);assert.equal(r.state().gpsTimestamp,at);assert.equal(r.state().gpsCoordinate.lng,physical/r.m);assert.equal(r.state().projectedMetres,0);
  }finally{r.f.dispose();}
 });
+
+
+test('possible stop renders a decaying residual within twenty five metres without rewriting observed zero',()=>{
+ const r=delayedRoadBridge({speed:30,age:0,cap:750});try{
+  r.advance(10);const start=r.metres(),at=r.f.clock.now;
+  r.send({timestamp:at,longitude:start/r.m,posicaoNaRota:start/10000,projectionSpeedKmh:13.5,lastObservedSpeedKmh:0,velocidade:0,estimatedSpeedKmh:13.5,projectionSpeedKind:'possible_stop',projectionMaxMetres:25,projectionUntil:at+30000});
+  r.advance(1);const a=r.metres();r.advance(4);const b=r.metres();assert.ok(b>a&&a>start);r.advance(20);const c=r.metres();r.advance(1);assert.ok((r.metres()-c)*3.6<(a-start)*3.6);r.advance(10);
+  const stopped=r.metres();r.advance(5);assert.equal(r.metres(),stopped);assert.ok(stopped-start<=25);assert.equal(r.state().gpsTimestamp,at);
+ }finally{r.f.dispose();}
+});
