@@ -157,3 +157,31 @@ test('time-compatible budget ends before a known terminal and cannot cross route
  f.line.paradasPorPadrao={out:[{paradaId:'origin',nome:'Terminal A',ordem:1,latitude:0,longitude:0,posicaoLinha:0},{paradaId:'end',nome:'Terminal B',ordem:2,latitude:0,longitude:.02,posicaoLinha:1}]};
  const p=f.tick(0,.016);assert.ok(p.projectionMaxMetres!>0);assert.ok(p.projectionMaxMetres!<=p.distanciaProximaParadaMetros!-9);assert.ok(p.projectionMaxMetres!<750);
 });
+
+
+test('stale same-trip SemSinal cannot revoke a coherent inferred corridor after operational expiry',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=1;
+ for(const t of [30,60,90,120,150,180,210,240]){
+  const p=f.tick(t,.001+t*.00003);assert.equal(p.padraoVersaoId,'out',`corridor at ${t}`);assert.equal(p.backendMotionEligible,true,`motion at ${t}`);
+  if(t>=180){assert.equal(p.contextConfidence,'inferred');assert.equal(p.sentidoId,null);assert.equal(p.padraoOperacionalId,null);assert.ok(p.projectionMaxMetres!<=250);}
+ }
+});
+
+
+for(const conflict of ['direction','pattern','line','inactive','uncertain'])test(`inferred ITS corridor still rejects a confirmed ${conflict} conflict after GTFS expiry`,()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=1;
+ for(const t of [30,60,90,120,150,180])f.tick(t,.001+t*.00003);
+ if(conflict==='direction')f.v.operational!.sentidoId='reverse';
+ if(conflict==='pattern')f.v.operational!.padraoVersaoId='back';
+ if(conflict==='line')f.v.operational!.linhaId='other';
+ if(conflict==='inactive')f.v.operational!.status=2;
+ if(conflict==='uncertain')f.v.location.uncertain=true;
+ const p=f.tick(210,.0073);assert.equal(p.backendMotionEligible,false);assert.equal(p.padraoVersaoId,null);assert.equal(p.proximaParadaNome,null);
+});
+
+test('GTFS can confirm an ITS inferred corridor again without inheriting an operational validation time',()=>{
+ const f=fixture();f.tick(0,.001);f.v.location.source='ITS_CURRENT';f.v.operational!.status=1;
+ for(const t of [30,60,90,120,150,180,210])f.tick(t,.001+t*.00003);
+ f.v.location.source='GTFSRT_BUS';f.v.operational={...f.v.operational!,status:0,timestampGps:new Date(base+240000).toISOString(),longitude:.0082};
+ const p=f.tick(240,.0082);assert.equal(p.contextConfidence,'confirmed');assert.equal(p.contextValidatedAt,base+240000);assert.equal(p.sentidoId,'direction');assert.equal(p.backendMotionEligible,true);assert.equal(f.compose([f.line],[f.s],base+240000)[0].posicoes!.length,1);
+});

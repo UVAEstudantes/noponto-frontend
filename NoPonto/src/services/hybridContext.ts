@@ -5,7 +5,7 @@ import { GPS_POLICY,type GpsPresentationPolicy } from './gpsPresentationPolicy';
 import { createTerminalTracker,lineTerminals,type TerminalDiagnostics } from './terminalTracking';
 
 type Sample = { lat:number; lon:number; at:number };
-type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred' };
+type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred'; operationalDirection?:string|null };
 type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
 const distance=(a:Sample,b:Sample)=>Math.hypot(a.lat-b.lat,(a.lon-b.lon)*Math.cos(a.lat*Math.PI/180))*111195;
 
@@ -69,9 +69,9 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       const physicalContinuation=!!track.context&&vehicle.location.source==='ITS_CURRENT'&&op?.status===1&&opAt<sample.at
         &&op.linhaId===line.linhaId&&op.codigoLinha===line.nome
         &&(op.padraoVersaoId==null||op.padraoVersaoId===track.context.pattern)
-        &&(op.sentidoId==null||op.sentidoId===track.context.direction);
+        &&(op.sentidoId==null||op.sentidoId===(track.context.direction??track.context.operationalDirection));
       // Missing an old operational cycle does not negate a newer compatible physical observation.
-      if(op&&(op.status!==0&&!physicalContinuation||track.context&&opAt>=track.operationAt&&(op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context.pattern||op.sentidoId!=null&&op.sentidoId!==track.context.direction))) {
+      if(op&&(op.status!==0&&!physicalContinuation||track.context&&opAt>=track.operationAt&&(op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context.pattern||op.sentidoId!=null&&op.sentidoId!==(track.context.direction??track.context.operationalDirection)))) {
         restriction='operational_conflict';
         track.context=undefined;track.samples=[sample];
         if(op.status!==0&&!physicalContinuation)track.blockedAt=Math.max(track.blockedAt,sample.at);
@@ -115,7 +115,7 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
           ||context.kind==='inferred'&&departure?.originPath&&!departure.originPath.patterns.includes(context.pattern)
           ||!!prior&&(projected!.metres<prior.metres-30||projected!.metres-prior.metres>Math.max(35,dt*33));
         if(expired&&!incompatible&&!invalid&&dt>0&&track.samples.length>=3&&track.lastProjection?.pattern===context.pattern&&departure?.state!=='No terminal'&&(!op||now-opAt>=CONTEXT_MS)){
-          track.context={pattern:context.pattern,direction:null,validatedAt:sample.at,kind:'inferred'};
+          track.context={pattern:context.pattern,direction:null,validatedAt:sample.at,kind:'inferred',operationalDirection:context.direction??context.operationalDirection};
         }else if(expired||incompatible) {
           restriction=expired?'context_expired':!projected?'geometry_missing':projected.ambiguous?'route_ambiguous':projected.gap>60?'off_route':'route_reverse_or_jump';
           track.context=undefined;
