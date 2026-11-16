@@ -73,6 +73,7 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
   let gatewayActive = 0, gatewayFailures = 0; const gatewayListeners = new Set();
   const gatewayMock = { snapshot: () => ({active: gatewayActive, status: 'online'}), subscribe: fn => { gatewayListeners.add(fn); return () => gatewayListeners.delete(fn); }, hubConnected() {}, hubFailure() { gatewayFailures++; } };
   const mocks = {
+    '@react-navigation/native': {useIsFocused:()=>true},
     './gateway': { gateway: gatewayMock, gatewayHubUrl: () => gatewayActive ? 'https://reserve.test/hub/gps' : 'https://primary.test/hub/gps' },
     ...(unified?{'@/src/services/unifiedLocation':{useUnifiedLocation:()=>({snapshots:unified,now:clock.now})}}:{}),
     '@/src/config/env':{config:{GPS_HUB_URL:'fixture'}},
@@ -124,7 +125,18 @@ function fixture({presence = true, dev = false, trace = false, traceOrder = '', 
     const runtime = reactRuntime(); runtimes.push(runtime);
     const component = load('../components/mapOSM/mapOSM.tsx').default;
     const ref = {current:null};
-    return {render(props) {currentReact = runtime.react; return runtime.render(() => component(props, ref));}};
+    return {render(props) {
+      currentReact = runtime.react;
+      const tree=runtime.render(() => component(props, ref));
+      function findWebView(node) {
+        if(node?.props?.onMessage)return node;
+        for(const child of [node?.props?.children].flat(Infinity)) {
+          const found=child&&findWebView(child);if(found)return found;
+        }
+        return null;
+      }
+      const view=findWebView(tree);assert.ok(view,'bridge must render the real WebView');return view;
+    }};
   }
   return {load, service, hub, handlers, callbacks, calls, clock, intervals, appState, hook, api, raw, structures, bridge, diagnostics,
     gatewayFailures: () => gatewayFailures,
