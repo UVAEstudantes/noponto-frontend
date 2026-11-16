@@ -1719,17 +1719,17 @@ for(const [speed,age] of [[30,25],[40,30]])test(`delayed basic ${speed} kmh GPS 
  }finally{r.f.dispose();}
 });
 
-for(const [speed,age,cap] of [[30,25,750],[40,30,1000]])test(`validated ${speed} kmh delayed route renders plausible speed through ages 55 65 and 75`,()=>{
+for(const [speed,age,cap] of [[30,25,750],[40,30,1000]])test(`validated ${speed} kmh delayed route renders plausible speed through ages 55 65 and 75`,t=>{
  const r=delayedRoadBridge({speed,age,cap});try{
-  assert.ok(Math.abs(r.metres()-speed/3.6*age)<1);const p=r.state();assert.equal(p.gpsTimestamp,r.at);
+  assert.ok(Math.abs(r.metres()-speed/3.6*age)<1);const p=r.state(),samples=[];assert.equal(p.gpsTimestamp,r.at);
   for(const target of [55,65,75]){
    r.advance(target-(r.f.clock.now-r.at)/1000-1);const before=r.metres();r.advance(1);const actual=(r.metres()-before)*3.6;
    assert.ok(actual>=speed*(target<=65?.95:.6),`age ${target}: ${actual} vs ${speed}`);
-   assert.ok(actual<=speed*1.01);assert.ok(p.projectedMetres<=cap);assert.ok(Math.abs(r.metres()-p.projectedMetres)<.1);
+   assert.ok(actual<=speed*1.01);assert.ok(p.projectedMetres<=cap);assert.ok(Math.abs(r.metres()-p.projectedMetres)<.1);samples.push({age:target,expectedKmh:speed,renderedKmh:+actual.toFixed(2),markerMetres:+r.metres().toFixed(2),usedMetres:+p.projectedMetres.toFixed(2)});
   }
   const old=r.metres(),newAt=r.f.clock.now-25000,physical=speed/3.6*(newAt-r.at)/1000;
   r.send({timestamp:newAt,longitude:physical/r.m,posicaoNaRota:physical/10000,projectionUntil:newAt+90000});
-  assert.equal(r.state().gpsTimestamp,newAt);assert.ok(r.metres()>=old-.1,'no direct reverse');
+  assert.equal(r.state().gpsTimestamp,newAt);assert.ok(r.metres()>=old-.1,'no direct reverse');t.diagnostic(JSON.stringify({speed,cap,samples,nextFixAge:25,targetCorrectionMetres:+(r.state().posicaoNaRota*10000-old).toFixed(2)}));
   r.advance(1);assert.ok(r.metres()>=old-.1);assert.ok(r.state().projectedMetres<=cap);
   const used=r.state().projectedMetres;r.send();assert.equal(r.state().projectedMetres,used);
   r.advance(100);const stopped=r.metres();r.advance(5);assert.equal(r.metres(),stopped);
