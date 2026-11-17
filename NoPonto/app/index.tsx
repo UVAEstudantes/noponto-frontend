@@ -567,6 +567,7 @@ const Home = () => {
       &&(contextoDetalhe?consultaDetalhe.foreground:radarConsultado.foreground),contextoDetalhe?consultaDetalhe.eventos:radarConsultado.eventos);
   const radarTerminalPresence=useMemo(()=>mergeTerminalEvidence(terminalPresence,scopedTerminalPresence),[terminalPresence,scopedTerminalPresence]);
   const acompanhamento = useRadarEspera({
+    paradaAberta: paradaSelecionada ?? (radarConsultado.manual ? radarConsultado.parada?.parada : null),
     // Visualizar detalhes não transfere o alvo; selecionar no próprio Radar, sim.
     selecaoDeliberada: !paradaSelecionada && radarConsultado.manual,
     veiculosObservados: __DEV__ ? veiculos.flatMap(v => v.linhaId && v.codigoVeiculoOuTrem

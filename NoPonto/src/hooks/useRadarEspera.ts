@@ -37,6 +37,7 @@ const sessao = criarSessaoRadarEspera({
 });
 
 export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
+  paradaAberta?: import('../types/transporte').Parada | null;
   selecaoDeliberada?: boolean;
   /** A sessão Native Probe substitui temporariamente apenas o aviso local legado. */
   suprimirNotificacaoLocal?: boolean;

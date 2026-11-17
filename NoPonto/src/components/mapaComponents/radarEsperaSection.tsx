@@ -300,7 +300,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
                 onPress={() => setJanela(janela + 1)} style={botaoMinuto(maisDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>+</Text></Pressable>
             </View>
           </TutorialTarget>
-          {remoto && <RadarProgramado entrada={c.entradaProgramacao}/>}
+          {remoto && <RadarProgramado entrada={c.entradaProgramacao} sugeridas={c.selecionadas}/>}
           <RadarAvisosPorVoz tutorialScrollRef={scrollRef} />
           <TutorialTarget kind="radar" enabled={tutorial.step === "notificationBackground"} reveal clipRef={scrollRef}>
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto
