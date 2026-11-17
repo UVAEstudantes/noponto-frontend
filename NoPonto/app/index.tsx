@@ -28,7 +28,6 @@ import { usePhysicalPresence } from "@/src/services/physicalPresence";
 import { chegadasDoRadar } from "@/src/services/apresentacaoRadar";
 import { adaptarPreviaRadarNativa } from "@/src/services/notificacaoRadarNativa";
 import { useRadarEspera } from "@/src/hooks/useRadarEspera";
-import { compararSnapshotsRadar, type SnapshotDiagnosticoRadar } from '@/src/services/diagnosticoConsistenciaRadar';
 import { useIsFocused } from "@react-navigation/native";
 import Constants from "expo-constants";
 import {
@@ -697,14 +696,6 @@ const Home = () => {
     encerrarNativeProbe, liberarNativeProbe,
     consultaDetalhe.foreground, paradaSelecionadaId]);
   const radar = { ...radarConsultado, previaNotificacao: acompanhamento.previa };
-  const ultimoCompacto = useRef<SnapshotDiagnosticoRadar | null>(null);
-  if (__DEV__ && !paradaSelecionada && telaAtiva && !buscaAberta && !containerAberto) ultimoCompacto.current = { ...radarConsultado, presencasFisicas: radarTerminalPresence };
-  const diagnosticarRadares = __DEV__ ? () => {
-    const comparacao = compararSnapshotsRadar(ultimoCompacto.current, radarConsultado,
-      { paradaId: acompanhamento.paradaIdMonitorada, estado: acompanhamento.estado, previa: acompanhamento.previa }, radarTerminalPresence);
-    console.info('[Radar comparação DEV]', JSON.stringify(comparacao, null, 2));
-    Alert.alert('Comparação dos Radares · DEV', 'Snapshot limitado registrado no Metro. Inclui a última representação compacta, a consulta atual e o alvo do Radar de Espera. Nenhuma consulta adicional foi feita.');
-  } : undefined;
   const idsLinhasDetalhe = new Set(contextoDetalhe?.vinculos.map((item) => item.linhaId) ?? []);
   const linhasNaParada: LinhaParadaInfo[] = radarLines.filter((item) => item.ativa
     && idsLinhasDetalhe.has(item.linhaId)).map((item) => ({
@@ -1099,7 +1090,6 @@ const Home = () => {
       />
 
       <RadarParada bloqueadoPeloTutorial={radarBlocked(tutorial.step)} viewportHeight={alturaAreaMapa} onControlsBottomChange={atualizarPosicaoControlesRadar} radar={radar} linhas={linhasSelecionadasFiltradas} modal={viewMode === "favoritos" ? "todos" : normalModal}
-        onDiagnostico={diagnosticarRadares}
         acompanhamento={acompanhamento}
         abrirRadarSolicitacao={radarOpenRequest}
         onAberturaRadarConcluida={confirmarAberturaRadar}
@@ -1117,7 +1107,6 @@ const Home = () => {
         }} />
       <ParadaSheet
         reduzirMovimento={Boolean(tutorial.step) && tutorial.reducedMotion}
-        onDiagnostico={diagnosticarRadares}
         agora={consultaDetalhe.agora}
         vinculos={contextoFicha?.vinculos}
         terminalPresence={radarTerminalPresence}

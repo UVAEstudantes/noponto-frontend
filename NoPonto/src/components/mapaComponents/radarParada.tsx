@@ -6,7 +6,7 @@ import { useTutorial } from "../tutorial/TutorialProvider";
 import {passengerRadar} from '@/src/services/radarPassenger';
 import type { PhysicalVehicle } from "@/src/services/physicalPresenceContract";
 import React, { useEffect, useReducer, useRef, useState } from "react";
-import { Alert, Clipboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Check, ChevronLeft, ChevronRight, MapPin, RefreshCw, X } from "lucide-react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
@@ -30,8 +30,6 @@ import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
   bloqueadoPeloTutorial?: boolean;
-  /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
-  onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
   abrirRadarSolicitacao: number;
   onAberturaRadarConcluida: (request: number) => void;
@@ -52,7 +50,6 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   const tutorial = useTutorial();
   const invalidateTutorialTargets = tutorial.invalidateTargets;
   const tutorialRadar = Boolean(tutorial.step) && tutorial.chapter === 5;
-  const [copiado, setCopiado] = useState(false);
   const [configAberta, setConfigAberta] = useState(false);
   const tutorialOwned = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -232,14 +229,6 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
         <Text accessibilityLiveRegion="polite" style={{ flex: 1, fontSize: 11, color: corConsulta }}>
           {resumoConsultaParada(radar.statusConsulta, radar.atualizadoEm)}
         </Text>
-        {typeof __DEV__ !== 'undefined' && __DEV__ && <Pressable
-          accessibilityRole="button" accessibilityLabel="Copiar diagnóstico do Radar"
-          onPress={() => {
-            try { Clipboard.setString(diagnosticoEventosRadar.json()); setCopiado(true); }
-            catch { Alert.alert('Diagnóstico', 'Não foi possível copiar. Tente novamente.'); }
-          }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 6 }}>
-          <Text style={{ color: cores.textoPrimario, fontSize: 10 }}>{copiado ? 'Copiar novamente' : 'Copiar diagnóstico'}</Text>
-        </Pressable>}
         <Pressable onPress={radar.atualizar} disabled={radar.carregando || !radar.contextoConsulta}
           accessibilityRole="button" accessibilityLabel={radar.erro ? "Tentar atualizar novamente" : "Atualizar próximos veículos"}
           accessibilityState={{ disabled: radar.carregando || !radar.contextoConsulta, busy: radar.carregando }}
