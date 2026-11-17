@@ -48,3 +48,18 @@ test('460 independent network snapshots compose once per selected line without d
  const result=composeUnifiedSnapshots(lines,snaps,now);const ids=result.flatMap(l=>l.posicoes??[]).map(v=>v.ordem);
  assert.equal(result.length,460);assert.equal(ids.length,460);assert.equal(new Set(ids).size,460);
 });
+
+
+test('898 without canonical coverage keeps operational vehicles while covered empty remains authoritative',()=>{
+ const now=Date.now(),lines=[{nome:'898',modal:'onibus',linhaId:'line-898',posicoes:[{ordem:'A2-001',id:'A2-001'}]},
+ {nome:'838',modal:'onibus',linhaId:'line-838',posicoes:[{ordem:'D86066',id:'D86066'}]},
+ {nome:'10',modal:'brt',posicoes:[{id:'BRT1'}]},{nome:'rail',modal:'trem',posicoes:[{id:'train1'}]}];
+ const capabilities={...cap,lineCodes:['838']};
+ assert.deepEqual(selectUnifiedCodes(['898','838'],capabilities,[]),['838']);
+ const disabled={...point('898',now),enabled:false,vehicles:[]};
+ const empty={...point('838',now),vehicles:[]};
+ const result=composeUnifiedSnapshots(lines,[disabled,empty],now);
+ assert.deepEqual(result[0].posicoes,lines[0].posicoes);assert.equal(result[1].posicoes!.length,0);
+ assert.deepEqual(result[2],lines[2]);assert.deepEqual(result[3],lines[3]);
+ assert.equal(result.flatMap(l=>l.posicoes!).filter(v=>'id' in v&&v.id==='A2-001').length,1);
+});

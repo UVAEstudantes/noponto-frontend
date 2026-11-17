@@ -1,3 +1,4 @@
+import {GpsFreshnessIndicator} from '../gpsFreshnessIndicator';
 import React from 'react';
 import {Pressable,Text,View} from 'react-native';
 import {BusFront,MapPin,ChevronRight,ChevronDown} from 'lucide-react-native';
@@ -25,7 +26,7 @@ export function renderTerminalPresenceSection(vehicles:TerminalRadarVehicle[],no
    trailing:<View style={{alignItems:'flex-end',maxWidth:110}}>
     {estimate&&<Text style={{fontSize:12,fontWeight:'700',color:cores.textoPrimario}}>Chega em {estimate[0]}–{estimate[1]} min</Text>}
     {estimate&&<Text style={{fontSize:10,color:cores.textoSecundario}}>Estimativa GPS</Text>}
-    {delayed&&<Text style={{fontSize:10,color:cores.textoSecundario}}>GPS atrasado</Text>}
+    <GpsFreshnessIndicator at={v.physicalAt} now={now} uncertain={uncertain} textColor={cores.textoSecundario}/>
     {uncertain&&<Text accessibilityLabel="Localização estimada" style={{color:cores.textoSecundario}}>≈</Text>}
    </View>,accessibilityLabel:options.sheet?'Detalhes da linha '+v.code:'Localizar linha '+v.code+' no mapa',
    disabled:options.sheet?false:!localizable,onPress:()=>{if(options.sheet)options.onToggle?.(v.key);else if(localizable)onFocus?.(v);},

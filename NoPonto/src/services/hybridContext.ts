@@ -5,8 +5,8 @@ import { GPS_POLICY,type GpsPresentationPolicy } from './gpsPresentationPolicy';
 import { createTerminalTracker,lineTerminals,type TerminalDiagnostics } from './terminalTracking';
 
 type Sample = { lat:number; lon:number; at:number };
-type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred' };
-type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
+type Context = { pattern:string; direction:string|null; validatedAt:number; kind:'retained'|'inferred'; operationalDirection?:string|null };
+type Track = { line:string; samples:Sample[]; context?:Context; operationAt:number; blockedAt:number;lastSpeed?:number;speedAt?:number;stationary?:number;stationaryAt?:number;movingSpeed?:number;movingAt?:number;zeroAt?:number;zeroFixes?:number;derivedSpeed?:number;derivedAt?:number;lastProjection?:{pattern:string;at:number;point:Projection} };
 const distance=(a:Sample,b:Sample)=>Math.hypot(a.lat-b.lat,(a.lon-b.lon)*Math.cos(a.lat*Math.PI/180))*111195;
 
 /** Mount-scoped physical evidence. No persistence, operational writes, or ITS renewal. */
@@ -43,7 +43,8 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       }
       const dt=last?(sample.at-last.at)/1000:0;
       const moved=last?distance(last,sample):0;
-      const derived=dt>=5&&dt<=120&&moved>=10&&moved/dt<=33?moved*3.6/dt:undefined;
+      const derived=dt>=5&&dt<=120&&moved>=10&&moved/dt<=33?moved*3.6/dt:dt===0&&sample.at===track.derivedAt?track.derivedSpeed:undefined;
+      if(!last||dt>0){track.derivedSpeed=derived;track.derivedAt=sample.at;}
       p.projectionSpeedKind='observed';
       // A current displacement may contradict a zero provider speed. This is
       // an estimate from two real fixes, never a renewed old speed reading.
@@ -52,30 +53,47 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
       const stationaryContradiction=dt>=5&&moved<=3&&effectiveSpeed!=null&&effectiveSpeed>2;
       if(stationaryContradiction)motionSpeed=undefined;
       if(effectiveSpeed===0&&derived!=null)p.projectionSpeedKind='displacement';
+      if(!last||dt>0){
+        if(effectiveSpeed===0&&derived==null){
+          if(track.zeroAt==null||dt>45){track.zeroAt=sample.at;track.zeroFixes=1;}else track.zeroFixes=(track.zeroFixes??0)+1;
+        }else{track.zeroAt=undefined;track.zeroFixes=0;}
+        if(effectiveSpeed!=null&&effectiveSpeed>2&&(!last||moved>3)){track.movingSpeed=effectiveSpeed;track.movingAt=sample.at;}
+      }
       if(dt>0){
-        if(dt>=5&&moved<=12&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){if(!track.stationary)track.stationaryAt=last!.at;track.stationary=(track.stationary??0)+1;}else{track.stationary=0;track.stationaryAt=undefined;}
+        if(dt>=5&&moved<=12&&derived==null&&(effectiveSpeed==null||effectiveSpeed<=2||moved<=3)){
+          if(!track.stationary||dt>45){track.stationaryAt=track.zeroAt??sample.at;track.stationary=0;}
+          track.stationary=(track.stationary??0)+1;
+        }else{track.stationary=0;track.stationaryAt=undefined;}
       }
       p.physicalMotionState=(track.stationary??0)>=2&&sample.at-(track.stationaryAt??sample.at)>=15000&&(effectiveSpeed==null||effectiveSpeed<=2)?'stopped':(track.stationary??0)>0?'pause_pending':'moving';
       const invalid=vehicle.location.uncertain||now-sample.at>policy.publicMs||
         !!last&&(dt>120||dt===0&&distance(last,sample)>1||dt>0&&distance(last,sample)>Math.max(35,dt*33));
       let restriction=invalid?(vehicle.location.uncertain?'physical_uncertain':now-sample.at>policy.publicMs?'gps_expired':'gap_or_displacement_invalid'):undefined;
-      p.estimatedSpeedKmh=!invalid&&effectiveSpeed===0?derived:undefined;
+      const residual=!invalid&&effectiveSpeed===0&&derived==null&&track.zeroFixes===1&&track.movingAt!=null
+        &&sample.at-track.movingAt<=45000&&now-track.movingAt<=75000&&now-sample.at<30000?track.movingSpeed!*0.45:undefined;
+      if(residual!=null){motionSpeed=residual;p.projectionSpeedKind='possible_stop';}
+      p.estimatedSpeedKmh=!invalid&&effectiveSpeed===0?(derived??residual):undefined;
       if(!invalid&&last&&dt>0&&distance(last,sample)>=10){
         p.direcao=(Math.atan2((sample.lon-last.lon)*Math.cos(sample.lat*Math.PI/180),sample.lat-last.lat)*180/Math.PI+360)%360;
       }
       if(invalid) {track.context=undefined;track.samples=[];track.lastProjection=undefined;track.blockedAt=Math.max(track.blockedAt,sample.at);}
       if(!invalid&&(!last||sample.at>last.at))track.samples=[...track.samples,sample].slice(-6);
       const op=vehicle.operational, opAt=op?Date.parse(op.timestampGps):0;
-      if(op&&(op.status!==0||track.context&&op.padraoVersaoId!==track.context.pattern&&opAt>=track.operationAt)) {
+      const physicalContinuation=!!track.context&&vehicle.location.source==='ITS_CURRENT'&&op?.status===1&&opAt<sample.at
+        &&op.linhaId===line.linhaId&&op.codigoLinha===line.nome
+        &&(op.padraoVersaoId==null||op.padraoVersaoId===track.context.pattern)
+        &&(op.sentidoId==null||op.sentidoId===(track.context.direction??track.context.operationalDirection));
+      // Missing an old operational cycle does not negate a newer compatible physical observation.
+      if(op&&(op.status!==0&&!physicalContinuation||track.context&&opAt>=track.operationAt&&(op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context.pattern||op.sentidoId!=null&&op.sentidoId!==(track.context.direction??track.context.operationalDirection)))) {
         restriction='operational_conflict';
         track.context=undefined;track.samples=[sample];
-        if(op.status!==0)track.blockedAt=Math.max(track.blockedAt,sample.at);
+        if(op.status!==0&&!physicalContinuation)track.blockedAt=Math.max(track.blockedAt,sample.at);
       }
       if(op&&(opAt>track.operationAt||!track.context&&opAt===track.operationAt)) {
         track.operationAt=opAt;
         // An unusable same-trip update does not revoke prior validated evidence.
         // Its original validation time is never renewed by this fallback.
-        if(op.status!==0||op.linhaId!==line.linhaId||op.codigoLinha!==line.nome||op.padraoVersaoId!==track.context?.pattern)track.context=undefined;
+        if(op.status!==0&&!physicalContinuation||op.linhaId!==line.linhaId||op.codigoLinha!==line.nome||op.padraoVersaoId!=null&&op.padraoVersaoId!==track.context?.pattern)track.context=undefined;
         if(!invalid&&opAt>track.blockedAt&&opAt<=now&&now-opAt<CONTEXT_MS&&op.status===0
           &&op.linhaId===line.linhaId&&op.codigoLinha===line.nome&&op.padraoVersaoId&&op.sentidoId) {
           const index=line.itinerarioSegmentoMap?.[op.padraoVersaoId];
@@ -100,6 +118,7 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         return coords?projectPhysical(coords,sample.lat,sample.lon,prior?.pattern===pattern&&elapsed>=0&&elapsed<=120?{min:Math.max(0,prior.point.metres-30),max:prior.point.metres+Math.max(35,elapsed*33)}:undefined):null;
       };
       const departure=p.terminalPresence;
+      if(departure?.state==='No terminal'&&p.projectionSpeedKind==='possible_stop'){motionSpeed=0;p.estimatedSpeedKmh=undefined;p.projectionSpeedKind='observed';}
       const context=track.context;
       if(context) {
         const coords=shape(context.pattern);
@@ -110,7 +129,7 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
           ||context.kind==='inferred'&&departure?.originPath&&!departure.originPath.patterns.includes(context.pattern)
           ||!!prior&&(projected!.metres<prior.metres-30||projected!.metres-prior.metres>Math.max(35,dt*33));
         if(expired&&!incompatible&&!invalid&&dt>0&&track.samples.length>=3&&track.lastProjection?.pattern===context.pattern&&departure?.state!=='No terminal'&&(!op||now-opAt>=CONTEXT_MS)){
-          track.context={pattern:context.pattern,direction:null,validatedAt:sample.at,kind:'inferred'};
+          track.context={pattern:context.pattern,direction:null,validatedAt:sample.at,kind:'inferred',operationalDirection:context.direction??context.operationalDirection};
         }else if(expired||incompatible) {
           restriction=expired?'context_expired':!projected?'geometry_missing':projected.ambiguous?'route_ambiguous':projected.gap>60?'off_route':'route_reverse_or_jump';
           track.context=undefined;
@@ -229,6 +248,25 @@ function createHybridProcessor(metrics:HybridMetrics|undefined,policy:Readonly<G
         p.proximaParadaNome=next?.stop.nome??null;
         p.distanciaProximaParadaMetros=next?next.point!.metres-point.metres:null;
       }
+      // A validated route and current physical speed suffice; nearby ordinary stops do not prove a halt.
+      const reliable=effectiveSpeed!=null&&effectiveSpeed>2&&selected.kind==='retained'&&p.physicalMotionState==='moving'
+        &&departure?.state!=='No terminal'&&departure?.state!=='Saindo do terminal';
+      const seconds=Math.min(90,Math.max(0,(p.projectionUntil!-sample.at)/1000));
+      const budget=reliable?Math.max(policy.maxProjectionMetres,Math.min(1000,observed!/3.6*seconds)):policy.maxProjectionMetres;
+      const terminalAhead=next&&lineTerminals(line,policy).some(e=>e.stop.paradaId===next.stop.paradaId);
+      p.projectionMaxMetres=Math.min(budget,point.totalMetres-point.metres,
+        terminalAhead?Math.max(0,next!.point!.metres-point.metres-10):Infinity);
+      if(p.projectionSpeedKind==='possible_stop'){
+        p.projectionUntil=Math.min(p.projectionUntil!,sample.at+30000,track.movingAt!+75000);
+        p.projectionMaxMetres=Math.min(p.projectionMaxMetres!,25,next?Math.max(0,next.point!.metres-point.metres-5):Infinity);
+        p.backendMotionEligible=p.backendMotionEligible&&now<p.projectionUntil&&p.projectionMaxMetres>0;
+      }
+      if(effectiveSpeed===0&&derived!=null){
+        p.projectionUntil=Math.min(p.projectionUntil!,sample.at+45000);
+        p.projectionMaxMetres=Math.min(p.projectionMaxMetres!,40,next?Math.max(0,next.point!.metres-point.metres-5):Infinity);
+        p.backendMotionEligible=p.backendMotionEligible&&now<p.projectionUntil&&p.projectionMaxMetres>0;
+      }
+      if(p.projectionMaxMetres<=0)p.backendMotionEligible=false;
       // A restart can recover initial-corridor presence through the same
       // validated GTFS / multi-observation physical context, never proximity.
       if(!p.terminalPresence&&point.metres>10){
@@ -273,6 +311,7 @@ export function createHybridComposer(options:{enabled?:boolean;metrics?:HybridMe
     }
     for(const line of result)for(const p of line.posicoes??[]){
       if(p.contextValidatedAt)boundary(p.contextValidatedAt+policy.contextMs);
+      if(p.projectionUntil)boundary(p.projectionUntil);
       if(p.speedObservedAt)boundary(p.speedObservedAt+policy.publicMs+1);
     }
     if(metrics){metrics.processing++;metrics.lastMs=performance.now()-start;metrics.maxMs=Math.max(metrics.maxMs,metrics.lastMs);}

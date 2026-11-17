@@ -9,8 +9,8 @@ export interface GpsPresentationPolicy {
 // Physical, contextual and projection lifetimes deliberately remain independent.
 const DEFAULT_POLICY:Readonly<GpsPresentationPolicy>=Object.freeze({
   delayedMs:180000,attenuatedMs:300000,publicMs:480000,
-  currentSpeedMs:60000,contextMs:180000,baseProjectionMs:60000,
-  coherentProjectionMs:90000,maxProjectionMetres:250,
+  currentSpeedMs:60000,contextMs:180000,baseProjectionMs:90000,
+  coherentProjectionMs:120000,maxProjectionMetres:250,
   terminalRadiusMetres:35,terminalExitMetres:70,dwellMs:15000,
   initialStops:3,initialMetres:1500,
 });
@@ -45,4 +45,22 @@ export function gpsPresentation(physicalAt:number,now:number,policy:Readonly<Gps
   return {visible:Number.isFinite(age)&&age>=0&&age<=policy.publicMs,
     delayed:age>=policy.delayedMs,opacity:age>=policy.attenuatedMs ? .55 : 1,
     warning:age>=policy.attenuatedMs?'Última posição conhecida':age>=policy.delayedMs?'GPS atrasado':null};
+}
+
+
+// Temporal freshness is not spatial confidence or ETA accuracy.
+export const GPS_FRESHNESS_LEVELS=[
+  {until:45000,label:'Muito recente',color:'#16a34a',bars:5,icon:'signal'},
+  {until:60000,label:'Recente',color:'#16a34a',bars:4,icon:'signal-high'},
+  {until:90000,label:'Atrasado',color:'#b7791f',bars:3,icon:'signal-medium'},
+  {until:120000,label:'Muito atrasado',color:'#d97706',bars:2,icon:'signal-low'},
+  {until:180000,label:'Última localização estimada',color:'#b45309',bars:1,icon:'signal-zero'},
+  {until:Number.MAX_SAFE_INTEGER,label:'Sem atualização confiável',color:'#737373',bars:0,icon:'wifi-off'},
+] as const;
+export const GPS_FRESHNESS_HELP='As barras indicam a idade da localização, não a intensidade de rede ou a precisão.';
+export function gpsFreshness(physicalAt:number,now:number,uncertain=false){
+  const age=now-physicalAt;
+  if(!Number.isFinite(physicalAt)||!Number.isFinite(age)||age<0)return {label:'Atualização indisponível',color:'#737373',bars:0,icon:'wifi-off' as const,uncertain:true};
+  const level=GPS_FRESHNESS_LEVELS.find(l=>age<=l.until)??GPS_FRESHNESS_LEVELS.at(-1)!;
+  return {label:level.label,color:level.color,bars:level.bars,icon:level.icon,uncertain};
 }

@@ -72,8 +72,6 @@ export interface ChegadaParadaInfo {
 
 interface Props {
   reduzirMovimento?: boolean;
-  /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
-  onDiagnostico?: () => void;
   agora?: number;
   vinculos?: readonly VinculoParada[];
   terminalPresence?:TerminalPresence[];

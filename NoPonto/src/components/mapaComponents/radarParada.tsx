@@ -1,3 +1,5 @@
+import { diagnosticoEventosRadar } from "@/src/services/diagnosticoEventosRadar";
+import { instanteEventoRadar, motivoExclusaoEventoRadar } from "@/src/services/radarParada";
 import TutorialTarget from "../tutorial/TutorialTarget";
 import TutorialOverlay from "../tutorial/TutorialOverlay";
 import { useTutorial } from "../tutorial/TutorialProvider";
@@ -28,8 +30,6 @@ import type { ControleRadarEspera } from '@/src/hooks/useRadarEspera';
 
 interface Props {
   bloqueadoPeloTutorial?: boolean;
-  /** Mantido para diagnóstico interno; o botão correspondente saiu da interface. */
-  onDiagnostico?: () => void;
   acompanhamento?: ControleRadarEspera;
   abrirRadarSolicitacao: number;
   onAberturaRadarConcluida: (request: number) => void;
@@ -63,7 +63,28 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
 
   const chegadas = chegadasDoRadar(radar.eventos, radar.parada, linhas, radar.recebidoEm, radar.agora, [], []);
   const terminalVehicles = radar.foraContexto||!['onibus','todos'].includes(modal) ? [] : terminalRadarVehicles(terminalPresence,radar.parada?.parada.paradaId,radar.parada?.vinculos??[],chegadas,radar.agora);
+  const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const temEventos = radar.eventos.length > 0 || terminalVehicles.length > 0;
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__ || !visivel || recolhido || !conteudoMontado || bloqueadoPeloTutorial) return;
+    const rows = compactos;
+    diagnosticoEventosRadar.selection(radar.contextoConsulta, radar.eventosRecebidos, {
+      at: radar.agora,
+      displayed: rows.flatMap(r => r.kind === 'arrival' ? [r.arrival.id] : []),
+      physical: rows.flatMap(r => r.kind === 'physical' ? [r.vehicle.key] : []),
+      presences: terminalVehicles.map(v => ({ id: v.key, vehicle: v.order, line: v.lineId, state: v.state,
+        physicalAt: v.physicalAt, validUntil: v.validUntil, pattern: v.knownPattern, confirmed: v.operationalConfirmed })),
+      events: radar.eventosRecebidos.map(e => {
+        const at = instanteEventoRadar(e, radar.recebidoEm, radar.agora);
+        const eta = at == null || at < radar.agora ? null : Math.ceil((at-radar.agora)/1000);
+        return { id: e.eventId, eta, reason: motivoExclusaoEventoRadar(e, radar.parada, radar.recebidoEm, radar.agora)
+          ?? (eta == null ? 'eta_indisponivel_ou_passado' : !radar.eventos.some(v => v.eventId === e.eventId)
+            ? 'excluido_da_consulta' : !rows.some(r => r.kind === 'arrival' && r.arrival.id === e.eventId)
+              ? 'reconciliacao_fisica_ou_limite_de_vagas' : null) };
+      }),
+    });
+  });
+
   const [alturaPainel, setAlturaPainel] = useState(0);
   const [seletor, setSeletor] = useState(false);
   useEffect(() => {
@@ -126,7 +147,6 @@ export default function RadarParada({ bloqueadoPeloTutorial = false, radar, linh
   const abaStyle = useAnimatedStyle(() => ({ opacity: progress.value,
     transform: [{ translateX: (1 - progress.value) * 65 * (ladoAba === "right" ? 1 : -1) }] }));
   if ((!visivel && !configAberta) || bloqueadoPeloTutorial) return null;
-  const compactos = passengerRadar(terminalVehicles,chegadas,radar.parada?.parada.paradaId,radar.agora,2);
   const quantidade = radar.foraContexto ? 0 : new Set(radar.parada?.vinculos.map((item) => item.linhaId) ?? []).size;
   const Recolher = ladoAba === "right" ? ChevronRight : ChevronLeft;
   const Reabrir = ladoAba === "right" ? ChevronLeft : ChevronRight;

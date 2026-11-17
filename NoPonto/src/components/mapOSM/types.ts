@@ -85,7 +85,7 @@ export interface LinhaParaMostrar {
     directionConfidence?:'origin';
     routeConfidence?:'origin'|'shared';
     physicalRoutePattern?:string;
-    projectionSpeedKind?:'observed'|'displacement';
+    projectionSpeedKind?:'observed'|'displacement'|'possible_stop';
     physicalMotionState?:'moving'|'pause_pending'|'stopped';
     motionReason?:string;
     nextStopReason?:string;

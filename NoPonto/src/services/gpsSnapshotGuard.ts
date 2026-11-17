@@ -17,6 +17,18 @@ export function codigoLinhaEsvaziada(payload: unknown): string | null {
     ? normalizarCodigoLinha((payload as Record<string, unknown>).codigoLinha) : null;
 }
 
+// No metadata sequence exists in the legacy contract. At equal GPS only a
+// monotone loss-of-signal is order-independent; recovery/context changes need a new fix.
+function operationalAtSameGps(previous: VeiculoMapaRodoviario, next: VeiculoMapaRodoviario): VeiculoMapaRodoviario {
+  const same = previous.latitude === next.latitude && previous.longitude === next.longitude
+    && previous.id === next.id && previous.tipoRota === next.tipoRota
+    && previous.linhaId === next.linhaId && previous.sentidoId === next.sentidoId
+    && previous.padraoVersaoId === next.padraoVersaoId
+    && previous.padraoOperacionalId === next.padraoOperacionalId;
+  if (!same || previous.status !== 0 || next.status !== 1) return previous;
+  return { ...previous, status: 1, raw: previous.raw ? { ...previous.raw, status: 1 } : previous.raw };
+}
+
 interface MarcaGps { timestamp: number; linha: string; removido: boolean; observacao: VeiculoMapaRodoviario }
 interface LeituraLinha { codigo: string; criadaEm: number }
 
@@ -79,6 +91,8 @@ export class GpsSnapshotGuard {
       }
       const atual = porId.get(p.idVisual);
       if (!atual || Date.parse(p.atualizadoEm!)>Date.parse(atual.atualizadoEm!)) porId.set(p.idVisual,p);
+      else if (p.atualizadoEm === atual.atualizadoEm && p.linha === atual.linha)
+        porId.set(p.idVisual,operationalAtSameGps(atual,p));
     }
     for (const p of porId.values()) {
       const linha = normalizarCodigoLinha(p.linha);
@@ -95,8 +109,8 @@ export class GpsSnapshotGuard {
       if (!marca && this.marcas.size >= 5000) {
         traceRoadPresence(this.diagnosticStage,'guard_capacity',p,{present:false});continue;
       }
-      // An equal timestamp is the same physical observation, even if other fields changed.
-      const observacao = marca && timestamp===marca.timestamp ? marca.observacao : p;
+      // Keep physical evidence immutable while accepting the safe operational transition.
+      const observacao = marca && timestamp===marca.timestamp ? operationalAtSameGps(marca.observacao,p) : p;
       this.marcas.set(p.idVisual, { timestamp, linha, removido: false, observacao });
       this.leituras.delete(linha);
       aceitas.push(observacao);

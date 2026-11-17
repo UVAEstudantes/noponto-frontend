@@ -11,6 +11,8 @@ function runtime() {
   const filename = path.join(__dirname, '../components/mapOSM/webview/mapScript.ts');
   const mod = new Module(filename, module);
   mod.require = (name) => {
+    if (name === './userLocation' || name === './tutorialBridge')
+      return require(path.join(path.dirname(filename), name + '.ts'));
     if (name.endsWith('/indicadores')) return { familiasIndicadores: [] };
     if (name.endsWith('/indicadoresSvg.generated')) return { codigoRenderizadorIndicadores: '' };
     if (name.endsWith('/physicalPresenceContract')) return require('./physicalPresenceContract.ts');
@@ -54,7 +56,7 @@ function runtime() {
       setAttribute(k,v) { this.attributes[k]=v; }, getAttribute(k) { return this.attributes[k]; } };
   }
   const contract = require('./physicalPresenceContract.ts');
-  const context = { movementDiagnostics:false,gpsPolicy:require('./gpsPresentationPolicy.ts').GPS_POLICY,window: {}, map: {}, maplibregl: { Marker, Popup },
+  const context = { drState:{},gpsFreshness:require('./gpsPresentationPolicy.ts').gpsFreshness,gpsFreshnessHelp:require('./gpsPresentationPolicy.ts').GPS_FRESHNESS_HELP,movementDiagnostics:false,gpsPolicy:require('./gpsPresentationPolicy.ts').GPS_POLICY,window: {}, map: {}, maplibregl: { Marker, Popup },
     document: { createElement: element },
     lastMapData: {linhas:[{linhaId:'line-838',modal:'onibus',cor:'#aabbcc'}]},
     renderIndicator: (style,modal,color) => ({uri:style+':'+modal+':'+color,largura:14,altura:42,ancoraY:21,orientacao:0}),
@@ -62,9 +64,11 @@ function runtime() {
     physicalLocationLabels:contract.physicalLocationLabels, operationalPhysicalWatermarks:{},
     parseNum:v=>v==null?null:Number(v),safeId:v=>v,formatElapsed:()=>"5 min",
     modalIconSvg:()=>'<svg></svg>',escapeHtml:v=>String(v).replace(/</g,'&lt;'),refreshIcons(){},vehiclePopups:{},
+    tutorialNativeHighlight:()=>false, tutorialSchedule(){}, tutorialVehicleClicked(){},
     drState:{}, vehicleIndexByOrder: {}, vehicleMarkers: {}, physicalMarkers: markers,
     lastPhysicalPresence: [], Date: FakeDate };
   const run = (from,to) => vm.runInNewContext(script.slice(script.indexOf(from),script.indexOf(to,script.indexOf(from))),context);
+  run('function gpsSignalHtml(', 'function gpsMarkerOpacity(');
   run('function rememberOperationalPhysicalGps(', 'var autoFollow=');
   run('function applyVehiclePresentation(', 'var railBranchColors=');
   run('function setHeading(', 'function busIcon(');

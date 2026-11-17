@@ -3,12 +3,15 @@ const test = require("node:test");
 const { criarHarness } = require("../../hooks/radarTestHarness.cjs");
 const { temas } = require("../../constants/tema.ts");
 
+function TutorialTargetMock(props){return {type:props.component??"View",props};}
 function nodes(value) {
+  if((value?.type?.name==="GpsFreshnessIndicator"||value?.type===TutorialTargetMock))return nodes(value.type(value.props));
   if (Array.isArray(value)) return value.flatMap(nodes);
   if (!value || typeof value !== "object") return [];
   return [value, ...nodes(value.props?.children)];
 }
 function texto(value) {
+  if((value?.type?.name==="GpsFreshnessIndicator"||value?.type===TutorialTargetMock))return texto(value.type(value.props));
   if (Array.isArray(value)) return value.map(texto).join("");
   if (value == null || typeof value === "boolean") return "";
   if (typeof value !== "object") return String(value);
@@ -17,13 +20,21 @@ function texto(value) {
 function ui(h) {
   const pan = {};
   for (const key of ["activeOffsetY", "onStart", "onUpdate", "onEnd"]) pan[key] = () => pan;
+  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){},setLineModalOpen(){}};
   const mocks = {
+    "../tutorial/TutorialProvider":{useTutorial:()=>tutorial},
+    "../tutorial/TutorialTarget":{__esModule:true,default:TutorialTargetMock},
+    "../tutorial/TutorialOverlay":{__esModule:true,default:"TutorialOverlay"},
+    "./linhasDaParada":{__esModule:true,default:"LinhasDaParada"},
+    "../demo/InterfaceDemo":{useMovimentoReduzido:()=>false},
+    "../Confirmacao":{__esModule:true,default:"Confirmacao"},
+    "./radarAvisosPorVoz":{__esModule:true,default:"Voice"},
     "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView", Modal: "Modal",
       Platform: { OS: "android" }, StyleSheet: { absoluteFillObject: {} },
       Dimensions: { get: () => ({ height: 800, width: 400 }) },
       useWindowDimensions: () => ({ height: 800, width: 400 }) },
     "lucide-react-native": Object.fromEntries(["BusFront", "ChevronDown", "ChevronRight", "ChevronLeft", "ChevronUp",
-      "Clock3", "Map", "MapPin", "RefreshCw", "TrainFront", "X", "Check"].map((id) => [id, id])),
+      "Clock3", "Map", "MapPin", "RefreshCw", "TrainFront", "X", "Check", "Signal", "SignalHigh", "SignalMedium", "SignalLow", "SignalZero", "WifiOff"].map((id) => [id, id])),
     "react-native-gesture-handler": { GestureDetector: "GestureDetector", Gesture: { Pan: () => pan } },
     "react-native-reanimated": { __esModule: true, default: { View: "Animated.View" },
       Easing: { out: (value) => value, cubic: "cubic" }, runOnJS: (fn) => fn,
@@ -34,6 +45,7 @@ function ui(h) {
     "@/src/constants/modaisMapa": { identidadeModalMapa: () => ({ Icon: "Bus", cor: "#123456" }) },
     "expo-blur": { BlurView: "BlurView" },
   };
+  mocks["../gpsFreshnessIndicator"]=h.carregar("../components/gpsFreshnessIndicator.tsx",mocks);
   mocks["./radarVehicleCardView"]=h.carregar("../components/mapaComponents/radarVehicleCardView.tsx",mocks);
   mocks["./previaNotificacaoRadarSection"]=h.carregar("../components/mapaComponents/previaNotificacaoRadarSection.tsx",mocks);
   mocks["./radarEsperaSection"]=h.carregar("../components/mapaComponents/radarEsperaSection.tsx",mocks);
@@ -107,7 +119,15 @@ function sheet() {
 function railSheet(overrides = {}) {
   const h = criarHarness(), pan = {};
   for (const key of ["activeOffsetY", "onStart", "onUpdate", "onEnd"]) pan[key] = () => pan;
+  const tutorial={step:null,invalidateTargets(){},setRadarDraftPending(){},setRadarHost(){},setLineModalOpen(){}};
   const mocks = {
+    "../tutorial/TutorialProvider":{useTutorial:()=>tutorial},
+    "../tutorial/TutorialTarget":{__esModule:true,default:TutorialTargetMock},
+    "../tutorial/TutorialOverlay":{__esModule:true,default:"TutorialOverlay"},
+    "./linhasDaParada":{__esModule:true,default:"LinhasDaParada"},
+    "../demo/InterfaceDemo":{useMovimentoReduzido:()=>false},
+    "../Confirmacao":{__esModule:true,default:"Confirmacao"},
+    "./radarAvisosPorVoz":{__esModule:true,default:"Voice"},
     "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView",
       Dimensions: { get: () => ({ height: 800, width: 400 }) } },
     "lucide-react-native": Object.fromEntries(["Bell", "BusFront", "ChevronDown", "ChevronRight", "ChevronUp", "Clock3",
@@ -316,7 +336,7 @@ test("stop sheet restricts terminal corridors and applies 180 300 480 second vis
   for (const seconds of [60,120,179,180,299,300,301,480,600]) {
     const output=render({...props,contextoIndisponivel:false,terminalPresence:[{...parked,physicalAt:h.now-seconds*1000}]});
     const row=nodes(output).find(n=>n.type==='Pressable'&&n.props.accessibilityLabel==='Detalhes da linha 855');
-    assert.equal(!!row,seconds<=300);assert.equal(texto(output).includes('GPS atrasado'),seconds>=180&&seconds<=300);
+    assert.equal(!!row,seconds<=300);assert.equal(texto(output).includes('Sem atualização confiável'),seconds>=180&&seconds<=300);
     if(row)assert.equal(row.props.style.opacity,seconds>=180?.65:1);
     assert.doesNotMatch(texto(output),/Partida não confirmada|Atendimento à parada não confirmado|GPS há/);
   }

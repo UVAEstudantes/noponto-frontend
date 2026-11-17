@@ -142,3 +142,15 @@ test('terminal confirmado separa saida prevista de chegada e presenca', () => {
   assert.equal(filtrar([saida],contexto,now,now,{},[fisico])[0].evento.eventType,'DEPARTURE');
   assert.equal(filtrar([saida],contexto,now,now,{},[{...fisico,operationalConfirmed:false}]).length,0);
 });
+
+
+test('local notification obeys physical expiry independent of HTTP freshness and ETA arrival',()=>{
+ for(const source of ['PhysicalCausal','HybridFixed20','HybridRecentEma']){
+ const e={...evento('physical','A',600),source,quality:'estimativa_fisica',lastRealtimeEvidenceUtc:new Date(now).toISOString(),estimatedAt:new Date(now+600000).toISOString(),predictionValidUntilUtc:new Date(now+90000).toISOString()};
+ assert.equal(filtrar([e],contexto,now,now+89999).length,1);
+ assert.equal(filtrar([e],contexto,now+90001,now+90001).length,0);
+ const scheduled={...e,scheduledAt:new Date(now+180000).toISOString()};
+ const result=filtrar([scheduled],contexto,now+120000,now+120000);
+ assert.equal(result.length,1);assert.equal(result[0].evento.quality,'ScheduleOnly');assert.equal(result[0].previstoEm,now+180000);
+ }
+});
