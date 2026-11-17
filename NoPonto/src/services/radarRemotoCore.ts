@@ -56,7 +56,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     catch (e) {
       if (e instanceof ErroRadarRemoto && e.status === 401) {
         await stopLocalSession(state.sessao?.sessaoId);
-        registration = null;
+        registration = null; pushConfirmado = false;
         await Promise.all([port.remove(CREDENTIAL), port.remove(PENDING), port.remove(TOKEN)]);
         emit({ sessao: null, modo: 'indisponivel' });
         await port.clearNotifications();
@@ -114,6 +114,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     });
     return false;
   }
+  let pushConfirmado = false;
   let desired: ConfiguracaoRemota | null = null;
   async function configure(config: ConfiguracaoRemota, allowActivation = false) {
     const current = await authenticated<SessaoRemota | null>('GET', '/radar/sessao');
@@ -154,7 +155,9 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     prepararProgramacoes() {
       const work = queue.catch(() => {}).then(async () => {
         await credential(true);
-        if (!await enroll(true, true)) throw new ErroRadarRemoto(409, 'push_pendente');
+        pushConfirmado = false;
+        pushConfirmado = await enroll(true, true);
+        if (!pushConfirmado) throw new ErroRadarRemoto(409, 'push_pendente');
       });
       queue = work;
       return work;
@@ -163,6 +166,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
       await credential(true);
       return authenticated<T>(method, '/radar/programacoes' + suffix, body);
     },
+    get pushConfirmado() { return pushConfirmado; },
     get estado() { return state; },
     assinar(fn: (s: EstadoRemoto) => void) { listeners.add(fn); fn(state); return () => { listeners.delete(fn); }; },
     reconciliar: () => serial('reconciliar', async () => {
@@ -192,6 +196,7 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
       diagnosticarRadar('push.prova', 'valida');
       await authenticated('POST', '/radar/instalacao/push/confirmar', { enrollmentId: p.enrollmentId, proof: data.proof });
       await port.write(TOKEN, p.token); await port.remove(PENDING);
+      pushConfirmado = true;
       const config = desired; desired = null;
       if (config) await configure(config, true);
       else accept(await authenticated<SessaoRemota | null>('GET', '/radar/sessao'));

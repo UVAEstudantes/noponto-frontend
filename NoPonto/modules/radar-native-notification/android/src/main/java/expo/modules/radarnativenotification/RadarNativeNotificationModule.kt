@@ -181,6 +181,29 @@ class RadarNativeNotificationModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("RadarNativeNotification")
 
+    AsyncFunction("selectScheduleTime") { hour: Int, minute: Int, promise: expo.modules.kotlin.Promise ->
+      val activity = appContext.currentActivity ?: error("Activity indisponível")
+      activity.runOnUiThread {
+        val dialog = android.app.TimePickerDialog(activity, { _, h, m ->
+          promise.resolve(String.format(java.util.Locale.ROOT, "%02d:%02d", h, m))
+        }, hour.coerceIn(0, 23), minute.coerceIn(0, 59), true)
+        dialog.setOnCancelListener { promise.resolve(null) }
+        dialog.show()
+      }
+    }
+    AsyncFunction("selectScheduleDate") { year: Int, month: Int, day: Int, promise: expo.modules.kotlin.Promise ->
+      val activity = appContext.currentActivity ?: error("Activity indisponível")
+      activity.runOnUiThread {
+        val dialog = android.app.DatePickerDialog(activity, { _, y, m, d ->
+          promise.resolve(String.format(java.util.Locale.ROOT, "%04d-%02d-%02d", y, m + 1, d))
+        }, year, month - 1, day)
+        dialog.datePicker.minDate = System.currentTimeMillis()
+        dialog.setOnCancelListener { promise.resolve(null) }
+        dialog.show()
+      }
+    }
+
+
     AsyncFunction("showTestNotification") { scenario: String, headsUp: Boolean, traceId: String ->
       require(scenario == "multiple-lines" || scenario == "empty") { "Cenário inválido" }
       require(traceId.isNotBlank() && traceId.length <= 64) { "Identificador inválido" }

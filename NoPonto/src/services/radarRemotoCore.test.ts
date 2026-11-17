@@ -217,8 +217,10 @@ test('preparar programacoes confirma push sem criar ou alterar sessao manual', a
   const f = fixture();
   await assert.rejects(f.client.prepararProgramacoes(), (e: any) => e.code === 'push_pendente');
   assert.equal(f.current, null);
+  assert.equal(f.client.pushConfirmado, false);
   assert.equal(f.registrations, 1);
   await f.client.confirmar(f.proof());
+  assert.equal(f.client.pushConfirmado, true);
   await f.client.prepararProgramacoes();
   assert.equal(f.calls.some(c => c.route === '/radar/sessao' && c.method !== 'GET'), false);
   await f.client.ativar(config);

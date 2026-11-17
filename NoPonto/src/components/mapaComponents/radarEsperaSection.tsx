@@ -215,7 +215,6 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
         </View>
         {tutorialRadar && <TutorialOverlay host="radar" docked />}
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
-          {remoto && <RadarProgramado entrada={c.entradaProgramacao}/>}
           {!contextoValido && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
           {c.outraParada && <Text style={secundario}>Monitorando {c.paradaNome}. Volte à parada acompanhada para editar. Para trocar o alvo, use o seletor de parada do Radar.</Text>}
           <TutorialTarget kind="radar" enabled={["radarLines", "notificationLines"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["radarLines", "notificationLines"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>
@@ -301,6 +300,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
                 onPress={() => setJanela(janela + 1)} style={botaoMinuto(maisDesabilitado)}><Text style={{ ...texto, fontSize: 20 }}>+</Text></Pressable>
             </View>
           </TutorialTarget>
+          {remoto && <RadarProgramado entrada={c.entradaProgramacao}/>}
           <RadarAvisosPorVoz tutorialScrollRef={scrollRef} />
           <TutorialTarget kind="radar" enabled={tutorial.step === "notificationBackground"} reveal clipRef={scrollRef}>
           <Text accessibilityLiveRegion="polite" style={secundario}>{c.modoRemoto

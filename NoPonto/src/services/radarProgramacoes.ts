@@ -17,7 +17,7 @@ export function pedidoProgramacao(p: Omit<RadarProgramacao, 'id' | 'proximaExecu
 }
 export function mensagemProgramacao(e: unknown): string {
   const code = (e as { code?: string })?.code;
-  return ({ horarios_sobrepostos: 'Este horário conflita com outra programação. Cada programação ocupa uma hora; horários adjacentes são permitidos.',
+  return ({ seletor_nativo_indisponivel: 'Este aplicativo precisa ser atualizado para usar os seletores Android de data e hora.', horarios_sobrepostos: 'Este horário conflita com outra programação. Cada programação ocupa uma hora; horários adjacentes são permitidos.',
     revisao_desatualizada: 'A programação mudou. Os dados foram atualizados; confira antes de salvar novamente.',
     permissao_negada: 'Autorize as notificações nas configurações Android para programar o Radar.',
     push_pendente: 'Aguardando confirmação push. Mantenha o aplicativo aberto e tente salvar novamente.',
