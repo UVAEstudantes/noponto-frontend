@@ -221,7 +221,7 @@ export function useRadarEspera(entrada: EntradaPreviaNotificacaoRadar & {
     mensagem: estadoRemoto?.mensagem ?? (estadoRemoto?.modo === 'expirado'
       ? 'A sessão de uma hora expirou. Ative novamente para renovar intencionalmente.' : null),
   } : situacao;
-  return { ...situacaoAtual, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
+  return { entradaProgramacao: entrada, ...situacaoAtual, previa, disponiveis, selecionadas: ids, preferencias, carregado, erroPreferencias, diagnosticos,
     sentidosDisponiveis, sentidosSelecionados,
     modoRemoto: remotoHabilitado, estadoRemoto: estadoRemoto?.modo ?? 'inativo', expiraEm: estadoRemoto?.sessao?.expiraEm ?? null,
     operacaoRemota: operacaoPendente ?? estadoRemoto?.operacao ?? null,

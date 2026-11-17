@@ -3,8 +3,8 @@ import * as Notifications from 'expo-notifications';
 export type ResultadoLocal = 'exibida' | 'encerrada' | 'negada' | 'indisponivel' | 'erro' | 'cancelada';
 const revisoes = new Map<string, { chave: string; valor: string }>();
 let handlerConfigurado = false;
-let permiteRemota: ((data: Record<string, unknown>) => boolean) | undefined;
-export function configurarRecebimentoRemoto(permite: (data: Record<string, unknown>) => boolean) {
+let permiteRemota: ((data: Record<string, unknown>) => boolean | Promise<boolean>) | undefined;
+export function configurarRecebimentoRemoto(permite: (data: Record<string, unknown>) => boolean | Promise<boolean>) {
   permiteRemota = permite;
   configurarHandler();
 }
@@ -14,7 +14,7 @@ function configurarHandler() {
   if (handlerConfigurado) return;
   Notifications.setNotificationHandler({ handleNotification: async notification => {
     const revisao = revisoes.get(notification.request.identifier);
-    const mostrar = permiteRemota?.(notification.request.content.data ?? {}) === true
+    const mostrar = await permiteRemota?.(notification.request.content.data ?? {}) === true
       || revisao != null && notification.request.content.data?.[revisao.chave] === revisao.valor;
     return { shouldShowBanner: mostrar, shouldShowList: mostrar, shouldPlaySound: false, shouldSetBadge: false };
   } });
@@ -23,7 +23,7 @@ function configurarHandler() {
 
 /** Filas por identidade e um handler compartilhado: simulação e Radar não se apagam. */
 export function criarCanalNotificacaoLocal(identifier: string, canal: string, chaveRevisao: string,
-  disponivel: () => boolean) {
+  disponivel: () => boolean | Promise<boolean>) {
   let fila: Promise<unknown> = Promise.resolve();
   const invalidar = () => { revisoes.delete(identifier); };
   function serializar(operacao: () => Promise<ResultadoLocal>): Promise<ResultadoLocal> {

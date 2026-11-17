@@ -15,6 +15,10 @@ function montar(estado = 'encerrado') {
  'lucide-react-native':Object.fromEntries(['ArrowLeft','Bell','Check','ChevronRight','Headphones','Star','X'].map(n=>[n,n])),
  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:32})},
  './radarVehicleCard':{textoSobreCor:()=>'#FFFFFF',fundoIdentificador:c=>c},
+ '../tutorial/TutorialTarget':{__esModule:true,default:'TutorialTarget'},
+ '../tutorial/TutorialOverlay':{__esModule:true,default:'TutorialOverlay'},
+ '../tutorial/TutorialProvider':{useTutorial:()=>({step:null,setRadarDraftPending:()=>{},setRadarHost:()=>{}})},
+ './radarProgramado':{__esModule:true,default:'RadarProgramado'},
  './radarAvisosPorVoz':{__esModule:true,default:'Headphones'},
  '@/src/hooks/useTema':{useTema:()=>({cores:temas[tema].cores,temaAtual:tema})}}).default;
  const render=()=>h.render(()=>Component({controle:c})); const botao=label=>nodes(h.output).find(n=>n.props?.accessibilityLabel===label);
@@ -181,7 +185,11 @@ function montarSolicitacao(solicitacao) {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '@/src/hooks/useTema': { useTema: () => ({ cores, temaAtual: 'claro' }) },
     './radarVehicleCard': { fundoIdentificador: () => '#000', textoSobreCor: () => '#fff' },
-    './radarAvisosPorVoz': 'RadarAvisosPorVoz',
+    '../tutorial/TutorialTarget':{__esModule:true,default:'TutorialTarget'},
+ '../tutorial/TutorialOverlay':{__esModule:true,default:'TutorialOverlay'},
+ '../tutorial/TutorialProvider':{useTutorial:()=>({step:null,setRadarDraftPending:()=>{},setRadarHost:()=>{}})},
+ './radarProgramado':{__esModule:true,default:'RadarProgramado'},
+ './radarAvisosPorVoz': 'RadarAvisosPorVoz',
   }).default;
   const controle = {
     modoRemoto: false, estado: 'encerrado', estadoRemoto: 'inativo', expiraEm: null,

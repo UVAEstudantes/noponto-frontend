@@ -212,3 +212,31 @@ test('reconciliações simultâneas compartilham leitura mas mutações criam no
   assert.equal(f.calls.filter(c => c.route === '/radar/sessao' && c.method === 'GET').length, 3);
   assert.equal(f.calls.filter(c => c.method === 'PUT').length, 1);
 });
+
+test('preparar programacoes confirma push sem criar ou alterar sessao manual', async () => {
+  const f = fixture();
+  await assert.rejects(f.client.prepararProgramacoes(), (e: any) => e.code === 'push_pendente');
+  assert.equal(f.current, null);
+  assert.equal(f.registrations, 1);
+  await f.client.confirmar(f.proof());
+  await f.client.prepararProgramacoes();
+  assert.equal(f.calls.some(c => c.route === '/radar/sessao' && c.method !== 'GET'), false);
+  await f.client.ativar(config);
+  const before = f.client.estado.sessao;
+  const removed = f.removed;
+  await f.client.prepararProgramacoes();
+  assert.deepEqual(f.client.estado.sessao, before);
+  assert.equal(f.removed, removed);
+});
+test('push desconhecido so e autorizado apos conferir sessao autenticada do servidor', async () => {
+ const f = fixture();
+ await f.client.ativar(config); await f.client.confirmar(f.proof());
+ const session = f.current!;
+ const restarted = f.restarted();
+ const data = {mode:'remote-radar',sessionId:session.sessaoId,revision:session.revisao,validUntil:session.expiraEm};
+ assert.equal(restarted.permite(data),false);
+ assert.equal(await restarted.autorizarNotificacao({...data,sessionId:'desconhecida'}),false);
+ assert.equal(await restarted.autorizarNotificacao({...data,validUntil:'invalido'}),false);
+ assert.equal(await restarted.autorizarNotificacao(data),true);
+ assert.equal(restarted.permite(data),true);
+});

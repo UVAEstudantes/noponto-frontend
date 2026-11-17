@@ -99,15 +99,15 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     if (!active && state.sessao?.sessaoId) void stopLocalSession(state.sessao.sessaoId);
     emit({ sessao: session, modo: active ? 'ativo' : session?.estado === 'expirada' || session?.estado === 'ativa' ? 'expirado' : 'inativo' });
   }
-  async function enroll(ask: boolean) {
+  async function enroll(ask: boolean, preserveSession = false) {
     const status = await authenticated<{ registered: boolean; possessionConfirmed: boolean }>('GET', '/radar/instalacao/push');
     const token = await port.token(ask);
     if (status.registered && status.possessionConfirmed && await port.read(TOKEN) === token) return true;
     const old = JSON.parse(await port.read(PENDING) ?? 'null') as Pendente | null;
-    if (old?.token === token && old.expires > port.now()) { emit({ modo: 'pendente' }); return false; }
+    if (old?.token === token && old.expires > port.now()) { if (!preserveSession) emit({ modo: 'pendente' }); return false; }
     const pending = { enrollmentId: port.id(), token, expires: port.now() + 120000 };
     await port.write(PENDING, JSON.stringify(pending));
-    emit({ modo: 'pendente', mensagem: 'Aguardando confirmação push neste aparelho. Mantenha o app aberto.' });
+    if (!preserveSession) emit({ modo: 'pendente', mensagem: 'Aguardando confirmação push neste aparelho. Mantenha o app aberto.' });
     await authenticated('POST', '/radar/instalacao/push/confirmacoes', {
       enrollmentId: pending.enrollmentId, projectId: port.projectId, expoPushToken: token,
       ...(port.nativeV1 ? { capabilities: ['native-v1'] } : {}),
@@ -151,6 +151,18 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
     }
   }
   return {
+    prepararProgramacoes() {
+      const work = queue.catch(() => {}).then(async () => {
+        await credential(true);
+        if (!await enroll(true, true)) throw new ErroRadarRemoto(409, 'push_pendente');
+      });
+      queue = work;
+      return work;
+    },
+    async requisitarProgramacoes<T>(method: string, suffix = '', body?: unknown): Promise<T> {
+      await credential(true);
+      return authenticated<T>(method, '/radar/programacoes' + suffix, body);
+    },
     get estado() { return state; },
     assinar(fn: (s: EstadoRemoto) => void) { listeners.add(fn); fn(state); return () => { listeners.delete(fn); }; },
     reconciliar: () => serial('reconciliar', async () => {
@@ -198,6 +210,18 @@ export function criarRadarRemoto(port: PortaRadarRemoto) {
         void stopLocalSession(state.sessao.sessaoId);
         emit({ modo: 'expirado' });
       }
+    },
+    async autorizarNotificacao(data: Record<string, unknown>) {
+      if (data.mode !== 'remote-radar' || typeof data.sessionId !== 'string'
+        || !Number.isFinite(Date.parse(String(data.validUntil)))
+        || Date.parse(String(data.validUntil)) <= port.now() || !await credential()) return false;
+      try {
+        const current = await authenticated<SessaoRemota | null>('GET', '/radar/sessao');
+        if (!current || current.sessaoId !== data.sessionId || current.revisao !== data.revision
+          || current.estado !== 'ativa' || Date.parse(current.expiraEm) <= port.now()) return false;
+        accept(current);
+        return true;
+      } catch { return false; }
     },
     permite(data: Record<string, unknown>) {
       const current = state.sessao;

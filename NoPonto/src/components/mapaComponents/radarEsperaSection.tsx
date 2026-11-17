@@ -1,3 +1,4 @@
+import RadarProgramado from './radarProgramado';
 import TutorialTarget from "../tutorial/TutorialTarget";
 import TutorialOverlay from "../tutorial/TutorialOverlay";
 import { useTutorial } from "../tutorial/TutorialProvider";
@@ -214,6 +215,7 @@ export default function RadarEsperaSection({ controle: c, solicitacaoAbrir = 0, 
         </View>
         {tutorialRadar && <TutorialOverlay host="radar" docked />}
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 24 }}>
+          {remoto && <RadarProgramado entrada={c.entradaProgramacao}/>}
           {!contextoValido && <Text style={secundario}>O contexto mudou. Volte e reabra a configuração antes de salvar.</Text>}
           {c.outraParada && <Text style={secundario}>Monitorando {c.paradaNome}. Volte à parada acompanhada para editar. Para trocar o alvo, use o seletor de parada do Radar.</Text>}
           <TutorialTarget kind="radar" enabled={["radarLines", "notificationLines"].includes(tutorial.step ?? "")} dimmed={tutorialRadar && !["radarLines", "notificationLines"].includes(tutorial.step ?? "")} reveal clipRef={scrollRef} style={card}>

@@ -245,7 +245,7 @@ export const radarRemotoAndroid = criarRadarRemoto({
 diagnosticarRadar('modulo.android', 'carregado');
 
 configurarRecebimentoRemoto(data =>
-  radarRemotoAndroid.permite(data)
+  radarRemotoAndroid.autorizarNotificacao(data)
 );
 
 Notifications.addNotificationReceivedListener(
