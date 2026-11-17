@@ -8,7 +8,7 @@ const saved = {id:'saved',nome:'Trabalho',fuso:'America/Fortaleza',horaLocal:'08
  configuracao:{paradaId:'original',contextos:[{linhaId:'L',sentidoId:'S',padraoOperacionalId:'O',padraoVersaoId:'V'}],linhasSelecionadas:['L'],linhasPrioritarias:['L'],antecedenciaMinutos:5},proximaExecucaoUtc:'2026-12-20T11:00:00Z'};
 function montar(theme='claro',list=[]) {
  const h=criarHarness(),calls=[];
- const entry={linhas:[{linhaId:'L',ativa:true}],itinerarios:{},realtime:{},parada:{parada:{paradaId:'automatica',nome:'Mais próxima'}},paradaAberta:{paradaId:'manual',nome:'Parada escolhida no mapa'},modal:'todos'};
+ const entry={linhas:[{linhaId:'L',ativa:true},{linhaId:'L1',ativa:true}],itinerarios:{},realtime:{},parada:{parada:{paradaId:'automatica',nome:'Mais próxima'}},paradaAberta:{paradaId:'manual',nome:'Parada escolhida no mapa'},modal:'todos'};
  const api={pushConfirmado:true,assinar:()=>()=>{},reconciliar:async()=>{},prepararProgramacoes:async()=>calls.push('preparar'),requisitarProgramacoes:async(method,suffix,body)=>{calls.push({method,suffix,body});return method==='GET' ? suffix ? saved : list : {};}};
  const Component=h.carregar('../components/mapaComponents/radarProgramado.tsx',{
   'react-native':{...Object.fromEntries(['ActivityIndicator','Modal','View','Text','TextInput','Pressable','ScrollView'].map(n=>[n,n])),AppState:h.appState},
@@ -29,18 +29,25 @@ function montar(theme='claro',list=[]) {
  return {h,entry,calls,render,find,tap,settle,async open(){tap('Abrir Radar Programado');await settle();}};
 }
 for (const theme of ['claro','escuro']) test(`criacao usa parada manual e rascunho isolado no tema ${theme}`,async()=>{
- const m=montar(theme),before=JSON.stringify(m.entry);await m.open();m.tap('Nova programação');await m.settle();
+ const m=montar(theme),before=JSON.stringify(m.entry);await m.open();assert.equal(m.find('Nova programação').props.style.backgroundColor,'#FFC107');m.tap('Nova programação');await m.settle();
  assert.match(text(m.h.output),/Parada escolhida no mapa/);
  assert.ok(nodes(m.h.output).some(n=>n.type==='SafeAreaView' && n.props.style.backgroundColor===temas[theme].cores.fundoApp));
  const scroll=nodes(m.h.output).find(n=>n.type==='ScrollView');
  assert.equal(nodes(scroll).some(n=>n.props?.accessibilityLabel==='Salvar programação'),false);
- assert.ok(m.find('Salvar programação'));
+ assert.equal(m.find('Salvar programação').props.style.backgroundColor,'#FFC107');
+ assert.equal(m.find('Salvar programação').props.style.flexDirection,'row');
+ assert.equal(m.find('Nova programação'),undefined);
+ assert.equal(m.find('Abrir Radar Programado').props.style.flexDirection,'row');
+ assert.deepEqual(nodes(m.h.output).find(n=>n.type==='SafeAreaView').props.edges,['top','right','bottom','left']);
  assert.equal(m.find('Diminuir antecedência').props.disabled,false);
  for(let i=0;i<3;i++)m.tap('Diminuir antecedência');assert.equal(m.find('Diminuir antecedência').props.disabled,true);
  for(let i=0;i<13;i++)m.tap('Aumentar antecedência');assert.equal(m.find('Aumentar antecedência').props.disabled,true);assert.equal(m.find('Buscar parada por nome'),undefined);
  assert.ok(m.calls.some(c=>c.stop==='manual'));assert.equal(m.calls.some(c=>c.stop==='automatica'),false);
  const rows=nodes(m.h.output).filter(n=>n.props?.accessibilityLabel?.startsWith('Monitorar linha '));
- assert.equal(rows[0].props.accessibilityLabel,'Monitorar linha 838');assert.equal(rows.length,3);
+ assert.equal(rows[0].props.accessibilityLabel,'Monitorar linha 838');
+ assert.equal(rows[0].props.style.flexDirection,'row');
+ assert.equal(rows[0].props.style.alignItems,'center');
+ assert.equal(text(m.h.output).split('Sugerida').length-1,1);assert.equal(rows.length,3);
  m.tap('Ver todas as linhas (5)');assert.equal(nodes(m.h.output).filter(n=>n.props?.accessibilityLabel?.startsWith('Monitorar linha ')).length,5);
  m.tap('Monitorar linha 838');await m.settle();m.tap('Sentido Bairro');m.tap('Priorizar Linha sugerida');
  assert.equal(m.find('Priorizar Linha sugerida').props.accessibilityState.checked,true);
